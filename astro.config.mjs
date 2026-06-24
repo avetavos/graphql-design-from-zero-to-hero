@@ -9,12 +9,12 @@ export default defineConfig({
   // GitHub Pages project site. Update `site` to your GitHub username and `base`
   // to your repo name if they differ.
   site: 'https://avetavos.github.io',
-  base: '/nodejs-deep-dive',
+  base: '/graphql-design-from-zero-to-hero',
   output: 'static',
   integrations: [starlight({
-      title: 'Node.js Deep Dive',
+      title: 'GraphQL Design — From Zero to Hero',
       head: [
-        { tag: 'script', attrs: { type: 'module', src: '/nodejs-deep-dive/enhance.js' } },
+        { tag: 'script', attrs: { type: 'module', src: '/graphql-design-from-zero-to-hero/enhance.js' } },
       ],
       defaultLocale: 'en',
       locales: {
@@ -22,15 +22,16 @@ export default defineConfig({
         th: { label: 'ไทย', lang: 'th' },
       },
       customCss: ['./src/styles/custom.css'],
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/avetavos/nodejs-deep-dive' }],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/avetavos/graphql-design-from-zero-to-hero' }],
       sidebar: [
-        { label: 'JavaScript Essentials', items: [{ autogenerate: { directory: 'js-essentials' } }] },
-        { label: 'Event Loop & Async', items: [{ autogenerate: { directory: 'event-loop-async' } }] },
-        { label: 'Core APIs', items: [{ autogenerate: { directory: 'core-apis' } }] },
-        { label: 'Streams & I/O', items: [{ autogenerate: { directory: 'streams' } }] },
-        { label: 'HTTP & Networking', items: [{ autogenerate: { directory: 'http-networking' } }] },
-        { label: 'Modules & npm', items: [{ autogenerate: { directory: 'modules-npm' } }] },
-        { label: 'Testing & Tooling', items: [{ autogenerate: { directory: 'testing-tooling' } }] },
+        { label: 'GraphQL Foundations', items: [{ autogenerate: { directory: 'graphql-foundations' } }] },
+        { label: 'Schema Design', items: [{ autogenerate: { directory: 'schema-design' } }] },
+        { label: 'Queries & Resolvers', items: [{ autogenerate: { directory: 'queries-and-resolvers' } }] },
+        { label: 'Mutations & Subscriptions', items: [{ autogenerate: { directory: 'mutations-and-subscriptions' } }] },
+        { label: 'Pagination & Relationships', items: [{ autogenerate: { directory: 'pagination-and-relationships' } }] },
+        { label: 'Errors & Validation', items: [{ autogenerate: { directory: 'errors-and-validation' } }] },
+        { label: 'Security & Performance', items: [{ autogenerate: { directory: 'security-and-performance' } }] },
+        { label: 'Tooling, Federation & Building', items: [{ autogenerate: { directory: 'tooling-federation-building' } }] },
       ],
       }), preact()],
 });
