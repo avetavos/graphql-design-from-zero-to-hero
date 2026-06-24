@@ -1,6 +1,63 @@
 ---
 title: GraphQL Design — From Zero to Hero
-description: Design great GraphQL APIs — the type system & SDL, schema design, resolvers, mutations, Relay pagination, DataLoader, errors, security, and federation — with TypeScript.
+description: ออกแบบ GraphQL API ที่ดีตั้งแต่พื้นฐาน — type system & SDL, การออกแบบ schema, resolver, mutation & subscription, Relay pagination, DataLoader, error, security และ federation พร้อม GraphQL ที่รันได้ในเบราว์เซอร์
 template: splash
+hero:
+  tagline: คอร์สออกแบบ GraphQL API แบบ standalone ตั้งแต่ผู้เริ่มต้นจนถึงขั้นสูง สอนด้วย TypeScript ตั้งแต่ type system ไปจนถึงการออกแบบ schema, resolver, Relay pagination, ปัญหา N+1, security และ federation พร้อม query ที่รันจริงในเบราว์เซอร์
+  actions:
+    - text: เริ่มที่นี่
+      link: /graphql-design-from-zero-to-hero/th/graphql-foundations/
+      icon: right-arrow
+      variant: primary
+    - text: ข้ามไปที่ Schema Design
+      link: /graphql-design-from-zero-to-hero/th/schema-design/
+      icon: open-book
 ---
-Coming soon.
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## สิ่งที่คุณจะได้เรียน
+
+<CardGrid>
+  <Card title="GraphQL Foundations" icon="rocket">
+    GraphQL คืออะไร, type system & SDL และ request lifecycle [เริ่ม →](/graphql-design-from-zero-to-hero/th/graphql-foundations/)
+  </Card>
+  <Card title="Schema Design" icon="seti:graphql">
+    type, scalar, enum, interface, union, input และ nullability [ออกแบบ →](/graphql-design-from-zero-to-hero/th/schema-design/)
+  </Card>
+  <Card title="Queries & Resolvers" icon="seti:plan">
+    query, resolver chain, argument & variable, fragment [รีโซลฟ์ →](/graphql-design-from-zero-to-hero/th/queries-and-resolvers/)
+  </Card>
+  <Card title="Mutations & Subscriptions" icon="random">
+    การออกแบบ mutation, รูปแบบ input/payload, subscription แบบเรียลไทม์ [เขียน →](/graphql-design-from-zero-to-hero/th/mutations-and-subscriptions/)
+  </Card>
+  <Card title="Pagination & Relationships" icon="list-format">
+    Relay cursor connection, ความสัมพันธ์, ปัญหา N+1 และ DataLoader [แบ่งหน้า →](/graphql-design-from-zero-to-hero/th/pagination-and-relationships/)
+  </Card>
+  <Card title="Errors & Validation" icon="warning">
+    errors array, partial result, error extension, การ validate input [จัดการ →](/graphql-design-from-zero-to-hero/th/errors-and-validation/)
+  </Card>
+  <Card title="Security & Performance" icon="approve-check">
+    auth ผ่าน context, authorization, การจำกัด depth/complexity, caching [ป้องกัน →](/graphql-design-from-zero-to-hero/th/security-and-performance/)
+  </Card>
+  <Card title="Tooling, Federation & Building" icon="seti:config">
+    schema-first กับ code-first, codegen, testing, federation, GraphQL Yoga [ส่งขึ้นจริง →](/graphql-design-from-zero-to-hero/th/tooling-federation-building/)
+  </Card>
+</CardGrid>
+
+## คอร์สนี้ทำงานยังไง
+
+<CardGrid>
+  <Card title="GraphQL รันในเบราว์เซอร์ของคุณ" icon="rocket">
+    query และ mutation รันสดกับ schema ในหน่วยความจำ (reference implementation) และเปิด GraphQL Yoga server เต็มรูปแบบใน StackBlitz
+  </Card>
+  <Card title="ไดอะแกรมที่อธิบายชัด" icon="puzzle">
+    request lifecycle, resolver chain, โมเดล Relay connection และ federation เป็นไดอะแกรม Mermaid ที่รองรับธีม
+  </Card>
+  <Card title="เน้นการออกแบบ ไม่ใช่แค่ syntax" icon="approve-check">
+    ทุกหัวข้อครอบคลุมเหตุผลและ trade-off — การเลือก schema, ปัญหา N+1, รูปแบบ error และการรักษาความปลอดภัยของ endpoint ที่ยืดหยุ่น
+  </Card>
+  <Card title="สองภาษา + read mode" icon="translate">
+    ภาษาอังกฤษและไทย, แบบทดสอบที่บันทึกความคืบหน้า และโหมดอ่านแบบไร้สิ่งรบกวน
+  </Card>
+</CardGrid>

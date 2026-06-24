@@ -1,6 +1,63 @@
 ---
 title: GraphQL Design — From Zero to Hero
-description: Design great GraphQL APIs — the type system & SDL, schema design, resolvers, mutations, Relay pagination, DataLoader, errors, security, and federation — with TypeScript.
+description: Design great GraphQL APIs from first principles — the type system & SDL, schema design, resolvers, mutations & subscriptions, Relay pagination, DataLoader, errors, security, and federation — with GraphQL that runs right in your browser.
 template: splash
+hero:
+  tagline: A standalone, beginner→advanced course on designing GraphQL APIs, taught with TypeScript. From the type system to schema design, resolvers, Relay pagination, the N+1 problem, security, and federation — with queries that actually execute in the browser.
+  actions:
+    - text: Start here
+      link: /graphql-design-from-zero-to-hero/en/graphql-foundations/
+      icon: right-arrow
+      variant: primary
+    - text: Jump to Schema Design
+      link: /graphql-design-from-zero-to-hero/en/schema-design/
+      icon: open-book
 ---
-Coming soon.
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What you'll learn
+
+<CardGrid>
+  <Card title="GraphQL Foundations" icon="rocket">
+    What GraphQL is, the type system & SDL, and the request lifecycle. [Start →](/graphql-design-from-zero-to-hero/en/graphql-foundations/)
+  </Card>
+  <Card title="Schema Design" icon="seti:graphql">
+    Types, scalars, enums, interfaces, unions, inputs, and nullability. [Design →](/graphql-design-from-zero-to-hero/en/schema-design/)
+  </Card>
+  <Card title="Queries & Resolvers" icon="seti:plan">
+    Queries, the resolver chain, arguments & variables, fragments. [Resolve →](/graphql-design-from-zero-to-hero/en/queries-and-resolvers/)
+  </Card>
+  <Card title="Mutations & Subscriptions" icon="random">
+    Mutation design, the input/payload pattern, real-time subscriptions. [Write →](/graphql-design-from-zero-to-hero/en/mutations-and-subscriptions/)
+  </Card>
+  <Card title="Pagination & Relationships" icon="list-format">
+    Relay cursor connections, relationships, the N+1 problem & DataLoader. [Page →](/graphql-design-from-zero-to-hero/en/pagination-and-relationships/)
+  </Card>
+  <Card title="Errors & Validation" icon="warning">
+    The errors array, partial results, error extensions, input validation. [Handle →](/graphql-design-from-zero-to-hero/en/errors-and-validation/)
+  </Card>
+  <Card title="Security & Performance" icon="approve-check">
+    Auth via context, authorization, depth/complexity limiting, caching. [Secure →](/graphql-design-from-zero-to-hero/en/security-and-performance/)
+  </Card>
+  <Card title="Tooling, Federation & Building" icon="seti:config">
+    Schema-first vs code-first, codegen, testing, federation, GraphQL Yoga. [Ship →](/graphql-design-from-zero-to-hero/en/tooling-federation-building/)
+  </Card>
+</CardGrid>
+
+## How this course works
+
+<CardGrid>
+  <Card title="GraphQL runs in your browser" icon="rocket">
+    Queries and mutations execute live against in-memory schemas (the reference implementation), and full GraphQL Yoga servers open in StackBlitz.
+  </Card>
+  <Card title="Diagrams that explain" icon="puzzle">
+    The request lifecycle, the resolver chain, the Relay connection model, and federation as theme-aware Mermaid diagrams.
+  </Card>
+  <Card title="Design, not just syntax" icon="approve-check">
+    Every topic covers the why and the trade-offs — schema choices, the N+1 problem, error shapes, and securing a flexible endpoint.
+  </Card>
+  <Card title="Bilingual + read mode" icon="translate">
+    English and ไทย, quizzes with saved progress, and a distraction-free read mode.
+  </Card>
+</CardGrid>
