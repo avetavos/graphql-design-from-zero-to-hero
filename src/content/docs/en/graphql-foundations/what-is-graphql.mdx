@@ -1,0 +1,145 @@
+---
+title: What is GraphQL
+description: 'The core ideas — a single endpoint, a typed schema as the contract, client-specified queries, and no over- or under-fetching.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+In the [previous lesson](/graphql-design-from-zero-to-hero/en/graphql-foundations/) we sketched GraphQL in one sentence. Now let's slow down and name the four ideas that make it work. Get these four straight and everything else in the course is a refinement of them.
+
+## Idea 1 — A single endpoint
+
+A REST API tends to grow one URL per resource: a path for users, another for their posts, another for comments. A GraphQL API typically exposes **one endpoint** (conventionally `/graphql`) for all reads and writes. You do not navigate between URLs; you navigate between **fields** of a typed graph. The endpoint is fixed; what changes from request to request is the query you send to it.
+
+## Idea 2 — A typed schema is the contract
+
+Every GraphQL API is defined by a **schema** written in the Schema Definition Language (SDL). The schema lists the types, the fields on each type, and what each field returns. It is the single source of truth that both client and server agree on:
+
+```graphql
+type Author {
+  name: String
+  country: String
+}
+
+type Book {
+  title: String
+  year: Int
+  author: Author
+}
+
+type Query {
+  featuredBook: Book
+}
+```
+
+Because the schema is typed and machine-readable, tools can validate queries before they ever run, autocomplete fields as you type, and generate TypeScript types automatically. The contract is enforced, not merely documented.
+
+## Idea 3 — Clients specify the query
+
+A query is a selection of fields that mirrors the schema's shape. The client decides which fields it wants and how deep to go. The server promises the response will have the same shape as the request.
+
+<Mermaid title="The response mirrors the query — same fields, same nesting." code={shapeDiagram} />
+
+## Idea 4 — No over-fetching, no under-fetching
+
+These two failure modes drive much of GraphQL's design:
+
+- **Over-fetching** — an endpoint returns more data than the screen needs, wasting bandwidth and forcing clients to ignore fields.
+- **Under-fetching** — an endpoint returns too little, so the client must make several follow-up requests to assemble one view.
+
+Because a GraphQL client lists the exact fields it wants — across related types, in a single round trip — it sidesteps both. You ask for the title, the year, and the author's name, and that is precisely what comes back.
+
+## See it select specific fields
+
+Run the example below. The schema offers a `featuredBook` with many fields available, but the query deliberately asks for only a few. Watch the response contain *only* what was requested.
+
+export const selectCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Author {
+      name: String
+      country: String
+    }
+    type Book {
+      title: String
+      year: Int
+      pages: Int
+      author: Author
+    }
+    type Query {
+      featuredBook: Book
+    }
+  \`);
+
+  const root = {
+    featuredBook: () => ({
+      title: 'The Typed Graph',
+      year: 2024,
+      pages: 312,
+      author: { name: 'A. Resolver', country: 'Thailand' },
+    }),
+  };
+
+  // We could ask for title, year, pages, author { name, country }.
+  // Instead we ask only for what this view needs.
+  const query = \`
+    {
+      featuredBook {
+        title
+        author {
+          name
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={selectCode} />
+
+The resolver returns a rich object with `year`, `pages`, and the author's `country`, yet none of those appear in the result. The query asked for `title` and the nested `author` `name`, so that — and only that — comes back. Add `year` to the selection and run again to see the response grow to match.
+
+<Callout title="Why this matters">
+The schema is a promise about *what is possible*; the query is a request for *what is needed right now*. Separating those two concerns is the heart of GraphQL. The same API can serve a data-hungry desktop dashboard and a frugal mobile screen without either one compromising for the other.
+</Callout>
+
+export const shapeDiagram = `flowchart LR
+  Q["Query selection: featuredBook -> title, author -> name"] --> SRV["GraphQL server"]
+  SRV --> RES["Response: featuredBook -> title, author -> name"]
+  RES -.->|"same shape"| Q`;
+
+export const quizWhatIs = [
+  {
+    q: 'What plays the role of the contract between a GraphQL client and server?',
+    options: ['The HTTP status code', 'The typed schema written in SDL', 'The database migration files', 'The CDN cache headers'],
+    answer: 1,
+  },
+  {
+    q: 'A mobile screen needs only a title but the endpoint forces it to download the full record. What is this called?',
+    options: ['Under-fetching', 'Over-fetching', 'Caching', 'Batching'],
+    answer: 1,
+  },
+  {
+    q: 'In GraphQL, who decides which fields appear in the response?',
+    options: ['The server, based on the URL', 'The client, by listing fields in the query', 'A load balancer', 'The database query planner'],
+    answer: 1,
+  },
+  {
+    q: 'How many endpoints does a typical GraphQL API use to serve all of its data?',
+    options: ['One per type', 'One for the whole graph', 'One per HTTP verb', 'One per logged-in user'],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/what-is-graphql" questions={quizWhatIs} />
+
+<ProgressTracker client:visible id="graphql-foundations/what-is-graphql" />

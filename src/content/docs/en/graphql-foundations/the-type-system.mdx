@@ -1,0 +1,191 @@
+---
+title: The Type System
+description: 'Object types, fields, scalars, the root types Query, Mutation, and Subscription, and nullability with the exclamation mark.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+We have called the schema "the contract" several times. Now we open it up. The schema is built from a small set of type kinds, written in the **Schema Definition Language (SDL)**. Learn these building blocks and you can read — and design — any GraphQL API.
+
+## Object types and fields
+
+The most common kind of type is an **object type**: a named collection of fields. Each field has a name and a type, and may take arguments. Here is an object type describing a track in a music library:
+
+```graphql
+type Track {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  explicit: Boolean
+  artist: Artist!
+}
+```
+
+`Track` has five fields. Each field's type tells the client what it will get back: an `ID`, some `String` and `Int` values, a `Boolean`, and a link to another object type, `Artist`. That last field is what turns a flat record into a **graph** — fields can point at other types, and clients can traverse them.
+
+## Scalars — the leaf values
+
+Every selection eventually bottoms out at a **scalar**: a single, indivisible value. GraphQL ships with five built-in scalars:
+
+- `Int` — a signed 32-bit integer.
+- `Float` — a signed double-precision floating-point value.
+- `String` — UTF-8 text.
+- `Boolean` — `true` or `false`.
+- `ID` — a unique identifier, serialized as a string but semantically opaque (you are not meant to do math on it).
+
+You can also define **custom scalars** (for example `DateTime` or `EmailAddress`) to attach validation and serialization rules, but the five above are the foundation.
+
+## The root types
+
+Three object types are special because they are the **entry points** into the graph. A query has to start somewhere, and these names are where it starts:
+
+- `Query` — the read entry point. Every read begins by selecting a field here.
+- `Mutation` — the write entry point. Fields here create, update, or delete data.
+- `Subscription` — the real-time entry point. Fields here stream updates over time.
+
+Only `Query` is required. A schema with reads but no writes simply omits `Mutation` and `Subscription`.
+
+<Mermaid title="Root types are the doorways; object types and scalars form the rest of the graph." code={typeDiagram} />
+
+## Nullability — the exclamation mark
+
+By default every field in GraphQL is **nullable**: it may return a value or `null`. Adding a trailing `!` makes the field **non-null** — the server guarantees a real value, never `null`. Read the `!` as "guaranteed":
+
+```graphql
+type Artist {
+  id: ID!          # always present
+  name: String!    # always present
+  bio: String      # may be null — biography is optional
+  tracks: [Track!]!  # a non-null list of non-null Tracks
+}
+```
+
+That last line is worth decoding. `[Track!]!` is a **list type** with two exclamation marks doing two different jobs:
+
+- The inner `Track!` means every element in the list is a non-null `Track`.
+- The outer `!` means the list itself is never `null` (it may still be empty, `[]`).
+
+So `tracks` always returns a list, and that list never contains a `null` hole. Nullability is part of the contract: it tells clients exactly which fields they must guard against and which they can trust.
+
+## A small schema, run for real
+
+The example below defines a two-type schema — `Artist` and `Track` — wires up resolvers, and runs a query that crosses from one type into the other. Press **Run** to execute it with the real GraphQL engine.
+
+export const typeSystemCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two object types plus scalars, with nullability marked by "!".
+  const schema = buildSchema(\`
+    type Artist {
+      id: ID!
+      name: String!
+      bio: String
+    }
+
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+      explicit: Boolean
+      artist: Artist!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const artist = { id: 'a1', name: 'The Resolvers', bio: null };
+
+  const root = {
+    track: ({ id }) => ({
+      id,
+      title: 'Walking the Graph',
+      durationSeconds: 214,
+      explicit: false,
+      artist,
+    }),
+  };
+
+  // Cross from Track into the linked Artist type in one selection.
+  const query = \`
+    {
+      track(id: "t1") {
+        title
+        durationSeconds
+        explicit
+        artist {
+          name
+          bio
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={typeSystemCode} />
+
+Look closely at the output. `title` and `durationSeconds` come back as guaranteed values because they are non-null in the schema. `artist` is a nested object — the query stepped from `Track` into `Artist` — and inside it `bio` comes back as `null`, which is allowed because `bio` was declared without a `!`. The type system predicted every one of these shapes before the resolver ran.
+
+<Callout title="Read the schema first">
+When you meet a new GraphQL API, the schema is the documentation. Before writing a single query, read the types: which fields exist, what they return, what is non-null, and where object types link to each other. Internalize `!` as "the server guarantees this," and `[X!]!` as "a non-null list of non-null values," and you can predict every response the API can produce.
+</Callout>
+
+export const typeDiagram = `flowchart TD
+  Query["Query (read entry)"]
+  Mutation["Mutation (write entry)"]
+  Subscription["Subscription (stream entry)"]
+  Track["type Track"]
+  Artist["type Artist"]
+  Scalars["Scalars: ID, String, Int, Boolean, Float"]
+  Query --> Track
+  Mutation --> Track
+  Track -->|"artist field"| Artist
+  Track --> Scalars
+  Artist --> Scalars`;
+
+export const quizTypeSystem = [
+  {
+    q: 'What does a trailing exclamation mark, as in String!, declare about a field?',
+    options: [
+      'The field is deprecated',
+      'The field is non-null — the server guarantees a value, never null',
+      'The field is required as a query argument',
+      'The field is a custom scalar',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which of these is NOT one of GraphQL’s five built-in scalar types?',
+    options: ['Int', 'String', 'DateTime', 'Boolean'],
+    answer: 2,
+  },
+  {
+    q: 'Which root type is the read entry point and is the only one a schema must define?',
+    options: ['Mutation', 'Subscription', 'Query', 'Schema'],
+    answer: 2,
+  },
+  {
+    q: 'What does the type [Track!]! mean?',
+    options: [
+      'A nullable list that may contain null tracks',
+      'A non-null list whose every element is a non-null Track',
+      'Exactly one Track, never a list',
+      'A list of strings named Track',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/the-type-system" questions={quizTypeSystem} />
+
+<ProgressTracker client:visible id="graphql-foundations/the-type-system" />

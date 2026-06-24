@@ -1,0 +1,180 @@
+---
+title: Fragment และ Alias
+description: 'นำ selection set กลับมาใช้ซ้ำด้วย fragment, แตกแขนงตาม type ด้วย inline fragment, และเปลี่ยนชื่อ field ใน response ด้วย alias'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+บทเรียนสุดท้ายของโมดูลนี้พูดถึงเครื่องมือสามอย่างที่ทำให้ query สะอาดขึ้นมากกว่าจะทรงพลังขึ้น **Fragment** ให้คุณตั้งชื่อและนำ selection set กลับมาใช้ซ้ำ **Inline fragment** ให้ selection แตกแขนงตาม type **Alias** ให้คุณเปลี่ยนชื่อ field ใน response ไม่มีตัวไหนเปลี่ยนสิ่งที่ server ทำได้ มันเปลี่ยนแค่ว่า query ของคุณอ่านง่ายและยืดหยุ่นแค่ไหน
+
+## Fragment
+
+เมื่อชุด field ชุดเดียวกันโผล่ในมากกว่าหนึ่งที่ การคัดลอกมันไปทุกที่คือกับดักการ maintain **fragment** คือ selection set ที่มีชื่อ ซึ่งคุณนิยามครั้งเดียวแล้ว spread มันไปที่ไหนก็ได้ที่ต้องการ คุณประกาศมันด้วย keyword `fragment` ระบุ type ที่มันใช้ได้ด้วย `on`
+
+```graphql
+fragment TrackFields on Track {
+  id
+  title
+  durationSeconds
+}
+```
+
+จากนั้นคุณ **spread** มันเข้าไปใน selection set ด้วย operator `...` ราวกับว่า field ของมันถูกเขียนไว้ตรงนั้นโดยตรง
+
+```graphql
+{
+  track(id: "t1") {
+    ...TrackFields
+  }
+  featured: track(id: "t2") {
+    ...TrackFields
+  }
+}
+```
+
+selection ทั้งสองดึง `id`, `title` และ `durationSeconds` เข้ามาโดยไม่ต้องเขียนซ้ำ เปลี่ยน fragment ที่เดียวแล้วทุกจุดที่ spread จะอัปเดตตามไปด้วย เป็นผลตอบแทนเดียวกับการแยกโค้ดที่ซ้ำกันออกมาเป็น function
+
+## Inline fragment
+
+บางครั้ง field คืน type ที่อาจเป็นหนึ่งใน object type หลายตัว ซึ่งก็คือ interface หรือ union เพื่อเลือก field ที่มีอยู่เฉพาะบนหนึ่งในความเป็นไปได้เหล่านั้น คุณใช้ **inline fragment** คือ operator `...` ตามด้วย `on SomeType` และ selection set โดยไม่มีชื่อคั่นตรงกลาง
+
+```graphql
+{
+  searchResult {
+    ... on Track {
+      title
+    }
+    ... on Artist {
+      name
+    }
+  }
+}
+```
+
+ในที่นี้ `searchResult` อาจ resolve เป็น `Track` หรือ `Artist` inline fragment บอกว่า "ถ้าเป็น `Track` ขอ `title` ให้หน่อย ถ้าเป็น `Artist` ขอ `name` ให้หน่อย" มีแค่แขนงที่ตรงกันเท่านั้นที่ร่วมอยู่ใน response inline fragment คือวิธีที่คุณจัดการการแตกแขนงตาม type ภายใน selection เดียว
+
+<Mermaid title="fragment ถูกนิยามครั้งเดียวและถูก spread เข้าไปในหลาย selection" code={fragmentDiagram} />
+
+## Alias
+
+โดยปกติ field จะปรากฏใน response ภายใต้ชื่อของมันเอง **alias** ให้คุณเลือก key อื่นได้ เขียนในรูป `aliasName: fieldName` ก่อนหน้า field สิ่งนี้จำเป็นเมื่อคุณเลือก field เดียวกันสองครั้งด้วย argument ต่างกัน หากไม่มี alias ผลลัพธ์ทั้งสองจะชนกันที่ key เดียวกัน
+
+```graphql
+{
+  first: track(id: "t1") {
+    title
+  }
+  second: track(id: "t2") {
+    title
+  }
+}
+```
+
+response จะมี key ที่แตกต่างกันสองตัวคือ `first` และ `second` แต่ละตัวเก็บ track ของตัวเอง alias เป็นเรื่องของ *รูปร่างของ response* ล้วน ๆ มันไม่เคยแตะต้อง schema หรือ resolver เลย และมันยังสะดวกสำหรับการปรับชื่อ field ให้เข้ากับสิ่งที่ client code ของคุณคาดหวัง
+
+## Fragment และ alias ทำงานร่วมกัน
+
+ตัวอย่างด้านล่างนิยาม fragment `TrackFields` spread มันเข้าไปในสอง selection ของ field `track` ตัวเดียวกัน และใช้ alias คือ `hit` และ `deepCut` เพื่อให้ผลลัพธ์ทั้งสองอยู่ภายใต้ key ที่แตกต่างกัน กด **Run** แล้วอ่าน key ของ response
+
+export const fragmentCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const catalogue = {
+    t1: { id: 't1', title: 'Spread the Word', durationSeconds: 191 },
+    t2: { id: 't2', title: 'Aliased and Renamed', durationSeconds: 247 },
+  };
+  const root = {
+    track: ({ id }) => catalogue[id] || null,
+  };
+
+  // One fragment, two aliased selections of the same field.
+  const query = \`
+    query TwoTracks {
+      hit: track(id: "t1") {
+        ...TrackFields
+      }
+      deepCut: track(id: "t2") {
+        ...TrackFields
+      }
+    }
+
+    fragment TrackFields on Track {
+      id
+      title
+      durationSeconds
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={fragmentCode} />
+
+response มี key ระดับบนสุดสองตัวคือ `hit` และ `deepCut` แทนที่จะเป็น `track` ตัวเดียวที่ชนกัน นั่นคือ alias ทำงาน แต่ละตัวเก็บชุด field ครบถ้วนจาก `TrackFields` เขียนครั้งเดียวและใช้ซ้ำสองครั้ง นั่นคือ fragment ทำงาน ทั้งสองร่วมกันทำให้ query สั้นและ response มีรูปร่างที่ดี
+
+<Callout title="สามเครื่องมือเพื่อ query ที่สะอาดขึ้น">
+**Fragment** แยก selection set ที่ซ้ำกันออกเป็นหน่วยมีชื่อหนึ่งหน่วยที่คุณ spread ด้วย `...` **Inline fragment** (`... on Type`) เลือก field ที่มีอยู่เฉพาะบน type หนึ่ง ๆ ที่อยู่เบื้องหลัง interface หรือ union **Alias** (`key: field`) เปลี่ยนชื่อ field ใน response ซึ่งเป็นสิ่งที่ทำให้คุณร้องขอ field เดียวกันสองครั้งด้วย argument ต่างกันได้ ทั้งสามอย่างปั้นรูปร่างของ query และ response ของมัน ไม่มีตัวไหนเปลี่ยน server
+</Callout>
+
+export const fragmentDiagram = `flowchart TD
+  Frag["fragment TrackFields on Track { id, title, durationSeconds }"]
+  Frag -->|"... spread"| S1["hit: track(id: t1)"]
+  Frag -->|"... spread"| S2["deepCut: track(id: t2)"]
+  S1 --> R["Response with two aliased keys"]
+  S2 --> R`;
+
+export const quizFragmentsAndAliases = [
+  {
+    q: 'What problem does a fragment solve?',
+    options: [
+      'มันทำให้ server ข้าม resolver ได้',
+      'มันตั้งชื่อ selection set เพื่อให้ field ชุดเดียวกันนำกลับมาใช้ซ้ำได้ด้วยการ spread ... แทนที่จะเขียนซ้ำ',
+      'มันส่ง variable เข้า query',
+      'มันเปลี่ยนชื่อ field ใน response',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When is an inline fragment like "... on Track" needed?',
+    options: [
+      'เพื่อเปลี่ยนชื่อ field ใน response',
+      'เพื่อเลือก field ที่มีอยู่เฉพาะบน type หนึ่ง ๆ ที่อยู่เบื้องหลัง interface หรือ union',
+      'เพื่อประกาศ query variable',
+      'เพื่อ cache query string',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why are aliases required when selecting the same field twice with different arguments?',
+    options: [
+      'alias ทำให้ query รันเร็วขึ้น',
+      'หากไม่มี alias key ที่แตกต่างกัน ผลลัพธ์ทั้งสองจะชนกันภายใต้ response key เดียวกัน',
+      'GraphQL ห้ามเรียก field ใด ๆ มากกว่าหนึ่งครั้ง',
+      'alias เปลี่ยนว่า resolver ตัวไหนจะรัน',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/fragments-and-aliases" questions={quizFragmentsAndAliases} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/fragments-and-aliases" />

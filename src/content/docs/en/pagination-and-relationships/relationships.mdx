@@ -1,0 +1,202 @@
+---
+title: Relationships
+description: 'Modeling one-to-many and many-to-many connections as fields that return types and lists, and resolving the related data on the other side.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+In a relational database you express links with foreign keys and join tables. In GraphQL you express the *same* links far more directly: a relationship is simply a **field whose type is another type**. There is no special syntax — the type system you already know is all you need. What changes from one relationship to the next is only the **shape** of the field: a single value, a list, or a list on both sides.
+
+## One-to-one and one-to-many
+
+The simplest link returns a single object. A `Post` belongs to exactly one `Author`, so the field's type is just `Author`:
+
+```graphql
+type Post {
+  id: ID!
+  title: String!
+  author: Author!
+}
+```
+
+The reverse direction is **one-to-many**: one author has many posts. The field type becomes a list, `[Post!]!`:
+
+```graphql
+type Author {
+  id: ID!
+  name: String!
+  posts: [Post!]!
+}
+```
+
+That is the entire pattern. A "to-one" side returns a type; a "to-many" side returns a list of that type. The same two types can expose the relationship from both ends, letting a client walk in either direction.
+
+## Many-to-many
+
+When both sides can have many of the other, you have a **many-to-many** relationship — say a `Post` carries several `Tag`s, and each `Tag` is attached to many posts. In SDL this is just a list field on *each* type:
+
+```graphql
+type Post {
+  id: ID!
+  title: String!
+  tags: [Tag!]!
+}
+
+type Tag {
+  id: ID!
+  label: String!
+  posts: [Post!]!
+}
+```
+
+There is no visible "join table" in the schema — that bookkeeping lives in your data layer. The client only sees two types, each with a list field pointing at the other.
+
+<Mermaid title="One-to-many between Author and Post; many-to-many between Post and Tag." code={relDiagram} />
+
+## Resolving the other side
+
+Declaring the field is half the job; the other half is the **resolver** that fetches the related data when a client actually selects that field. A resolver for a relationship field receives the *parent* object and uses its id to look up what is connected. Because GraphQL only runs a resolver when its field is requested, a client that asks for `name` but not `posts` never pays the cost of loading posts at all.
+
+## Crossing relationships, run for real
+
+The schema below wires up a one-to-many (`Author` → `posts`) and a many-to-many (`Post` ↔ `Tag`), with resolvers that look up the other side by id. The query crosses three relationships in one request. Press **Run**.
+
+export const relCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      posts: [Post!]!
+    }
+
+    type Tag {
+      id: ID!
+      label: String!
+      posts: [Post!]!
+    }
+
+    type Post {
+      id: ID!
+      title: String!
+      author: Author!
+      tags: [Tag!]!
+    }
+
+    type Query {
+      author(id: ID!): Author
+    }
+  \`);
+
+  // Plain tables, the way a data layer would store them.
+  const authors = { a1: { id: 'a1', name: 'Ada Lin' } };
+  const tags = {
+    t1: { id: 't1', label: 'design' },
+    t2: { id: 't2', label: 'graphql' },
+  };
+  const posts = [
+    { id: 'p1', title: 'Designing a graph', authorId: 'a1', tagIds: ['t1', 't2'] },
+    { id: 'p2', title: 'Walking relationships', authorId: 'a1', tagIds: ['t2'] },
+  ];
+
+  // Build a Post object whose relationship fields resolve the other side.
+  const buildPost = (p) => ({
+    id: p.id,
+    title: p.title,
+    author: () => buildAuthor(authors[p.authorId]),
+    tags: () => p.tagIds.map((id) => buildTag(tags[id])),
+  });
+
+  const buildTag = (t) => ({
+    id: t.id,
+    label: t.label,
+    posts: () => posts.filter((p) => p.tagIds.includes(t.id)).map(buildPost),
+  });
+
+  const buildAuthor = (a) => ({
+    id: a.id,
+    name: a.name,
+    // One-to-many: find every post whose authorId matches.
+    posts: () => posts.filter((p) => p.authorId === a.id).map(buildPost),
+  });
+
+  const root = {
+    author: ({ id }) => (authors[id] ? buildAuthor(authors[id]) : null),
+  };
+
+  const query = \`
+    {
+      author(id: "a1") {
+        name
+        posts {
+          title
+          tags { label }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={relCode} />
+
+Trace the output: from one `author` we resolved the one-to-many `posts`, and inside each post we resolved the many-to-many `tags`. Each relationship field had its own resolver that looked up the connected records by id. Notice we never wrote a SQL `JOIN` — the graph *is* the join, expressed as nested field selections.
+
+<Callout title="Relationships are just typed fields">
+There is no separate "relationship" concept to learn in GraphQL — a link is a field whose type is another type (to-one) or a list of another type (to-many), and many-to-many is simply a list field on both ends. Model the direction your clients actually traverse, give each relationship field a resolver that fetches the other side, and the type system turns your data into a graph for free.
+</Callout>
+
+export const relDiagram = `flowchart LR
+  Author["type Author"]
+  Post["type Post"]
+  Tag["type Tag"]
+  Author -->|"posts: [Post!]! (one-to-many)"| Post
+  Post -->|"author: Author!"| Author
+  Post -->|"tags: [Tag!]! (many-to-many)"| Tag
+  Tag -->|"posts: [Post!]!"| Post`;
+
+export const quizRelationships = [
+  {
+    q: 'How is a one-to-many relationship, like an author with many posts, expressed in SDL?',
+    options: [
+      'With a @hasMany directive on the type',
+      'As a list field, e.g. posts: [Post!]!',
+      'As a single-object field, e.g. post: Post!',
+      'As a scalar field holding a comma-separated list of ids',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How does a many-to-many relationship between Post and Tag appear in the schema?',
+    options: [
+      'As a visible join type the client must query directly',
+      'As a list field on each type pointing at the other',
+      'Only as a list field on Post, never on Tag',
+      'It cannot be modeled in GraphQL',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What runs to fetch the data on the other side of a relationship field?',
+    options: [
+      'A database trigger',
+      'The resolver for that field, using the parent object to look up the connected records',
+      'The GraphQL parser, before validation',
+      'A client-side cache only',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/relationships" questions={quizRelationships} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/relationships" />

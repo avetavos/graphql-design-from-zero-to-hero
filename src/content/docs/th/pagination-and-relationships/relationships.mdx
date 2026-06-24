@@ -1,0 +1,202 @@
+---
+title: Relationships
+description: 'การสร้างโมเดลการเชื่อมต่อแบบ one-to-many และ many-to-many ในรูปของ field ที่คืนค่าเป็น type และ list และการ resolve ข้อมูลที่เกี่ยวข้องบนอีกฝั่งหนึ่ง'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ในฐานข้อมูลเชิงสัมพันธ์ คุณแสดงการเชื่อมโยงด้วย foreign key และ join table แต่ใน GraphQL คุณแสดงการเชื่อมโยง *เดียวกัน* ได้ตรงไปตรงมากว่ามาก คือ relationship เป็นเพียง **field ที่มี type เป็น type อีกตัวหนึ่ง** ไม่มี syntax พิเศษอะไร — ระบบ type ที่คุณรู้อยู่แล้วก็เพียงพอ สิ่งที่เปลี่ยนไปจาก relationship หนึ่งสู่อีกอันก็มีเพียง **รูปร่าง** ของ field เท่านั้น ไม่ว่าจะเป็นค่าเดี่ยว, list หรือ list บนทั้งสองฝั่ง
+
+## One-to-one และ one-to-many
+
+การเชื่อมโยงที่ง่ายที่สุดคืนค่าเป็น object เดี่ยว `Post` หนึ่งอันเป็นของ `Author` เพียงคนเดียวเท่านั้น ดังนั้น type ของ field จึงเป็นแค่ `Author`:
+
+```graphql
+type Post {
+  id: ID!
+  title: String!
+  author: Author!
+}
+```
+
+ทิศทางย้อนกลับเป็นแบบ **one-to-many**: author หนึ่งคนมี post หลายอัน type ของ field จึงกลายเป็น list คือ `[Post!]!`:
+
+```graphql
+type Author {
+  id: ID!
+  name: String!
+  posts: [Post!]!
+}
+```
+
+นั่นคือรูปแบบทั้งหมด ฝั่ง "to-one" คืนค่าเป็น type ส่วนฝั่ง "to-many" คืนค่าเป็น list ของ type นั้น type สองตัวเดียวกันสามารถเปิดเผย relationship จากทั้งสองปลายได้ ทำให้ client เดินไปได้ทั้งสองทิศทาง
+
+## Many-to-many
+
+เมื่อทั้งสองฝั่งสามารถมีอีกฝั่งได้หลายอัน คุณก็จะได้ relationship แบบ **many-to-many** — เช่น `Post` หนึ่งอันถือ `Tag` หลายอัน และแต่ละ `Tag` ก็ติดอยู่กับ post หลายอัน ใน SDL นี่ก็คือ field ที่เป็น list บน type *แต่ละตัว*:
+
+```graphql
+type Post {
+  id: ID!
+  title: String!
+  tags: [Tag!]!
+}
+
+type Tag {
+  id: ID!
+  label: String!
+  posts: [Post!]!
+}
+```
+
+ไม่มี "join table" ที่มองเห็นได้ใน schema — งานเบื้องหลังนั้นอยู่ใน data layer ของคุณ client เห็นเพียง type สองตัว แต่ละตัวมี field ที่เป็น list ชี้ไปยังอีกตัว
+
+<Mermaid title="one-to-many ระหว่าง Author กับ Post; many-to-many ระหว่าง Post กับ Tag" code={relDiagram} />
+
+## การ resolve อีกฝั่งหนึ่ง
+
+การประกาศ field เป็นเพียงครึ่งหนึ่งของงาน อีกครึ่งหนึ่งคือ **resolver** ที่ดึงข้อมูลที่เกี่ยวข้องเมื่อ client เลือก field นั้นจริง ๆ resolver ของ field ที่เป็น relationship จะได้รับ object *parent* และใช้ id ของมันค้นหาสิ่งที่เชื่อมต่ออยู่ เพราะ GraphQL รัน resolver ก็ต่อเมื่อ field ของมันถูกร้องขอ client ที่ขอ `name` แต่ไม่ขอ `posts` จึงไม่ต้องเสียต้นทุนในการโหลด post เลย
+
+## การข้าม relationship รันจริง
+
+schema ด้านล่างเชื่อมต่อ one-to-many (`Author` → `posts`) และ many-to-many (`Post` ↔ `Tag`) เข้าด้วยกัน พร้อม resolver ที่ค้นหาอีกฝั่งด้วย id query นี้ข้ามสาม relationship ในหนึ่ง request กดปุ่ม **Run**
+
+export const relCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      posts: [Post!]!
+    }
+
+    type Tag {
+      id: ID!
+      label: String!
+      posts: [Post!]!
+    }
+
+    type Post {
+      id: ID!
+      title: String!
+      author: Author!
+      tags: [Tag!]!
+    }
+
+    type Query {
+      author(id: ID!): Author
+    }
+  \`);
+
+  // Plain tables, the way a data layer would store them.
+  const authors = { a1: { id: 'a1', name: 'Ada Lin' } };
+  const tags = {
+    t1: { id: 't1', label: 'design' },
+    t2: { id: 't2', label: 'graphql' },
+  };
+  const posts = [
+    { id: 'p1', title: 'Designing a graph', authorId: 'a1', tagIds: ['t1', 't2'] },
+    { id: 'p2', title: 'Walking relationships', authorId: 'a1', tagIds: ['t2'] },
+  ];
+
+  // Build a Post object whose relationship fields resolve the other side.
+  const buildPost = (p) => ({
+    id: p.id,
+    title: p.title,
+    author: () => buildAuthor(authors[p.authorId]),
+    tags: () => p.tagIds.map((id) => buildTag(tags[id])),
+  });
+
+  const buildTag = (t) => ({
+    id: t.id,
+    label: t.label,
+    posts: () => posts.filter((p) => p.tagIds.includes(t.id)).map(buildPost),
+  });
+
+  const buildAuthor = (a) => ({
+    id: a.id,
+    name: a.name,
+    // One-to-many: find every post whose authorId matches.
+    posts: () => posts.filter((p) => p.authorId === a.id).map(buildPost),
+  });
+
+  const root = {
+    author: ({ id }) => (authors[id] ? buildAuthor(authors[id]) : null),
+  };
+
+  const query = \`
+    {
+      author(id: "a1") {
+        name
+        posts {
+          title
+          tags { label }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={relCode} />
+
+ไล่ดูผลลัพธ์: จาก `author` หนึ่งคน เรา resolve `posts` แบบ one-to-many และภายในแต่ละ post เรา resolve `tags` แบบ many-to-many แต่ละ field ที่เป็น relationship มี resolver ของตัวเองที่ค้นหา record ที่เชื่อมต่อกันด้วย id สังเกตว่าเราไม่เคยเขียน SQL `JOIN` เลย — กราฟ *คือ* การ join ที่แสดงออกในรูปของการเลือก field แบบซ้อนกัน
+
+<Callout title="relationship ก็คือ field ที่มี type นั่นเอง">
+ไม่มีแนวคิด "relationship" แยกต่างหากที่ต้องเรียนรู้ใน GraphQL — การเชื่อมโยงคือ field ที่มี type เป็น type อีกตัว (to-one) หรือ list ของ type อีกตัว (to-many) และ many-to-many ก็เป็นเพียง field ที่เป็น list บนทั้งสองปลายเท่านั้น สร้างโมเดลทิศทางที่ client ของคุณเดินผ่านจริง ๆ ให้ resolver กับแต่ละ field ที่เป็น relationship เพื่อดึงอีกฝั่ง แล้วระบบ type จะเปลี่ยนข้อมูลของคุณให้เป็นกราฟโดยอัตโนมัติ
+</Callout>
+
+export const relDiagram = `flowchart LR
+  Author["type Author"]
+  Post["type Post"]
+  Tag["type Tag"]
+  Author -->|"posts: [Post!]! (one-to-many)"| Post
+  Post -->|"author: Author!"| Author
+  Post -->|"tags: [Tag!]! (many-to-many)"| Tag
+  Tag -->|"posts: [Post!]!"| Post`;
+
+export const quizRelationships = [
+  {
+    q: 'relationship แบบ one-to-many อย่าง author ที่มี post หลายอัน แสดงออกใน SDL อย่างไร?',
+    options: [
+      'ด้วย directive @hasMany บน type',
+      'ในรูปของ field ที่เป็น list เช่น posts: [Post!]!',
+      'ในรูปของ field ที่เป็น object เดี่ยว เช่น post: Post!',
+      'ในรูปของ field ที่เป็น scalar ที่เก็บรายการ id คั่นด้วยจุลภาค',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'relationship แบบ many-to-many ระหว่าง Post กับ Tag ปรากฏใน schema อย่างไร?',
+    options: [
+      'ในรูปของ join type ที่มองเห็นได้ซึ่ง client ต้อง query โดยตรง',
+      'ในรูปของ field ที่เป็น list บน type แต่ละตัวที่ชี้ไปยังอีกตัว',
+      'เป็น field ที่เป็น list บน Post เท่านั้น ไม่เคยอยู่บน Tag',
+      'ไม่สามารถสร้างโมเดลใน GraphQL ได้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'อะไรทำงานเพื่อดึงข้อมูลบนอีกฝั่งของ field ที่เป็น relationship?',
+    options: [
+      'database trigger',
+      'resolver ของ field นั้น โดยใช้ object parent เพื่อค้นหา record ที่เชื่อมต่อกัน',
+      'GraphQL parser ก่อนการ validate',
+      'cache ฝั่ง client เท่านั้น',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/relationships" questions={quizRelationships} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/relationships" />

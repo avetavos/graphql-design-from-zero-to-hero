@@ -1,0 +1,168 @@
+---
+title: Error Extensions
+description: 'typed errors ด้วย extensions map การ throw GraphQLError พร้อม code ที่คงที่ และการปกปิดความล้มเหลวภายในใน production'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+`message` มีไว้ให้มนุษย์อ่าน log แต่ client ไม่สามารถแตกกิ่งโปรแกรมบนประโยคได้อย่างน่าเชื่อถือ เพราะสตริงถูกเรียบเรียงใหม่ ถูกแปล และถูกจัดรูปแบบใหม่ได้ เพื่อให้ client ตอบสนองต่อความล้มเหลวในเชิงโปรแกรมได้ GraphQL จึงให้ทุก error มี `extensions` map ซึ่งเป็น object อิสระที่ server กำหนดเอง ห้อยอยู่กับ error entry นี่คือที่ที่ **typed errors** อาศัยอยู่
+
+## extensions map
+
+`extensions` คือ key เดียวของ error ที่ specification เปิดทิ้งไว้ให้คุณเติมเอง ธรรมเนียมที่แทบจะเป็นสากลคือใส่สตริง `code` ที่คงที่ลงไปในนั้น
+
+```json
+{
+  "errors": [
+    {
+      "message": "No track exists with that id.",
+      "path": ["track"],
+      "extensions": { "code": "NOT_FOUND" }
+    }
+  ]
+}
+```
+
+`message` อาจเปลี่ยนไปตามกาลเวลา แต่ `extensions.code` คือ contract เช่น `"NOT_FOUND"`, `"UNAUTHENTICATED"`, `"FORBIDDEN"`, `"BAD_USER_INPUT"` client switch บน code ไม่ใช่บนตัวประโยค คุณยังแนบอะไรก็ตามที่คุณเห็นว่ามีประโยชน์ได้ด้วย ไม่ว่าจะเป็นคำใบ้ให้ลองใหม่ ชื่อ field หรือ correlation id ตราบใดที่มันปลอดภัยพอที่จะเปิดเผยออกไป
+
+## การ throw typed error
+
+reference implementation export คลาส `GraphQLError` ออกมา throw instance ของมันจาก resolver แล้วส่ง `extensions` ของคุณไปในตัวเลือกของมัน แล้ว engine จะร้อยมันเข้าไปใน response โดยตรง
+
+```ts
+import { GraphQLError } from 'graphql';
+
+throw new GraphQLError('No track exists with that id.', {
+  extensions: { code: 'NOT_FOUND' },
+});
+```
+
+เทียบกับการ throw `Error` ธรรมดา `Error` ธรรมดายังให้ error entry ที่ถูกต้องได้ คุณเห็นแล้วในบทเรียนก่อนๆ แต่มันไม่มี `code` ดังนั้น client จึงต้องไปแกะ message เอา การหยิบ `GraphQLError` มาใช้คือวิธีที่คุณทำให้ความล้มเหลวเป็นส่วนหนึ่งของ typed contract แทนที่จะเป็นอุบัติเหตุของถ้อยคำ
+
+## การปกปิด internal errors
+
+มีแง่มุมด้านความปลอดภัยอยู่ด้วย exception ที่ไม่คาดคิด เช่น การเรียก database ที่ล้มเหลว หรือการ dereference null ลึกๆ ในโค้ดของคุณ มักพก stack trace หรือข้อความภายในที่คุณต้องไม่ส่งไปให้ client เด็ดขาด รูปแบบเชิงป้องกันคือ ปล่อยให้ความล้มเหลวที่ *คาดไว้* throw `GraphQLError` พร้อม code ที่จงใจ และ**ดักจับทุกอย่างที่เหลือ** แล้วแทนที่ด้วย masked error ทั่วไปก่อนที่มันจะออกจาก server
+
+<Mermaid title="ความล้มเหลวที่คาดไว้คง code ของมันไว้ ส่วนที่ไม่คาดคิดถูกปกปิด" code={maskFlow} />
+
+ใน production โดยทั่วไปคุณจะ log exception จริงไว้ฝั่ง server (พร้อม correlation id) และ return ให้ client เพียง `{ message: "Internal server error", extensions: { code: "INTERNAL_SERVER_ERROR" } }` ที่จืดชืด ผู้ใช้ได้ข้อมูลพอที่จะลองใหม่หรือรายงาน ส่วนผู้โจมตีไม่ได้เรียนรู้อะไรเกี่ยวกับภายในของคุณเลย GraphQL server หลายตัวทำการปกปิดนี้ให้คุณเป็นค่าเริ่มต้น หลักการเหมือนกันไม่ว่าจะเป็น framework หรือ `catch` block ของคุณเองที่ทำมัน
+
+## typed error ที่รันจริง
+
+runner ด้านล่าง throw `GraphQLError` พร้อม `extensions: { code: 'NOT_FOUND' }` เมื่อหา track ไม่เจอ กด **Run** แล้วตรวจดู error entry มันพก code ของคุณมาอยู่ข้างๆ message และ path เลย
+
+export const extensionsCode = `(async () => {
+  const { graphql, buildSchema, GraphQLError } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const library = { 't1': { id: 't1', title: 'Walking the Graph' } };
+
+  const root = {
+    track: ({ id }) => {
+      const found = library[id];
+      if (!found) {
+        // A typed, expected failure — clients branch on the code.
+        throw new GraphQLError('No track exists with that id.', {
+          extensions: { code: 'NOT_FOUND', argument: 'id' },
+        });
+      }
+      return found;
+    },
+  };
+
+  const query = \`
+    {
+      track(id: "does-not-exist") {
+        title
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+
+  // Note errors[0].extensions.code === "NOT_FOUND".
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={extensionsCode} />
+
+ใน output นั้น `data.track` เป็น `null` เพราะ field เป็น nullable และ error entry เพียงตัวเดียวตอนนี้พก `extensions.code === "NOT_FOUND"` พร้อมคำใบ้ `argument` ที่เราแนบไว้ client สามารถอ่าน code นั้นและแสดงผลว่า "track not found" ได้โดยไม่ต้องไปแกะข้อความภาษาอังกฤษเลย ซึ่งเป็น contract เชิงโปรแกรมที่ `Error` ธรรมดาให้เราไม่ได้
+
+<Callout title="code สำหรับเครื่อง message สำหรับมนุษย์">
+มอง `extensions.code` เป็น enum ที่คงที่ซึ่ง client พึ่งพา และมอง `message` เป็นประโยคที่หันหน้าให้มนุษย์ซึ่งคุณเรียบเรียงใหม่ได้อย่างอิสระ throw `GraphQLError` สำหรับความล้มเหลวที่คุณคาดการณ์ได้ เช่น not found, unauthenticated, bad input และให้ code ที่จงใจกับแต่ละอัน สำหรับทุกอย่างที่ไม่คาดคิด ให้ดักจับและปกปิด log สาเหตุจริงไว้ฝั่ง server แล้ว return `INTERNAL_SERVER_ERROR` ทั่วไปกลับไปให้ client typed ตรงที่มันช่วย และทึบตรงที่มันปกป้อง
+</Callout>
+
+export const maskFlow = `flowchart TD
+  Throw["Resolver throws"]
+  Check{"Is it a deliberate GraphQLError?"}
+  Keep["Expected: keep message + code (NOT_FOUND, FORBIDDEN, ...)"]
+  Mask["Unexpected: log server-side, return generic INTERNAL_SERVER_ERROR"]
+  Client["Client reads extensions.code"]
+  Throw --> Check
+  Check -->|"yes"| Keep
+  Check -->|"no"| Mask
+  Keep --> Client
+  Mask --> Client`;
+
+export const quizErrorExtensions = [
+  {
+    q: 'extensions map บน error entry ใช้ทำอะไร?',
+    options: [
+      'เพื่อ override HTTP status code',
+      'เพื่อพกรายละเอียดที่ server กำหนดและเครื่องอ่านได้ เช่น code ที่คงที่',
+      'เพื่อแสดงรายการ query variables',
+      'เพื่อแทนที่ field message',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ทำไม client ควรแตกกิ่งบน extensions.code แทนที่จะบน message?',
+    options: [
+      'message ถูกเข้ารหัส',
+      'message เป็นประโยคที่หันหน้าให้มนุษย์ซึ่งเรียบเรียงใหม่ได้ ส่วน code คือ contract ที่คงที่',
+      'code พิมพ์สั้นกว่า',
+      'message ไม่เคยมีอยู่ใน response',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'คุณแนบ typed code เข้ากับ error จาก resolver ได้อย่างไร?',
+    options: [
+      'return สตริง JSON จาก resolver',
+      'throw GraphQLError แล้วส่ง extensions ไปในตัวเลือกของมัน',
+      'ตั้ง HTTP status เป็น 404',
+      'เพิ่ม comment ลงใน schema',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'การจัดการ exception ภายในที่ไม่คาดคิดใน production ที่แนะนำคืออะไร?',
+    options: [
+      'return stack trace เต็มๆ ไปให้ client',
+      'log มันไว้ฝั่ง server แล้ว return masked error ทั่วไปกลับไปให้ client',
+      'ตัดมันทิ้งเงียบๆ เพื่อให้ client ไม่เห็น error',
+      'แปลงมันให้เป็น response ที่สำเร็จ',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/error-extensions" questions={quizErrorExtensions} />
+
+<ProgressTracker client:visible id="errors-and-validation/error-extensions" />

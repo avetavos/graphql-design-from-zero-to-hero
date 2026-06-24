@@ -1,0 +1,96 @@
+---
+title: Security & Performance
+description: 'ทำไม GraphQL endpoint เดียวที่ยืดหยุ่นจึงทั้งทรงพลังและมีความเสี่ยง และ authentication, authorization, การจำกัด query cost รวมถึง caching ช่วยให้มันปลอดภัยและเร็วได้อย่างไร'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ทุกบทเรียนที่ผ่านมาล้วนยกย่องความยืดหยุ่นของ GraphQL: endpoint เดียว, graph ที่มี type กำกับ, และ client ที่ขอ field *เฉพาะ* ที่ต้องการได้พอดี ความยืดหยุ่นเดียวกันนี้เองคือเหตุผลที่ GraphQL ต้องมีคู่มือด้าน security และ performance เป็นของตัวเอง ฟีเจอร์ที่ทำให้ทีม front-end หลงรัก — "ขออะไรก็ได้ที่เข้าถึงได้" — ก็เป็นคำเชิญที่เปิดกว้างให้ใครก็ตามที่อยากขอ *มากเกินไป* เช่นกัน
+
+## หนึ่ง endpoint สองด้าน
+
+REST API กระจายพื้นผิวของมันออกไปตาม URL ที่ตายตัวจำนวนมาก และแต่ละ URL มักทำงานเล็กน้อยและคาดเดาได้ ส่วน GraphQL API ยุบทั้งหมดนั้นลงมาเหลือ endpoint เดียวที่รับ query ตามอำเภอใจซึ่ง client เป็นผู้เขียนเอง พลังและความเสี่ยงคือสองด้านของเหรียญเดียวกัน:
+
+- **Power** — client ประกอบรูปทรงของ response ที่ต้องการได้แม่นยำในการเดินทางไปกลับครั้งเดียว โดยเดินผ่านความสัมพันธ์ที่ server ไม่เคยต้องคาดการณ์ล่วงหน้า
+- **Risk** — client (หรือผู้โจมตี) สามารถประกอบ query ที่ server *ก็* ไม่เคยคาดการณ์ไว้เช่นกัน: ซ้อนลึกมาก, ใช้ alias อย่างบ้าคลั่ง, หรือแตกกระจายออกไปเป็น database call นับพันครั้งจากคำขอเดียวที่ดูไร้พิษภัย
+
+เพราะ server ไม่อาจรู้ล่วงหน้าว่าจะได้รับ query แบบใด มันจึงต้องวิเคราะห์ cost, identity, และ trust *ต่อคำขอ* แบบ dynamic นั่นคือภารกิจทั้งหมดของโมดูลนี้
+
+## จุดกดดันทั้งสี่
+
+การทำให้ GraphQL API ปลอดภัยและปรับจูนได้ สรุปลงมาเหลือคำถามที่เกิดซ้ำสี่ข้อ จดจำมันไว้ แล้วที่เหลือของโมดูลนี้ก็เป็นเพียงรายละเอียด:
+
+1. **ใครเป็นคนถาม?** — สร้าง identity หนึ่งครั้งต่อคำขอ นี่คือ **authentication** และมันควรอยู่ใน **context** ของคำขอ ไม่ใช่ใน schema
+2. **เขาได้รับอนุญาตหรือไม่?** — ตัดสินทีละ field และทีละ type ว่า identity นี้อาจเห็นข้อมูลนี้ได้หรือไม่ นี่คือ **authorization** และมันอยู่ใน resolver, directive, หรือ middleware
+3. **query นี้แพงแค่ไหน?** — คำขอเดียวอาจถูกหรืออาจหายนะก็ได้ **Depth limiting** และ **complexity (cost) analysis** ปฏิเสธ query ที่จะแพงเกินไป *ก่อน* ที่มันจะรัน
+4. **เราเคยเห็นสิ่งนี้มาก่อนไหม?** — **persisted queries**, **caching**, และ **rate limiting** เปลี่ยนงานที่ทำซ้ำให้กลายเป็นงานที่ถูกและคาดเดาได้ พร้อมทั้งลดพื้นผิวการโจมตีลง
+
+<Mermaid title="คำขอผ่านการตรวจ identity, permission, และ cost ก่อนที่ resolver จะแตะข้อมูลใด ๆ" code={overviewDiagram} />
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+นี่คือโมดูล security และ performance ของคอร์ส เมื่อจบโมดูลนี้คุณจะสามารถล็อก GraphQL API ให้แน่นหนาได้โดยไม่ต้องเสียสละความสะดวกที่ทำให้คุณเลือกใช้ GraphQL ตั้งแต่แรก ห้าบทเรียนคือ:
+
+1. **Security & Performance** (คุณอยู่ที่นี่) — พื้นผิวของ threat และ cost ของ endpoint เดียวที่ยืดหยุ่น
+2. **Authentication & Context** — การ resolve current user หนึ่งครั้งต่อคำขอจาก token และเหตุผลที่ context คือบ้านที่เหมาะสมสำหรับมัน
+3. **Authorization** — การตรวจ permission ระดับ field และ type และทางเลือกระหว่างการคืน `null` กับการ throw forbidden error
+4. **Depth & Complexity** — การปฏิเสธ query ที่ลึก, ใช้ alias, หรือแพง ด้วย depth limit, cost analysis, และ timeout
+5. **Persisted Queries & Caching** — การทำ allowlist ของ operation, automatic persisted queries, response และ per-field caching, และ rate limiting
+
+ตลอดทั้งโมดูล in-browser runner จะรัน logic ที่เกี่ยวกับ security จริง ๆ — resolver ที่อ่าน context ที่ authenticate แล้ว, field ที่ปฏิเสธผู้ใช้ที่ไม่ได้รับอนุญาต, และฟังก์ชันที่วัด depth ของ query ที่ parse แล้ว — เพื่อให้คุณได้เห็นกลไกทำงานจริงแทนที่จะต้องเชื่อโดยไม่มีหลักฐาน
+
+<Callout title="ความยืดหยุ่นคืองบประมาณ ไม่ใช่ของฟรี">
+GraphQL ยื่นเช็คเปล่าให้ทุก client เขียนรูปทรง response ของตัวเอง หน้าที่ของคุณคือกำหนดขีดจำกัดที่สมเหตุสมผลให้เช็คใบนั้น: ยืนยันว่า *ใคร* เป็นผู้ใช้จ่าย, ยืนยันว่า *อะไร* ที่เขาอาจซื้อได้, จำกัดว่า *แพงแค่ไหน* ที่การซื้อครั้งเดียวจะเป็นได้, และจดจำการซื้อที่คุณทำไปแล้ว Authentication, authorization, cost analysis, และ caching ไม่ใช่ของเสริมเลือกได้ที่เอามาแปะกับ GraphQL API — มันคือสิ่งที่ทำให้ endpoint เดียวที่ยืดหยุ่นปลอดภัยพอจะเปิดสู่โลกได้
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  Q["Client query"] --> A["Authenticate: who is asking? (context)"]
+  A --> Z["Authorize: are they allowed? (resolvers)"]
+  Z --> C["Cost check: depth & complexity limits"]
+  C --> X["Execute resolvers"]
+  X --> D["Data sources"]
+  X --> R["Response (cacheable, rate-limited)"]
+  C -.->|"too deep / too costly"| Rej["Reject before execution"]`;
+
+export const quizIndex = [
+  {
+    q: 'ทำไม GraphQL endpoint เดียวจึงต้องมีคู่มือ security เป็นของตัวเองเมื่อเทียบกับ REST API?',
+    options: [
+      'GraphQL ไม่มี HTTP support ในตัว',
+      'Client เขียน query ตามอำเภอใจที่ server ไม่เคยคาดการณ์ ดังนั้น cost และ trust จึงต้องถูกประเมินแบบ dynamic ต่อคำขอ',
+      'Response ของ GraphQL ใหญ่กว่า response ของ REST เสมอ',
+      'GraphQL ใช้ HTTPS ไม่ได้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'คำถามสี่ข้อใดที่สรุปการทำให้ GraphQL API ปลอดภัยและปรับจูนได้?',
+    options: [
+      'database ไหน, cache ไหน, CDN ไหน, region ไหน',
+      'ใครเป็นคนถาม, เขาได้รับอนุญาตไหม, query นี้แพงแค่ไหน, และเราเคยเห็นมันมาก่อนไหม',
+      'status code อะไร, header อะไร, body อะไร, method อะไร',
+      'client ไหน, browser ไหน, version ไหน, locale ไหน',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในประโยคเดียว อะไรที่ทำให้ความยืดหยุ่นของ GraphQL กลายเป็นความเสี่ยง?',
+    options: [
+      'มันบังคับให้ทุก field ต้องเป็น nullable',
+      'Client สามารถประกอบ query ที่ server ไม่เคยคาดการณ์ — ซ้อนลึกหรือแตกกระจายออกไปเป็น call นับพัน',
+      'มันลบ type system ออกตอน runtime',
+      'มันทำงานได้แค่ผ่าน WebSockets เท่านั้น',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="security-and-performance/index" />

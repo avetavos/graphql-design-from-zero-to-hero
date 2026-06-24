@@ -1,0 +1,128 @@
+---
+title: Request Lifecycle
+description: 'How a server turns a query into a response — parse, validate against the schema, then execute resolvers that walk the query.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+You now know what a schema and a query are. The final foundation is understanding what happens *between* sending a query and receiving a response. A GraphQL server processes every request in three ordered phases: **parse**, **validate**, and **execute**. Knowing these phases tells you exactly where and why a request can fail.
+
+## The three phases
+
+<Mermaid title="Every GraphQL request flows through parse, then validate, then execute." code={lifecycleDiagram} />
+
+### 1. Parse
+
+The server receives the query as plain text and turns it into a structured tree called an **Abstract Syntax Tree (AST)**. This phase only checks *grammar* — are the braces balanced, is the syntax well-formed? A missing closing brace or a stray comma fails here, before the schema is even consulted.
+
+### 2. Validate
+
+Now the server compares the AST against the **schema**. This is where the type system earns its keep. The validator confirms that every field you selected actually exists on its type, that arguments have the right types, that you did not request scalar fields with a sub-selection, and dozens of other rules. If validation fails, the server rejects the request and returns an `errors` array — and crucially, **no resolver runs**. The query never touches your data or business logic.
+
+### 3. Execute
+
+Once a query is parsed and validated, the server **executes** it by walking the AST and calling a **resolver** for each field. Execution starts at a root type (`Query`, `Mutation`, or `Subscription`) and descends field by field. Each resolver returns a value; if that value is an object type, the engine recurses into its selected sub-fields, calling their resolvers in turn. The returned values are assembled into a response whose shape mirrors the query.
+
+## Validation rejects an invalid field
+
+The best way to feel the difference between validation and execution is to watch validation catch an error. The runner below sends a query that asks for a field, `colour`, which does not exist on the `Book` type. Press **Run**: the schema is valid and the resolver is ready, but the request never reaches it. Instead the response is an `errors` array explaining the problem.
+
+export const lifecycleCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Book {
+      title: String!
+      year: Int!
+    }
+    type Query {
+      book: Book
+    }
+  \`);
+
+  const root = {
+    // This resolver is perfectly fine — but it will never be called,
+    // because the query fails validation first.
+    book: () => ({ title: 'The Lifecycle of a Query', year: 2025 }),
+  };
+
+  // "colour" is not a field on Book. The schema has no such field,
+  // so validation rejects the whole request before execution.
+  const query = \`
+    {
+      book {
+        title
+        colour
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={lifecycleCode} />
+
+Read the output carefully. There is no `data` for the book; instead you get an `errors` array whose message says that `colour` cannot be queried on type `Book`, complete with the line and column where it appears. This is the validate phase doing its job. Fix the query — change `colour` to `year` — and run it again to watch the request sail through validation and into execution, returning real data.
+
+<Callout title="The takeaway">
+Parse catches *bad grammar*. Validate catches *queries the schema cannot honour* — and stops them before any resolver runs, which is why a typed schema makes a GraphQL API both safer and more predictable. Execute is the only phase that touches your data. When you see an `errors` array with no `data`, the request almost always failed at parse or validate, so look at the query and schema before you suspect your resolvers.
+</Callout>
+
+export const lifecycleDiagram = `sequenceDiagram
+  participant C as Client
+  participant P as Parse
+  participant V as Validate
+  participant E as Execute (resolvers)
+  participant D as Data sources
+  C->>P: query text
+  P->>V: AST (grammar OK)
+  Note over V: check AST against the schema
+  V--xC: errors array if a field is invalid (no resolver runs)
+  V->>E: validated AST
+  E->>D: call resolvers, walk the query
+  D-->>E: field values
+  E-->>C: response shaped like the query`;
+
+export const quizLifecycle = [
+  {
+    q: 'What are the three phases of handling a GraphQL request, in order?',
+    options: [
+      'Authenticate, parse, return',
+      'Parse, validate, execute',
+      'Validate, execute, cache',
+      'Compile, run, serialize',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'During which phase is the query checked against the schema for unknown fields and wrong argument types?',
+    options: ['Parse', 'Validate', 'Execute', 'Serialize'],
+    answer: 1,
+  },
+  {
+    q: 'If a query asks for a field that does not exist on a type, what happens?',
+    options: [
+      'The resolver runs and returns null',
+      'Validation rejects the request and no resolver runs',
+      'The server crashes',
+      'The field is silently dropped and data is returned',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which phase actually calls resolvers and touches your data sources?',
+    options: ['Parse', 'Validate', 'Execute', 'Introspect'],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/request-lifecycle" questions={quizLifecycle} />
+
+<ProgressTracker client:visible id="graphql-foundations/request-lifecycle" />

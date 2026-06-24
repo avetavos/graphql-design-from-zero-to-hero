@@ -1,0 +1,173 @@
+---
+title: Writes and Real-Time
+description: 'Mutations write data and return the result; subscriptions stream changes over time. An overview of the module, with a mutation you can run in the browser.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+So far the graph has been read-only. We have selected fields, traversed links, and resolved values — but never changed anything. A real API has to let clients *do* things: post a review, archive a track, follow an artist. And once data can change, clients often want to know the moment it does. Those two needs map onto the two remaining root types: **`Mutation`** for writes, and **`Subscription`** for the stream of changes that follow.
+
+## Two new doorways
+
+You already met all three root types in the foundations module. Here we put the second and third to work:
+
+- **`Mutation`** — the write entry point. A field here represents one intentional change: create something, update it, delete it. It runs the change and then returns data describing the result.
+- **`Subscription`** — the real-time entry point. A field here opens a long-lived stream: the client subscribes once, and the server pushes a new payload every time the relevant event fires.
+
+The mental model is a request that *acts* (mutation) versus a connection that *listens* (subscription). A mutation is one round trip — send the change, get the result back. A subscription is an open channel — one request, many results delivered over time.
+
+<Mermaid title="Reads return once; mutations write then return; subscriptions push many payloads from a stream of events." code={overviewDiagram} />
+
+## What a mutation looks like
+
+A mutation field is declared on the `Mutation` type. It usually takes arguments describing the change and returns the affected object so the client can update its view without a second read:
+
+```graphql
+type Mutation {
+  addReview(trackId: ID!, rating: Int!, body: String): Review!
+}
+```
+
+Calling it looks almost like a query — the difference is that it starts at `mutation` instead of `{` (the implicit query), and the server is allowed to change state:
+
+```graphql
+mutation {
+  addReview(trackId: "t1", rating: 5, body: "On repeat all week.") {
+    id
+    rating
+    body
+  }
+}
+```
+
+## What this module covers
+
+Across the next four lessons we go from "it works" to "it scales":
+
+- **Mutation design** — naming writes by intent, keeping one mutation per logical change, and returning the affected data.
+- **The input / payload pattern** — wrapping arguments in a single `input` object and returning a structured `payload` so mutations can evolve and carry per-field errors.
+- **Subscriptions** — modelling real-time as a stream of events with `subscribe` and `resolve`, the transports that carry them, and when *not* to reach for them.
+- **Mutation best practices** — idempotency, validation, user errors versus protocol errors, chattiness, and optimistic UI.
+
+## A mutation, run for real
+
+The example below builds a tiny schema with a `Mutation` type, a mutable in-memory store of reviews, and a resolver that appends to it. Press **Run** to add a review and watch the store grow — the second query reads back exactly what the mutation wrote.
+
+export const overviewMutationCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type Query {
+      reviews(trackId: ID!): [Review!]!
+    }
+
+    type Mutation {
+      addReview(trackId: ID!, rating: Int!, body: String): Review!
+    }
+  \`);
+
+  // A mutable in-memory store — this is the "database" the mutation writes to.
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const root = {
+    reviews: ({ trackId }) => store.reviews.filter((r) => r.trackId === trackId),
+    addReview: ({ trackId, rating, body }) => {
+      const review = { id: String(nextId++), trackId, rating, body: body ?? null };
+      store.reviews.push(review);
+      return review;
+    },
+  };
+
+  // 1) Write: run the mutation and read back the created review.
+  const writeResult = await graphql({
+    schema,
+    source: \`
+      mutation {
+        addReview(trackId: "t1", rating: 5, body: "On repeat all week.") {
+          id
+          rating
+          body
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('after mutation:', JSON.stringify(writeResult, null, 2));
+
+  // 2) Read: confirm the store actually changed.
+  const readResult = await graphql({
+    schema,
+    source: \`{ reviews(trackId: "t1") { id rating body } }\`,
+    rootValue: root,
+  });
+  console.log('store now holds:', JSON.stringify(readResult, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewMutationCode} />
+
+Notice the shape of the result. The mutation returns the single `Review` it created, complete with its server-assigned `id` — so the client never has to guess. The follow-up read proves the write landed: the store that was empty now contains exactly one review. That round trip — *act, then receive the result* — is the rhythm of every mutation in this module.
+
+<Callout title="Writes and reads are the same language">
+A mutation is not a different protocol bolted onto GraphQL — it is the same selection language pointed at a type that is allowed to change state. You send a selection, the server runs it, and you get a typed result back. The only rules that differ: mutations start with the `mutation` keyword, and top-level mutation fields run one after another in order, never in parallel, so a later write can rely on an earlier one.
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  subgraph Read
+    Q["Query"] --> R1["one result"]
+  end
+  subgraph Write
+    M["Mutation"] --> S["mutable store"]
+    S --> R2["result of the change"]
+  end
+  subgraph RealTime
+    Sub["Subscription"] --> Ev["event stream"]
+    Ev --> P1["payload"]
+    Ev --> P2["payload"]
+    Ev --> P3["payload …"]
+  end`;
+
+export const quizOverview = [
+  {
+    q: 'Which root type is the write entry point in a GraphQL schema?',
+    options: ['Query', 'Mutation', 'Subscription', 'Schema'],
+    answer: 1,
+  },
+  {
+    q: 'How does a subscription differ from a query in terms of results?',
+    options: [
+      'A subscription returns exactly one result, like a query',
+      'A subscription opens a long-lived stream and may push many payloads over time',
+      'A subscription cannot return any data',
+      'A subscription must be called before every query',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'After a mutation creates a record, why does it typically return the affected object?',
+    options: [
+      'The specification forbids returning anything else',
+      'So the client can update its view without issuing a separate read',
+      'Because mutations cannot take arguments',
+      'To make the request run in parallel',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/index" questions={quizOverview} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/index" />

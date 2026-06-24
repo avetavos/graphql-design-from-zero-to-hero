@@ -1,0 +1,200 @@
+---
+title: N+1 and DataLoader
+description: 'Why a relationship resolver fires once per item — the N+1 problem — and how DataLoader batches and caches those loads into a single request.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+You now know how to model relationships and page through lists. The final piece is keeping a relationship-heavy query *fast*. The trap that catches almost everyone is the **N+1 problem**, and the standard cure is a tiny library called **DataLoader**. Understand both and your graph stays quick no matter how deeply clients traverse it.
+
+## The N+1 problem
+
+GraphQL resolves fields independently. When a query asks for a list of posts and, for each post, its author, the engine runs the `author` resolver **once per post**. Fetch a page of 50 posts and the server does:
+
+- **1** query to load the 50 posts, then
+- **N = 50** separate queries to load each post's author.
+
+That is 51 round trips — *N + 1* — where one well-designed query could have done it in two. The cost is invisible in development with three rows of seed data and catastrophic in production with real traffic. It is not a bug in your resolvers; it is the natural consequence of resolving each field on its own.
+
+<Mermaid title="Resolving authors one post at a time produces one query per post — the N+1 explosion." code={nPlusOneDiagram} />
+
+## DataLoader: batch and cache
+
+[DataLoader](https://github.com/graphql/dataloader) solves this with two ideas:
+
+- **Batching.** Instead of firing a load immediately, DataLoader collects every key requested during a single tick of the event loop, then calls your **batch function** *once* with the whole array of keys. Your batch function turns 50 individual "load author `aX`" calls into one "load authors `[a1, a2, …]`" call.
+- **Caching.** Within one request, asking for the same key twice returns the cached result — the batch function never sees a duplicate.
+
+You give DataLoader a `batchFn(keys)` that takes an array of keys and returns an array of results *in the same order*. Each resolver just calls `loader.load(key)` and awaits a promise; DataLoader handles the coalescing.
+
+```ts
+import DataLoader from 'dataloader';
+
+// Called ONCE per tick with all collected keys.
+const authorLoader = new DataLoader(async (ids: readonly string[]) => {
+  const rows = await db.authorsByIds(ids); // one batched query
+  return ids.map((id) => rows.find((r) => r.id === id)!);
+});
+
+// In a resolver: just load by key — batching is automatic.
+const author = (post) => authorLoader.load(post.authorId);
+```
+
+## Counting the calls, run for real
+
+The runner below resolves the same query two ways and **counts how many times the loader function fires**. The unbatched version calls the data source once per post; the batched version collects the keys and calls it once. Press **Run** and compare the two call counts in the output.
+
+export const loaderCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Author { id: ID! name: String! }
+    type Post { id: ID! title: String! author: Author! }
+    type Query { posts: [Post!]! }
+  \`);
+
+  const authorsTable = {
+    a1: { id: 'a1', name: 'Ada Lin' },
+    a2: { id: 'a2', name: 'Grace Park' },
+  };
+  const postsTable = [
+    { id: 'p1', title: 'First', authorId: 'a1' },
+    { id: 'p2', title: 'Second', authorId: 'a2' },
+    { id: 'p3', title: 'Third', authorId: 'a1' },
+    { id: 'p4', title: 'Fourth', authorId: 'a2' },
+  ];
+
+  const query = \`{ posts { title author { name } } }\`;
+
+  // --- 1) UNBATCHED: one data-source call per post ---
+  let unbatchedCalls = 0;
+  const unbatchedRoot = {
+    posts: () =>
+      postsTable.map((p) => ({
+        title: p.title,
+        author: () => {
+          unbatchedCalls++; // fires once PER post → N+1
+          return authorsTable[p.authorId];
+        },
+      })),
+  };
+  await graphql({ schema, source: query, rootValue: unbatchedRoot });
+
+  // --- 2) BATCHED: a DataLoader-style loader ---
+  let batchFnCalls = 0;
+  const makeLoader = (batchFn) => {
+    let queue = [];
+    let scheduled = false;
+    const cache = new Map();
+    const flush = () => {
+      scheduled = false;
+      const batch = queue;
+      queue = [];
+      const keys = batch.map((b) => b.key);
+      batchFnCalls++; // ONE call for the whole batch
+      const values = batchFn(keys);
+      batch.forEach((b, i) => b.resolve(values[i]));
+    };
+    return {
+      load: (key) => {
+        if (cache.has(key)) return cache.get(key);
+        const promise = new Promise((resolve) => queue.push({ key, resolve }));
+        cache.set(key, promise);
+        if (!scheduled) {
+          scheduled = true;
+          // Coalesce all loads requested in this tick.
+          Promise.resolve().then(flush);
+        }
+        return promise;
+      },
+    };
+  };
+
+  // batchFn: many keys in, results in matching order, ONE lookup pass.
+  const authorLoader = makeLoader((ids) => ids.map((id) => authorsTable[id]));
+
+  const batchedRoot = {
+    posts: () =>
+      postsTable.map((p) => ({
+        title: p.title,
+        author: () => authorLoader.load(p.authorId),
+      })),
+  };
+  await graphql({ schema, source: query, rootValue: batchedRoot });
+
+  console.log(
+    JSON.stringify(
+      {
+        posts: postsTable.length,
+        unbatchedAuthorCalls: unbatchedCalls,
+        batchedBatchFnCalls: batchFnCalls,
+        note: 'Same result, but the loader collapses N calls into 1.',
+      },
+      null,
+      2
+    )
+  );
+})();`;
+
+<NodeRunner client:visible code={loaderCode} />
+
+The output makes the difference concrete: with four posts the unbatched path calls the author lookup **4** times, while the batched loader's `batchFn` fires **once** — the keys were collected during a single tick and resolved together. In production that batch function would be one `WHERE id IN (…)` query instead of dozens. (The real `dataloader` package, importable the same way via `await import('https://esm.sh/dataloader@2')`, does exactly this with added caching and edge-case handling; the loader above is a minimal version to show the mechanism.)
+
+<Callout title="One loader per request, batching by key">
+The N+1 problem is structural: GraphQL resolves each field on its own, so a list of N items triggers N child resolvers. DataLoader fixes it by deferring loads to the end of the tick, calling your batch function once with all the keys, and caching repeats within the request. Create a fresh loader per request (so caches never leak between users), write a `batchFn` that returns results in the same order as the keys, and call `loader.load(key)` from your resolvers. Do this and a deeply nested query stays a handful of batched queries instead of hundreds.
+</Callout>
+
+export const nPlusOneDiagram = `flowchart TD
+  Q["Query: posts { author }"]
+  Q -->|"1 query"| Posts["Load N posts"]
+  Posts --> A1["author resolver: post 1"]
+  Posts --> A2["author resolver: post 2"]
+  Posts --> A3["author resolver: post 3"]
+  Posts --> AN["author resolver: post N"]
+  A1 -->|"query"| DB["Data source"]
+  A2 -->|"query"| DB
+  A3 -->|"query"| DB
+  AN -->|"query"| DB`;
+
+export const quizDataloader = [
+  {
+    q: 'What causes the N+1 problem in GraphQL?',
+    options: [
+      'The parser validates each field N+1 times',
+      'A child field resolver runs once per item in a parent list, adding N queries to the initial 1',
+      'Clients send N+1 separate HTTP requests by mistake',
+      'The schema declares too many non-null fields',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What two things does DataLoader do to fix N+1?',
+    options: [
+      'Compresses responses and retries failures',
+      'Batches all keys requested in a tick into one batch-function call, and caches repeats within the request',
+      'Caches across all users forever and skips the database',
+      'Splits one query into N parallel HTTP requests',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What must a DataLoader batch function return?',
+    options: [
+      'A single merged object for all keys',
+      'An array of results in the same order as the input keys',
+      'Only the keys that were found, in any order',
+      'A promise that never resolves until the next request',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/n-plus-1-and-dataloader" questions={quizDataloader} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/n-plus-1-and-dataloader" />

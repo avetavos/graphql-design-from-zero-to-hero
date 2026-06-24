@@ -1,0 +1,185 @@
+---
+title: การออกแบบ Mutation
+description: 'ตั้งชื่อ mutation ตาม intent อย่าง createReview จำกัดหนึ่ง mutation ต่อหนึ่งการเปลี่ยนแปลงเชิงตรรกะ และคืนข้อมูลที่ได้รับผลกระทบ พร้อมตัวอย่างที่รันได้'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+field ของ query ตอบคำถามว่า "ค่าของสิ่งนี้คืออะไร?" ส่วน field ของ mutation ตอบคำถามที่ต่างออกไปมาก คือ "เซิร์ฟเวอร์ควร *ทำ* อะไร?" ความต่างนั้นควรมองเห็นได้จากชื่อ ความผิดพลาดที่พบบ่อยที่สุดในการออกแบบ mutation คือการมอง write เหมือนเป็นแถวในฐานข้อมูล เช่น `updateUser` ตัวเดียวที่เปลี่ยนอะไรก็ได้ แทนที่จะมองเป็น *การกระทำ* ที่ผู้ใช้ลงมือทำจริง ๆ บทเรียนนี้ว่าด้วยการออกแบบ mutation รอบ ๆ intent
+
+## ตั้งชื่อด้วยกริยา ไม่ใช่ชื่อตาราง
+
+ชื่อ mutation ที่ดีอ่านแล้วเหมือนคำสั่ง มันเริ่มด้วยกริยาและระบุสิ่งที่มันลงมือทำ
+
+```graphql
+type Mutation {
+  createReview(trackId: ID!, rating: Int!, body: String): Review!
+  publishReview(reviewId: ID!): Review!
+  deleteReview(reviewId: ID!): ID!
+}
+```
+
+ลองเทียบกับการออกแบบทรง CRUD ที่พึ่งพาตัวอัปเดตยักษ์ตัวเดียว
+
+```graphql
+type Mutation {
+  # Anti-pattern: one mutation that can change anything, meaning nothing.
+  updateReview(reviewId: ID!, rating: Int, body: String, published: Boolean): Review!
+}
+```
+
+เวอร์ชัน CRUD *ใช้งานได้* แต่มันสูญเสียข้อมูลไป เมื่อ client เรียก `updateReview` พร้อม `published: true` เซิร์ฟเวอร์ไม่สามารถแยกแยะ "ผู้เขียนแก้ข้อความ" ออกจาก "ผู้เขียนกดเผยแพร่" ได้ ทั้งสองเป็น event คนละอย่างที่มีกฎ ผลข้างเคียง และความหมายเชิงการตรวจสอบต่างกัน **การตั้งชื่อตาม intent** เช่น `publishReview` คืนความหมายนั้นกลับมา เพื่อให้เซิร์ฟเวอร์รัน logic ที่การกระทำนั้นต้องการได้อย่างตรงจุด
+
+## หนึ่ง mutation ต่อหนึ่งการเปลี่ยนแปลงเชิงตรรกะ
+
+mutation หนึ่งตัวควรแทนสิ่งหนึ่งสิ่งที่ผู้ใช้ทำซึ่งแบ่งแยกไม่ได้ หาก client ต้องเรียก mutation สามตัวติด ๆ กันเพื่อทำการกระทำเดียวให้เสร็จ แสดงว่า API กำลังรั่ว workflow ออกไปให้ client รับผิดชอบ และความล้มเหลวใด ๆ ที่เกิดขึ้นกลางคันจะทำให้ข้อมูลเปลี่ยนไปแค่ครึ่งทาง
+
+<Mermaid title="แต่ละ intent ของผู้ใช้แมปเข้ากับ mutation หนึ่งตัวพอดี ซึ่งทำการเปลี่ยนแปลงเชิงตรรกะหนึ่งอย่าง" code={intentDiagram} />
+
+อีกด้านหนึ่งก็สำคัญไม่แพ้กัน อย่ามัดการเปลี่ยนแปลงที่ไม่เกี่ยวกันเข้าด้วยกันเป็น mega-mutation ตัวเดียวเพียงเพื่อประหยัดการเดินทางไปกลับ "หนึ่งการเปลี่ยนแปลงเชิงตรรกะ" คือหน่วยวัด การโพสต์รีวิวกับการติดตามศิลปินเป็นสอง intent มันจึงเป็นสอง mutation แม้ว่า UI ของคุณจะบังเอิญยิงมันออกไปพร้อมกันก็ตาม
+
+## คืนข้อมูลที่ได้รับผลกระทบเสมอ
+
+write ที่ไม่คืนอะไรกลับมาเลยบังคับให้ client ต้อง query ซ้ำทันทีเพื่อหาว่าเกิดอะไรขึ้น แทนที่จะเป็นเช่นนั้น ให้คืน object ที่ mutation ส่งผลกระทบกลับมา เพื่อให้ client อัปเดต cache ของตัวเองได้โดยตรง
+
+```graphql
+type Mutation {
+  createReview(trackId: ID!, rating: Int!, body: String): Review!
+}
+```
+
+การคืน `Review!` ทำให้ผู้เรียกสามารถเลือก `id` ใหม่ field ใด ๆ ที่เซิร์ฟเวอร์กำหนดค่า default ให้ และยังเดินเข้าไปใน type ที่ลิงก์อยู่ได้ ทั้งหมดนี้ในการเดินทางไปกลับรอบเดียวกับที่ทำการเขียน
+
+## ออกแบบ mutation แล้วรันจริง
+
+ตัวอย่างนี้นิยาม mutation สามตัวที่ตั้งชื่อตาม intent บน store ที่เปลี่ยนค่าได้ตัวเดียว กด **Run** เราจะสร้างรีวิว แล้วเผยแพร่มัน แต่ละ mutation คืน `Review` ที่ได้รับผลกระทบ และชื่อก็ทำให้สอง intent ที่ต่างกันชัดเจนจนไม่มีทางสับสน
+
+export const designCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      rating: Int!
+      body: String
+      published: Boolean!
+    }
+
+    type Query {
+      review(id: ID!): Review
+    }
+
+    type Mutation {
+      createReview(rating: Int!, body: String): Review!
+      publishReview(reviewId: ID!): Review!
+    }
+  \`);
+
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const find = (id) => store.reviews.find((r) => r.id === id);
+
+  const root = {
+    review: ({ id }) => find(id),
+    createReview: ({ rating, body }) => {
+      const review = { id: String(nextId++), rating, body: body ?? null, published: false };
+      store.reviews.push(review);
+      return review;
+    },
+    publishReview: ({ reviewId }) => {
+      const review = find(reviewId);
+      review.published = true; // the one logical change this intent performs
+      return review;
+    },
+  };
+
+  // createReview: an action, named by its verb, returning the affected Review.
+  const created = await graphql({
+    schema,
+    source: \`
+      mutation {
+        createReview(rating: 5, body: "On repeat all week.") {
+          id
+          published
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('createReview:', JSON.stringify(created, null, 2));
+
+  // publishReview: a separate intent, not a generic "update".
+  const published = await graphql({
+    schema,
+    source: \`
+      mutation {
+        publishReview(reviewId: "1") {
+          id
+          published
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('publishReview:', JSON.stringify(published, null, 2));
+})();`;
+
+<NodeRunner client:visible code={designCode} />
+
+ผลลัพธ์เล่าเรื่องราวทั้งหมด `createReview` คืนรีวิวใหม่เอี่ยมที่มี `published: false` และ `publishReview` ที่แยกออกมาต่างหากพลิก field นั้นเพียง field เดียว สอง intent สอง mutation แต่ละตัวคืน object ที่ได้รับผลกระทบ ผู้อ่านที่กวาดตามอง schema สามารถเดาได้เลยว่าแต่ละตัวทำอะไร ซึ่งนั่นคือหัวใจทั้งหมดของการตั้งชื่อตาม intent
+
+<Callout title="mutation คือกริยา ไม่ใช่แถวข้อมูล">
+ออกแบบ mutation รอบ ๆ การกระทำที่ผลิตภัณฑ์ของคุณเปิดเผยออกมา ไม่ใช่รอบ ๆ ตารางที่อยู่ข้างใต้ เริ่มต้นแต่ละชื่อด้วยกริยาที่ระบุ intent (`createReview`, `publishReview`, `archiveTrack`) จำกัดแต่ละ mutation ให้เป็นหนึ่งการเปลี่ยนแปลงเชิงตรรกะ เพื่อให้ความล้มเหลวบางส่วนไม่มีทางทิ้งข้อมูลไว้ครึ่ง ๆ กลาง ๆ และคืน object ที่ได้รับผลกระทบเสมอ เพื่อให้ client รีเฟรชได้โดยไม่ต้องส่งคำขอครั้งที่สอง หากคุณพบว่าตัวเองกำลังเขียน `updateX` ตัวเดียวที่ทำได้ห้าอย่างต่างกัน แสดงว่าคุณมีห้า mutation ซ่อนอยู่ในตัวเดียว
+</Callout>
+
+export const intentDiagram = `flowchart TD
+  U1["User posts a review"] --> M1["createReview"]
+  U2["User hits Publish"] --> M2["publishReview"]
+  U3["User removes a review"] --> M3["deleteReview"]
+  M1 --> C1["one write: insert review"]
+  M2 --> C2["one write: set published"]
+  M3 --> C3["one write: delete review"]`;
+
+export const quizDesign = [
+  {
+    q: 'ทำไม publishReview จึงดีกว่า updateReview(published: true) แบบทั่วไป?',
+    options: [
+      'มันพิมพ์สั้นกว่า',
+      'มันจับ intent ของผู้ใช้เอาไว้ เซิร์ฟเวอร์จึงรัน logic ที่ถูกต้องตรงจุดและตรวจสอบการกระทำได้',
+      'mutation แบบ update ทั่วไปถูกสเปกห้ามไว้',
+      'มันหลีกเลี่ยงการคืนข้อมูลใด ๆ',
+    ],
+    answer: 1,
+  },
+  {
+    q: '"หนึ่ง mutation ต่อหนึ่งการเปลี่ยนแปลงเชิงตรรกะ" ป้องกันอะไร?',
+    options: [
+      'การคืน object ที่ได้รับผลกระทบ',
+      'การทิ้งข้อมูลไว้ครึ่ง ๆ กลาง ๆ เมื่อ workflow หลายขั้นตอนล้มเหลวกลางคัน',
+      'การตั้งชื่อ mutation ด้วยกริยา',
+      'การใช้ argument บน mutation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ทำไม mutation จึงควรคืน object ที่มันส่งผลกระทบ?',
+    options: [
+      'เพื่อให้ client อัปเดตมุมมองของตัวเองได้โดยไม่ต้องส่งคำขออ่านแยกต่างหาก',
+      'เพราะไม่เช่นนั้น mutation จะรับ argument ไม่ได้',
+      'เพื่อบังคับให้ operation รันแบบขนาน',
+      'มันจำเป็นเพื่อให้ mutation คอมไพล์ได้',
+    ],
+    answer: 0,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/mutation-design" questions={quizDesign} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/mutation-design" />

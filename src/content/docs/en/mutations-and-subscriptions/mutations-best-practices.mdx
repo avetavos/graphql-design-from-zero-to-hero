@@ -1,0 +1,163 @@
+---
+title: Mutation Best Practices
+description: 'Idempotency, validation and user-errors-in-payload versus top-level errors, avoiding chatty mutations, and optimistic UI considerations.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+You now know how to name a mutation, shape its input and payload, and notify the world with a subscription. This final lesson is the polish: the handful of habits that separate a mutation that works in a demo from one that survives flaky networks, retries, and an impatient UI. Four topics — idempotency, the two kinds of errors, chattiness, and optimistic UI.
+
+## Idempotency: safe to retry
+
+Networks drop responses. A client fires `addReview`, never sees the reply, and retries — now you have two reviews. A mutation is **idempotent** when running it twice has the same effect as running it once. The usual technique is a client-supplied **idempotency key**: the client generates a unique token per intent and sends it with the mutation; the server records keys it has seen and short-circuits duplicates.
+
+```graphql
+input AddToCartInput {
+  productId: ID!
+  quantity: Int!
+  requestId: ID!   # client-generated key — the same retry carries the same id
+}
+```
+
+Not every mutation needs a key. Setting `published: true` is naturally idempotent — running it twice lands on the same state. It is the *create* and *increment* style mutations, where a duplicate produces a duplicate effect, that benefit most.
+
+## Two kinds of errors
+
+This is the line the input/payload lesson promised to draw. GraphQL gives you two places to report failure, and they mean different things:
+
+- **User errors in the payload** — expected, recoverable, *per-field* problems the user can fix: a rating out of range, a name already taken, a coupon expired. These are *data*. They ride in the payload's `userErrors`, the request is otherwise a success, and the top-level `errors` array stays empty.
+- **Top-level `errors`** — *protocol* and *unexpected* failures: a malformed query, a failed authorization check, a database that fell over. These are not something the end user can correct by editing a form. They populate the response's top-level `errors` array, and the affected field's `data` is `null`.
+
+<Mermaid title="Recoverable validation goes in the payload; protocol and unexpected failures go in the top-level errors array." code={errorDiagram} />
+
+The reason to keep them apart is the client. Code that renders a validation message under a form field should never have to parse the same channel that surfaces "your session expired." Put what the user can fix in `userErrors`, and let everything else throw.
+
+## Avoid chatty mutations
+
+A **chatty** design forces the client to make many calls to accomplish one user goal — add item, add item, apply coupon, set address — each a separate round trip. Two fixes:
+
+- **Batch genuinely-atomic work into one mutation.** If three changes must all succeed or all fail together, that is *one* logical change, so model it as one mutation taking a richer input. (Recall the previous lesson's rule: do not bundle *unrelated* intents — but truly-atomic work belongs together.)
+- **Return enough data to avoid follow-up reads.** A mutation that returns only an `id` forces a `GET` to learn what changed. Return the affected object — and the parent it belongs to if the UI needs it — so one round trip both writes and refreshes.
+
+## Optimistic UI considerations
+
+A responsive client often updates the screen *before* the server confirms — it assumes the mutation will succeed, renders the result immediately, and reconciles when the real payload arrives. Your schema design decides how smooth that is:
+
+- **Return the full affected object**, including server-assigned fields, so the optimistic guess can be replaced by truth without a re-fetch.
+- **Make ids predictable enough to reconcile.** The client needs to match its temporary optimistic record to the server's real one when the payload lands — returning the canonical `id` is what closes that loop.
+- **Surface `userErrors` cleanly**, because optimistic UI must be able to *roll back*. If the payload comes back with a validation error, the client undoes its optimistic change and shows the message — which only works if errors are predictable data in the payload, not exceptions in the top-level array.
+
+## Putting it together, run for real
+
+The example shows idempotency and the two error channels in one resolver. Press **Run**: a duplicate `requestId` returns the *same* review instead of creating a second; an out-of-range rating returns a `userError` with `review: null`; everything else throwing would populate the top-level `errors` array.
+
+export const bestCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review { id: ID! rating: Int! }
+    type UserError { message: String! field: [String!] }
+    type AddReviewPayload { review: Review userErrors: [UserError!]! }
+    input AddReviewInput { rating: Int! requestId: ID! }
+    type Mutation { addReview(input: AddReviewInput!): AddReviewPayload! }
+    type Query { _empty: String }
+  \`);
+
+  const store = { reviews: [] };
+  const seen = new Map(); // idempotency: requestId -> created review
+  let nextId = 1;
+
+  const root = {
+    addReview: ({ input }) => {
+      // Idempotency: a repeated requestId returns the original result.
+      if (seen.has(input.requestId)) {
+        return { review: seen.get(input.requestId), userErrors: [] };
+      }
+      // User error: recoverable validation lives in the payload.
+      if (input.rating < 1 || input.rating > 5) {
+        return { review: null, userErrors: [{ message: 'Rating must be 1–5.', field: ['rating'] }] };
+      }
+      const review = { id: String(nextId++), rating: input.rating };
+      store.reviews.push(review);
+      seen.set(input.requestId, review);
+      return { review, userErrors: [] };
+    },
+  };
+
+  const op = \`
+    mutation Add(\$input: AddReviewInput!) {
+      addReview(input: \$input) { review { id rating } userErrors { message field } }
+    }
+  \`;
+  const run = (input) => graphql({ schema, source: op, rootValue: root, variableValues: { input } });
+
+  const first = await run({ rating: 5, requestId: 'req-1' });
+  console.log('first call:', JSON.stringify(first, null, 2));
+
+  // Same requestId — a retry. No second review is created.
+  const retry = await run({ rating: 5, requestId: 'req-1' });
+  console.log('retry (same requestId):', JSON.stringify(retry, null, 2));
+
+  // Invalid rating — a user error in the payload, not a thrown error.
+  const invalid = await run({ rating: 9, requestId: 'req-2' });
+  console.log('invalid rating:', JSON.stringify(invalid, null, 2));
+
+  console.log('total reviews stored:', store.reviews.length);
+})();`;
+
+<NodeRunner client:visible code={bestCode} />
+
+The final line is the proof: after a create, a retry, and a rejected call, the store holds exactly **one** review. The retry returned the original review unchanged — idempotency in action — and the invalid call came back as a `userError` in the payload with `review: null`, never touching the store and never raising a top-level error. That is every best practice from this lesson visible in one output.
+
+<Callout title="The mutation checklist">
+Before you ship a mutation, run the list. Is it safe to retry — and if not, does it accept an idempotency key? Do recoverable, per-field problems land in the payload's `userErrors` while only protocol and unexpected failures throw to the top-level `errors`? Does one user action map to one round trip, with enough data returned to skip a follow-up read? And does the payload give an optimistic client what it needs to reconcile or roll back? Tick those four boxes and your mutation will behave the same on a flaky train connection as it does in a clean demo.
+</Callout>
+
+export const errorDiagram = `flowchart TD
+  Req["Mutation request"] --> Kind{"what failed?"}
+  Kind -->|"user can fix it"| Pay["payload.userErrors (data ok)"]
+  Kind -->|"protocol / unexpected"| Top["top-level errors (data null)"]
+  Kind -->|"nothing"| OK["payload.entity, userErrors []"]`;
+
+export const quizBest = [
+  {
+    q: 'What makes a mutation idempotent, and how is it commonly achieved?',
+    options: [
+      'It returns no data; achieved by omitting the payload type',
+      'Running it twice has the same effect as once; commonly achieved with a client-supplied idempotency key',
+      'It always runs in parallel with queries',
+      'It can only be called once per server restart',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'A user submits a rating of 9 when the allowed range is 1–5. Where should this be reported?',
+    options: [
+      'In the top-level errors array, with data set to null',
+      'In the payload’s userErrors, while the request itself succeeds',
+      'It should crash the server',
+      'It should be silently ignored',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why does returning the full affected object help an optimistic UI?',
+    options: [
+      'It lets the client replace its optimistic guess with server truth and reconcile by id, without a re-fetch',
+      'It makes the mutation idempotent automatically',
+      'It moves errors into the top-level array',
+      'It forces the client to poll',
+    ],
+    answer: 0,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/mutations-best-practices" questions={quizBest} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/mutations-best-practices" />

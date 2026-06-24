@@ -1,0 +1,180 @@
+---
+title: Depth & Complexity
+description: 'การป้องกัน query ที่ซ้อนลึกและใช้ alias ด้วย depth limiting, complexity (cost) analysis, และ execution timeout — รวมถึงการคำนวณ query depth ในเบราว์เซอร์'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+เราได้ตกลงเรียบร้อยแล้วว่า *ใคร* เป็นคนถามและ *เขาได้รับอนุญาตหรือไม่* ตอนนี้มาถึงคำถามข้อที่สาม: **query นี้แพงแค่ไหน?** คำขอหนึ่งอาจ authenticate ครบถ้วน, authorize เต็มที่ และยังทำให้ server ล้มลงคุกเข่าได้ — เพราะ GraphQL ให้ client เขียน *รูปทรง* ของงานเอง และ query string เล็ก ๆ สามารถอธิบายงานปริมาณมหาศาลได้
+
+## query เล็ก ๆ กลายเป็น denial of service ได้อย่างไร
+
+สองฟีเจอร์ของ graph ที่เชื่อมโยงกันทำให้การใช้ในทางที่ผิดเป็นเรื่องง่าย:
+
+- **การซ้อนลึก** ถ้า `User` มี `friends: [User!]!` แล้ว `user → friends → friends → friends → …` ก็เป็น SDL ที่ถูกต้องได้ไม่รู้จบ แต่ละชั้นทวีคูณจำนวน row ที่ server ต้องดึง สิบชั้นของ fan-out ขนาดปานกลางคือ object หลายล้านชิ้นจาก query ไม่กี่บรรทัด
+- **Alias** client อาจขอ field ที่แพงตัวเดิมหลายครั้งภายใต้ชื่อต่างกัน: `a: search(...) b: search(...) c: search(...)` query ยังคงสั้น แต่ server รันงานหนึ่งครั้งต่อหนึ่ง alias
+
+```graphql
+# Short to write, ruinous to execute: nesting plus aliasing.
+query Abuse {
+  user(id: "1") {
+    friends {           # level 1
+      friends {         # level 2
+        friends {       # level 3 ... and on, and on
+          a: posts { title }
+          b: posts { title }   # same field, billed twice via aliases
+        }
+      }
+    }
+  }
+}
+```
+
+คุณแก้สิ่งนี้ด้วย authentication หรือ authorization ไม่ได้ — ผู้โจมตีอาจเป็น user ที่ถูกต้องตามกฎหมายและล็อกอินแล้ว คุณแก้มันด้วยการวัด cost และปฏิเสธสิ่งที่แพงเกินไป *ก่อน execution*
+
+<Mermaid title="การตรวจ cost รันหลัง parsing และ validation แต่ก่อนที่ resolver จะแตะ data source ใด ๆ" code={costFlow} />
+
+## สามแนวป้องกัน เริ่มจากที่ถูกที่สุด
+
+1. **Depth limiting** เดินผ่าน query ที่ parse แล้วและปฏิเสธมันหากการซ้อนเกินขีดสูงสุดที่กำหนด (เช่น 7) มันหยาบแต่ถูกและจับการโจมตีแบบซ้อนเรียกซ้ำได้ทันที นี่เป็นตัวควบคุมที่เพิ่มได้ง่ายที่สุดและเป็นตัวที่เราจะคำนวณสด ๆ ด้านล่าง
+2. **Complexity (cost) analysis** กำหนด cost ให้แต่ละ field — ตัวเลขคงที่ หรือสูตรที่อิงกับ argument อย่าง `first: 100` สำหรับ list ที่ทำ pagination — รวม cost ทั้ง query, คูณผ่านการซ้อน, และปฏิเสธอะไรก็ตามที่เกินงบประมาณ วิธีนี้จัดการได้ทั้ง query ที่กว้าง *และ* ลึก และคำนึงถึง alias เพราะแต่ละ alias เป็น selection แยกต่างหากที่บวกเข้ากับยอดรวม
+3. **Timeout** เป็นกองหลังสำหรับอะไรก็ตามที่หลุดผ่าน static analysis: จำกัด wall-clock execution (และ call ต่อ data source) เพื่อให้ query ที่กลายเป็นว่าแพงตอน runtime ถูกยกเลิกแทนที่จะปล่อยให้รันไปตลอด
+
+ไลบรารีอย่าง `graphql-depth-limit` และ `graphql-query-complexity` implement สองตัวแรกเป็น validation rule ดังนั้น query จึงถูกปฏิเสธระหว่าง validation — ไม่มี resolver ตัวใดรันเลย กฎ cost อ่านได้แบบนี้:
+
+```ts
+import { createComplexityRule, simpleEstimator } from 'graphql-query-complexity';
+
+const complexityRule = createComplexityRule({
+  maximumComplexity: 1000,
+  estimators: [
+    // A list field costs (childComplexity * the requested page size).
+    simpleEstimator({ defaultComplexity: 1 }),
+  ],
+  onComplete: (cost) => {
+    if (cost > 1000) throw new Error('Query is too complex: ' + cost);
+  },
+});
+// Pass complexityRule in the server's validationRules so it runs before execution.
+```
+
+## คำนวณ depth จาก query ที่ parse แล้ว แบบสด ๆ
+
+Depth limiting เป็นสิ่งที่คุณ implement ได้ในไม่กี่บรรทัด และหัวใจของมันคือฟังก์ชัน `parse` ของ GraphQL — ตัวเดียวกับที่ server ใช้ มันเปลี่ยน query string ให้เป็น **AST** (abstract syntax tree) เดินผ่าน `selectionSet` ทั้งหลาย แล้วสายโซ่ของ selection ซ้อนที่ลึกที่สุดก็คือ depth ของ query demo ด้านล่าง parse สาม query แล้ววัดแต่ละตัว จากนั้นใช้ limit เท่ากับ 5 กด **Run**
+
+export const depthCode = `(async () => {
+  const { parse } = await import('https://esm.sh/graphql@16');
+
+  // Depth = the deepest chain of nested selection sets in the operation.
+  function selectionDepth(selectionSet, current) {
+    let max = current;
+    for (const sel of selectionSet.selections) {
+      if (sel.selectionSet) {
+        max = Math.max(max, selectionDepth(sel.selectionSet, current + 1));
+      } else {
+        max = Math.max(max, current + 1);
+      }
+    }
+    return max;
+  }
+
+  function queryDepth(source) {
+    const doc = parse(source);
+    let max = 0;
+    for (const def of doc.definitions) {
+      if (def.kind === 'OperationDefinition') {
+        max = Math.max(max, selectionDepth(def.selectionSet, 0));
+      }
+    }
+    return max;
+  }
+
+  const MAX_DEPTH = 5;
+
+  const queries = {
+    shallow: \`{ user { name } }\`,
+    medium: \`{ user { friends { posts { title } } } }\`,
+    abusive: \`{
+      user {
+        friends { friends { friends { friends { friends { name } } } } }
+      }
+    }\`,
+  };
+
+  for (const [label, source] of Object.entries(queries)) {
+    const depth = queryDepth(source);
+    const verdict = depth > MAX_DEPTH ? 'REJECTED' : 'allowed';
+    console.log(label + ': depth ' + depth + ' -> ' + verdict + ' (limit ' + MAX_DEPTH + ')');
+  }
+})();`;
+
+<NodeRunner client:visible code={depthCode} />
+
+output จัดอันดับสาม query ตาม depth และใช้ limit query ที่ตื้นและปานกลางผ่าน; ตัวที่ใช้ในทางที่ผิด — ลึกห้าชั้นของ `friends` — เกิน limit ที่ 5 และถูกปฏิเสธ สังเกตว่า *ไม่มี resolver ตัวใดรัน*: เราทำงานบน AST ที่ parse แล้วล้วน ๆ เหมือนที่ validation rule ทำพอดี ดังนั้น query ที่เป็นอันตรายจึงถูกโยนทิ้งก่อนที่มันจะกินค่าใช้จ่ายใด ๆ ไลบรารี depth-limit จริง ๆ ทำการเดินแบบเดียวกัน; complexity analysis ขยายมันต่อด้วยการให้น้ำหนักแต่ละ field แทนที่จะแค่นับชั้นการซ้อน
+
+<Callout title="วัด cost แล้วปฏิเสธก่อนที่คุณจะ execute">
+query หนึ่งอาจผ่าน authentication และ authorization และยังเป็นอาวุธ denial-of-service ได้ เพราะ client ควบคุมรูปทรงของงาน จงป้องกันเป็นชั้น ๆ: **depth limiting** หยุดการซ้อนที่ควบคุมไม่ได้, **complexity analysis** จัดงบประมาณ cost รวม (นับ argument และ alias), และ **timeout** จับอะไรก็ตามที่กลายเป็นว่าแพงตอน runtime สองตัวแรกเป็น static — มันอ่าน query ที่ parse แล้วและปฏิเสธระหว่าง validation ดังนั้น resolver จึงไม่เคยรัน จงตั้ง maximum depth และ complexity budget บนทุก public GraphQL endpoint เสมอ; endpoint ที่ไม่มีสิ่งเหล่านี้ก็อยู่ห่างจาก outage เพียง query ฉลาด ๆ หนึ่งตัวเท่านั้น
+</Callout>
+
+export const costFlow = `flowchart LR
+  P["parse: query string -> AST"] --> V["validate against schema"]
+  V --> Depth{"Depth within limit?"}
+  Depth -->|"No"| Rej["Reject (no resolver runs)"]
+  Depth -->|"Yes"| Cost{"Complexity within budget?"}
+  Cost -->|"No"| Rej
+  Cost -->|"Yes"| Exec["Execute with a timeout"]
+  Exec -->|"too slow"| Abort["Abort on timeout"]
+  Exec --> R["Response"]`;
+
+export const quizDepth = [
+  {
+    q: 'ทำไม query string สั้น ๆ จึงทำให้เกิด denial of service ใน GraphQL ได้?',
+    options: [
+      'เพราะ response ถูกบีบอัดเสมอ',
+      'เพราะ client ควบคุมรูปทรง: การซ้อนลึกและ alias อธิบายงานปริมาณมหาศาลได้ด้วยตัวอักษรไม่กี่ตัว',
+      'เพราะ GraphQL ลองส่งคำขอที่ล้มเหลวซ้ำโดยอัตโนมัติ',
+      'เพราะทุก query เปิด database connection ใหม่',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'จริง ๆ แล้ว depth limiting ตรวจสอบอะไร?',
+    options: [
+      'จำนวน byte ใน HTTP request',
+      'สายโซ่ของ nested selection set ที่ลึกที่สุดใน query ที่ parse แล้ว',
+      'role ของ user บน context',
+      'จำนวน variable ที่นิยามไว้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ณ จุดใดที่กฎ depth และ complexity ปฏิเสธ query ที่เกินงบประมาณ?',
+    options: [
+      'หลังจาก resolver คืนค่าแล้ว ระหว่าง serialization',
+      'ระหว่าง validation หลัง parsing แต่ก่อนที่ resolver ใด ๆ จะรัน',
+      'เฉพาะหลังจาก timeout เกิดขึ้นแล้ว',
+      'ใน client ก่อนส่ง',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ทำไม complexity (cost) analysis จึงทรงพลังกว่า depth limiting เพียงอย่างเดียว?',
+    options: [
+      'มัน encrypt query',
+      'มันให้น้ำหนักแต่ละ field และคำนึงถึง argument อย่าง page size และ alias ที่ซ้ำ ทำให้จับ query ที่กว้างได้ด้วย',
+      'มันลบความจำเป็นในการ authentication',
+      'มัน cache ทุก response โดยอัตโนมัติ',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/depth-and-complexity" questions={quizDepth} />
+
+<ProgressTracker client:visible id="security-and-performance/depth-and-complexity" />

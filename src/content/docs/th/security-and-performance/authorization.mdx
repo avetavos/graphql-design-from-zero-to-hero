@@ -1,0 +1,184 @@
+---
+title: Authorization
+description: 'การตรวจ permission ระดับ field และ type ใน resolver, directive, หรือ middleware และทางเลือกที่จงใจระหว่างการคืน null กับการ throw forbidden error'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+บทเรียนก่อนหน้าตอบคำถาม *ใครเป็นคนถาม?* และจอดผลลัพธ์ไว้บน context บทเรียนนี้ตอบคำถามข้อที่สอง: **เขาได้รับอนุญาตหรือไม่?** นั่นคือ **authorization** — การตัดสินทีละ field และ type ว่า identity ปัจจุบันอาจเห็นข้อมูลนี้ได้หรือไม่ Authentication คือ yes/no เดียวที่ขอบ; authorization คือการตัดสินเล็ก ๆ นับพันที่ถักทอผ่านทั้ง graph
+
+## Authorization เป็นรายต่อ field ไม่ใช่ต่อคำขอ
+
+REST endpoint มักเป็นแบบทั้งหมดหรือไม่มีเลย: คุณอาจเรียก `GET /admin/users` ได้หรือไม่ได้ GraphQL ละเอียดกว่านั้น query เดียวสามารถแตะ field สาธารณะ, field ที่มีแต่เจ้าของอ่านได้, และ field ที่สงวนไว้สำหรับ admin — ทั้งหมดในคราวเดียว ดังนั้นที่โดยธรรมชาติสำหรับ authorization คือทุกที่ที่ข้อมูลถูกผลิตขึ้น: **resolver**
+
+```ts
+const resolvers = {
+  Query: {
+    // Public: anyone may read it.
+    publicProfile: (_p, { id }) => loadProfile(id),
+  },
+  User: {
+    // Owner-only: compare the requested record to the caller.
+    email: (user, _a, context) => {
+      if (context.user?.id !== user.id) return null; // hide, don't shout
+      return user.email;
+    },
+    // Admin-only: refuse loudly.
+    auditLog: (_user, _a, context) => {
+      if (context.user?.role !== 'admin') {
+        throw new GraphQLError('Forbidden', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+      return loadAuditLog();
+    },
+  },
+};
+```
+
+สังเกตว่าสอง field จัดการการปฏิเสธ *ต่างกัน* ทางเลือกนั้น — `null` กับการ throw error — คือการตัดสินใจด้านการออกแบบที่เป็นแก่นกลางของ authorization
+
+## คืน `null` หรือ throw forbidden?
+
+เมื่อผู้เรียกไม่ได้รับอนุญาตให้เห็น field คุณมีสองทางเลือกที่ตรงไปตรงมา:
+
+- **คืน `null`** field ต้องเป็น nullable ใน schema query ยังสำเร็จ; ข้อมูลแค่ไม่อยู่ตรงนั้น นี่เหมาะที่สุดเมื่อ *การมีอยู่* ของค่านั้นเป็นข้อมูลอ่อนไหวในตัวมันเอง หรือเมื่อผลลัพธ์บางส่วนยังมีประโยชน์ ผู้เรียกไม่อาจแยก "คุณไม่อาจเห็นสิ่งนี้" ออกจาก "ไม่มีอะไรอยู่ตรงนี้" — ซึ่งบ่อยครั้งคือคุณสมบัติด้าน privacy ที่คุณต้องการพอดี
+- **throw forbidden error** resolver throw `GraphQLError` พร้อม extension code อย่าง `FORBIDDEN` GraphQL บันทึก error ไว้ใต้ `errors`, ตั้ง field นั้นเป็น `null`, และ — ที่สำคัญ — *เก็บ* ส่วนที่เหลือของ response ไว้ นี่เหมาะที่สุดเมื่อคุณต้องการบอก client ที่ซื่อตรงอย่างชัดเจนว่ามันล้ำเส้น เช่น เครื่องมือ admin ที่ควรแสดง "access denied"
+
+หลักการคร่าว ๆ ที่มีประโยชน์: **throw เมื่อ client ทำผิดและควรรู้; คืน `null` เมื่อการเปิดเผยการปฏิเสธจะเป็นการรั่วไหลข้อมูลในตัวมันเอง** ไม่ว่าทางใด อย่าพึ่งพา client ในการบังคับใช้ permission — การตรวจสอบอยู่ที่ server ใน resolver
+
+<Mermaid title="แต่ละ field ตัดสินอย่างอิสระ: อนุญาต, ซ่อนด้วย null, หรือปฏิเสธด้วย forbidden error" code={authzFlow} />
+
+## รวมศูนย์การตรวจสอบ: directive และ middleware
+
+การกระจาย `if (context.user?.role !== 'admin')` ไปทั่ว resolver หลายสิบตัวกลายเป็นเรื่องน่าเบื่อซ้ำซากและลืมง่าย สองรูปแบบช่วยทำให้มัน DRY ขึ้น:
+
+- **Schema directive** — ใส่ annotation ให้ field ใน SDL เช่น `auditLog: String @auth(requires: ADMIN)` และ directive transformer ก็จะห่อ resolver ด้วยการตรวจสอบนั้น permission กลายเป็นส่วนหนึ่งของสัญญา มองเห็นได้สำหรับใครก็ตามที่อ่าน schema
+- **Resolver middleware** — ชั้นหนึ่ง (เช่น `graphql-middleware` หรือ utility ที่ห่อไว้) รันก่อน resolver และใช้กฎตามชื่อ type และ field business logic ยังคงสะอาด; policy อยู่ที่เดียว
+
+ทั้งสองคอมไพล์ลงมาเหลือสิ่งเดียวกัน — การตรวจสอบที่รันรอบ ๆ resolver — ดังนั้น demo ที่รันได้ด้านล่างจึงแสดงกลไกเบื้องลึกโดยตรง
+
+## field ที่ปฏิเสธผู้ใช้ที่ไม่ได้รับอนุญาต
+
+ตัวอย่างนิยาม `me` (user ที่ล็อกอินคนใดก็ได้), `email` (เจ้าของเท่านั้น, คืน `null` เมื่อคุณไม่ใช่เจ้าของ), และ `auditLog` (admin เท่านั้น, throw `FORBIDDEN`) มันรัน *query เดียวกัน* ในฐานะ user ปกติแล้วจึงในฐานะ admin เพื่อให้คุณได้เห็น field หนึ่งพลิกจาก forbidden error ไปเป็นข้อมูลจริง กด **Run**
+
+export const authzCode = `(async () => {
+  const { graphql, buildSchema, GraphQLError } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      me: String
+      email: String
+      auditLog: String
+    }
+  \`);
+
+  // The "record" being read; pretend it belongs to user u1.
+  const ownerId = 'u1';
+
+  const root = {
+    me: (_args, context) => (context.user ? context.user.name : null),
+
+    // Owner-only: hide silently with null when the caller is not the owner.
+    email: (_args, context) =>
+      context.user?.id === ownerId ? 'ada@example.com' : null,
+
+    // Admin-only: refuse loudly with a forbidden error.
+    auditLog: (_args, context) => {
+      if (context.user?.role !== 'admin') {
+        throw new GraphQLError('Forbidden: admin role required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+      return 'login@09:14, export@09:20';
+    },
+  };
+
+  const query = \`{ me email auditLog }\`;
+
+  const asUser = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: { id: 'u1', name: 'Ada', role: 'user' } },
+  });
+  console.log('As a regular user (the owner):');
+  console.log(JSON.stringify(asUser, null, 2));
+
+  const asAdmin = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: { id: 'u9', name: 'Root', role: 'admin' } },
+  });
+  console.log('\\nAs an admin (not the owner):');
+  console.log(JSON.stringify(asAdmin, null, 2));
+})();`;
+
+<NodeRunner client:visible code={authzCode} />
+
+อ่าน output ทั้งสองด้วยกัน ในฐานะ user ปกติ (ผู้ *ที่เป็น* เจ้าของ) `email` คืนที่อยู่แต่ `auditLog` ก่อให้เกิด `FORBIDDEN` error และค่าของมันเป็น `null` — ทว่า `me` และ `email` ยังกลับมา เพราะ field error ที่ถูก throw ทำให้เป็น null เฉพาะ field นั้นและคงส่วนที่เหลือไว้ ในฐานะ admin (ผู้ที่ *ไม่ใช่* เจ้าของ) `auditLog` คืนข้อมูลในขณะที่ `email` เป็น `null` อย่างเงียบ ๆ สไตล์การปฏิเสธคือทางเลือกต่อ field ที่จงใจ: `null` เงียบ ๆ สำหรับ email ที่เป็นความลับของเจ้าของ, error ดังสำหรับ log ที่มีแต่ admin
+
+<Callout title="Authorize ตรงที่ข้อมูลถูกผลิต และเลือกการปฏิเสธอย่างตั้งใจ">
+Authorization ไม่ใช่ประตูเดียวที่ทางเข้า — มันคือการตัดสินที่ทุก field วางการตรวจสอบไว้ใน resolver (หรือแยกเป็น directive หรือ middleware เพื่อให้ประกาศครั้งเดียว) และอย่าไว้ใจ client ในการบังคับใช้ เมื่อ access ถูกปฏิเสธ จงเลือก response อย่างจงใจ: **คืน `null`** เมื่อแม้แต่การยอมรับว่า field มีอยู่จะเป็นการรั่วไหลข้อมูล และ **throw `GraphQLError` พร้อม code `FORBIDDEN`** เมื่อ client ที่ซื่อตรงล้ำเส้นและสมควรได้รับการบอก ทั้งสองทางคงส่วนที่เหลือของ response ไว้ครบถ้วน
+</Callout>
+
+export const authzFlow = `flowchart TD
+  F["Resolver for a field"] --> Q{"Is the caller allowed?"}
+  Q -->|"Yes"| D["Return the real value"]
+  Q -->|"No, and existence is sensitive"| N["Return null (hide silently)"]
+  Q -->|"No, and client overstepped"| E["throw GraphQLError code: FORBIDDEN"]
+  E --> P["Field set to null, rest of response preserved"]`;
+
+export const quizAuthorization = [
+  {
+    q: 'ทำไม authorization ใน GraphQL จึงมักทำเป็นรายต่อ field แทนที่จะทำหนึ่งครั้งต่อคำขอ?',
+    options: [
+      'เพราะ resolver รันแบบขนานและไม่อาจแชร์คำขอกันได้',
+      'เพราะ query เดียวสามารถแตะ field สาธารณะ, เฉพาะเจ้าของ, และเฉพาะ admin ได้ในคราวเดียว',
+      'เพราะ context ไม่พร้อมใช้งานจนกว่า resolver จะรันเสร็จ',
+      'เพราะ GraphQL ห้ามการตรวจสอบระดับคำขอ',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'เมื่อใดที่การคืน null ดีกว่าการ throw forbidden error สำหรับ field ที่ถูกปฏิเสธ?',
+    options: [
+      'เสมอ — ไม่ควรคืน error เลย',
+      'เมื่อแม้แต่การเปิดเผยว่า field มีอยู่หรือถูกปฏิเสธจะเป็นการรั่วไหลข้อมูล',
+      'เฉพาะสำหรับ admin user เท่านั้น',
+      'เมื่อ field เป็น non-null ใน schema',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ใน demo ที่รันได้ เกิดอะไรขึ้นกับส่วนที่เหลือของ response เมื่อ auditLog throw FORBIDDEN error?',
+    options: [
+      'response ทั้งหมดถูกทิ้ง',
+      'มีแต่ auditLog ที่กลายเป็น null; me และ email ยังถูกคืนกลับมา',
+      'server คืน 500 โดยไม่มีข้อมูล',
+      'ทุก field ถูกตั้งเป็น null',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'การตรวจสอบ permission จริง ๆ ควรอยู่ที่ใด?',
+    options: [
+      'ใน client เพื่อให้ UI ซ่อนปุ่มได้',
+      'ที่ server — ใน resolver หรือแยกเป็น directive หรือ middleware',
+      'ใน network proxy เท่านั้น',
+      'ใน scalar ของ GraphQL schema',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/authorization" questions={quizAuthorization} />
+
+<ProgressTracker client:visible id="security-and-performance/authorization" />

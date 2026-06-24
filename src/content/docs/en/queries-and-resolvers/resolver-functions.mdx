@@ -1,0 +1,167 @@
+---
+title: Resolver Functions
+description: 'The four arguments every resolver receives, the resolver chain, default resolvers, and how the parent value flows.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A resolver is just a function, but a function with a fixed, well-known signature. Once you know the four arguments it receives and the order they arrive in, you can write a resolver for any field on any type. This lesson opens that signature up, then traces how resolvers link into a chain.
+
+## The four arguments
+
+Every resolver is called with the same four arguments, always in this order:
+
+```ts
+function resolve(parent, args, context, info) {
+  // ...return the field's value
+}
+```
+
+- **`parent`** — the value returned by the resolver one level up. For a top-level `Query` field there is no parent object, so this is the root value (often unused). For `User.name`, the parent is the `User` object that the field above resolved to.
+- **`args`** — an object holding the arguments passed to *this* field in the query. If the field is `track(id: ID!)`, then `args.id` is the value the client supplied.
+- **`context`** — a value shared across every resolver in a single request. The server builds it once per request and hands the same object to each resolver. It is where you put per-request data: the authenticated user, a database connection, a logger.
+- **`info`** — metadata about the execution: the field name, the path from the root, the full query AST. You rarely need it day to day, but it is there for advanced cases.
+
+The first two — `parent` and `args` — are the workhorses. `parent` tells a resolver *what it is resolving a field of*, and `args` tells it *what the client asked for*.
+
+## The resolver chain and how `parent` flows
+
+Resolvers do not run in isolation; they run in a **chain** driven by the query tree. The engine resolves a parent field, takes whatever that resolver returned, and passes it as the `parent` argument to each child field's resolver. That single hand-off is what stitches the graph together.
+
+<Mermaid title="The value each resolver returns becomes the parent argument of its children." code={parentFlowDiagram} />
+
+Follow the arrows: the `track` resolver returns a track object; the engine then calls the `artist` resolver with that track as its `parent`; the `artist` resolver returns an artist object; finally the `name` resolver is called with that artist as its `parent` and reads `parent.name`. The return value of one link is the `parent` of the next.
+
+## Default resolvers
+
+You do not have to write a resolver for every field. When a field has no explicit resolver, GraphQL falls back to a **default resolver**, which does the obvious thing: it looks at the `parent` object and returns the property with the same name as the field. So if the `track` resolver returns `{ id, title, artist }`, the engine resolves `title` automatically by reading `parent.title` — no `title` resolver required.
+
+This is why small schemas often only need resolvers on the `Query` root: the root resolver returns a fully populated object, and default resolvers walk it the rest of the way. You write explicit resolvers only where a field's value needs computing, fetching, or reshaping.
+
+## Resolvers you can read
+
+The example below uses the full `graphql` building blocks so the resolver functions are written out explicitly, each showing its `(parent, args)` signature. The `Query.track` resolver builds a track; the `Track.artist` resolver receives that track as `parent`; the `Artist.name` resolver reads from its own `parent`. Press **Run**.
+
+export const resolverCode = `(async () => {
+  const {
+    graphql,
+    GraphQLSchema,
+    GraphQLObjectType,
+    GraphQLString,
+    GraphQLID,
+    GraphQLNonNull,
+  } = await import('https://esm.sh/graphql@16');
+
+  const Artist = new GraphQLObjectType({
+    name: 'Artist',
+    fields: {
+      id: { type: new GraphQLNonNull(GraphQLID) },
+      // Explicit resolver: read name off the parent artist object.
+      name: {
+        type: new GraphQLNonNull(GraphQLString),
+        resolve: (parent, args, context, info) => parent.name,
+      },
+    },
+  });
+
+  const Track = new GraphQLObjectType({
+    name: 'Track',
+    fields: {
+      id: { type: new GraphQLNonNull(GraphQLID) },
+      title: { type: new GraphQLNonNull(GraphQLString) },
+      // The value this returns becomes the "parent" of Artist's resolvers.
+      artist: {
+        type: new GraphQLNonNull(Artist),
+        resolve: (parent, args, context, info) => parent.artist,
+      },
+    },
+  });
+
+  const Query = new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      track: {
+        type: Track,
+        args: { id: { type: new GraphQLNonNull(GraphQLID) } },
+        // No parent here; "args" carries the id the client passed.
+        resolve: (parent, args, context, info) => ({
+          id: args.id,
+          title: 'Parent Flows Downhill',
+          artist: { id: 'a1', name: 'The Default Resolvers' },
+        }),
+      },
+    },
+  });
+
+  const schema = new GraphQLSchema({ query: Query });
+
+  const query = \`
+    {
+      track(id: "t1") {
+        title
+        artist {
+          name
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={resolverCode} />
+
+Notice that `id` and `title` have no explicit `resolve` function — the default resolver reads them straight off the parent object the `track` resolver returned. The `artist` resolver simply forwards `parent.artist`, which then becomes the parent for `name`. Each resolver only ever looks one level up and one field across.
+
+<Callout title="Resolve one field, one level at a time">
+A resolver answers exactly one question: "given my `parent` and `args`, what is this field's value?" It never reaches down into children — the engine handles descent by passing each return value as the next `parent`. Lean on default resolvers for plain property reads, share per-request state through `context`, and write explicit resolvers only where real work happens.
+</Callout>
+
+export const parentFlowDiagram = `flowchart TD
+  Root["Query root value"] -->|"track resolver returns track"| T["track object = parent"]
+  T -->|"artist resolver returns artist"| A["artist object = parent"]
+  A -->|"name resolver reads parent.name"| N["name: String"]`;
+
+export const quizResolverFunctions = [
+  {
+    q: 'In what order does a resolver receive its four arguments?',
+    options: [
+      'args, parent, info, context',
+      'parent, args, context, info',
+      'context, parent, args, info',
+      'parent, context, args, info',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where does the "parent" argument of a field resolver come from?',
+    options: [
+      'It is always the Query root value',
+      'It is the value returned by the resolver of the field one level up',
+      'It is the argument object the client passed',
+      'It is the final JSON response',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does a default resolver do when a field has no explicit resolve function?',
+    options: [
+      'It throws an error',
+      'It returns null for the field',
+      'It returns the parent object’s property with the same name as the field',
+      'It re-runs the parent resolver',
+    ],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/resolver-functions" questions={quizResolverFunctions} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/resolver-functions" />

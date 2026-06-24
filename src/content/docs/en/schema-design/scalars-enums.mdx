@@ -1,0 +1,197 @@
+---
+title: Scalars and Enums
+description: 'Built-in scalars, custom scalars like DateTime, enum types, and when to choose an enum over a free-form string.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Every query, no matter how deep it traverses, eventually arrives at a **leaf** — a single concrete value. Those leaves are scalars and enums. They are the smallest pieces of your schema, but choosing them carefully is what makes a field self-documenting and hard to misuse. This lesson covers the built-in scalars, custom scalars, and the enum — your sharpest tool for a fixed set of choices.
+
+## The built-in scalars
+
+GraphQL ships with five scalar types. Every schema can use them without declaring anything:
+
+- `Int` — a signed 32-bit integer. Good for counts, quantities, and small whole numbers.
+- `Float` — a signed double-precision floating-point number. Good for prices, ratings, measurements.
+- `String` — UTF-8 text.
+- `Boolean` — `true` or `false`.
+- `ID` — a unique identifier. It serializes as a string but is **semantically opaque**: it is meant to be used as a key, not parsed or computed on.
+
+The distinction between `ID` and `String` matters even though both travel as text. Declaring a field as `ID` tells every reader "this is an identifier, treat it as a token," which is a different promise from "this is human-readable text."
+
+```graphql
+type Product {
+  id: ID!
+  name: String!
+  priceUSD: Float!
+  stock: Int!
+  inStock: Boolean!
+}
+```
+
+## Custom scalars
+
+The built-in five do not cover everything. There is no built-in date type, no email type, no URL type. When a value has its own format and validation rules, you can declare a **custom scalar**:
+
+```graphql
+scalar DateTime
+
+type Product {
+  id: ID!
+  name: String!
+  releasedAt: DateTime!
+}
+```
+
+Declaring `scalar DateTime` adds the name to your schema; the server then attaches logic that serializes and validates the value (commonly an ISO-8601 string such as `2026-06-25T10:00:00Z`). Custom scalars centralize a format in one place: every `DateTime` field is parsed and validated the same way, so clients always know exactly what shape to expect. Popular custom scalars include `DateTime`, `EmailAddress`, `URL`, and `JSON` — reach for one whenever a `String` would force every client to reinvent the same parsing rules.
+
+## Enums — a fixed set of named values
+
+An **enum** is a type whose value must be one of a fixed, named set. When a field can only ever be one of a handful of known options, an enum captures that in the type system:
+
+```graphql
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+type Order {
+  id: ID!
+  status: OrderStatus!
+}
+```
+
+The value of `status` is guaranteed to be one of those five names — the server will reject anything else before a resolver runs. Enum values are conventionally written in `SCREAMING_SNAKE_CASE`, and they are not strings: `PAID` is a symbol the schema knows about, not the text `"PAID"`.
+
+<Mermaid title="An enum constrains a field to one of a fixed set of named values." code={enumDiagram} />
+
+## When to use an enum vs a string
+
+This is one of the most common design decisions you will face. Use an **enum** when the set of valid values is **known, small, and meaningful to your domain** — statuses, roles, sizes, sort directions. The payoff is real:
+
+- **Validation is free** — invalid values are rejected by the type system, not your resolver.
+- **The contract documents itself** — a client sees every legal value in the schema.
+- **Tooling autocompletes** the options, and code generators produce a real enum type.
+
+Use a plain **`String`** when the set is **open-ended or user-supplied** — names, search terms, free-form notes, anything you do not control. A useful rule of thumb: *if you could write down every valid value today and the list rarely changes, it is an enum; if the values come from users or grow unpredictably, it is a string.*
+
+## An enum in action, run for real
+
+The example below defines the `OrderStatus` enum and an `Order` type, then queries an order and reads its status back as an enum value. Press **Run**.
+
+export const enumCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // An enum locks "status" to one of a fixed, named set of values.
+  const schema = buildSchema(\`
+    enum OrderStatus {
+      PENDING
+      PAID
+      SHIPPED
+      DELIVERED
+      CANCELLED
+    }
+
+    type Order {
+      id: ID!
+      total: Float!
+      status: OrderStatus!
+    }
+
+    type Query {
+      order(id: ID!): Order
+    }
+  \`);
+
+  const root = {
+    order: ({ id }) => ({ id, total: 42.5, status: 'SHIPPED' }),
+  };
+
+  // The enum value comes back as a bare symbol, not a quoted string.
+  const query = \`
+    {
+      order(id: "o1") {
+        id
+        total
+        status
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={enumCode} />
+
+The `status` field returned `SHIPPED`. Had the resolver produced a value outside the enum — say `RETURNED` — GraphQL would have raised an error instead of silently passing bad data to the client. That is the guarantee an enum buys you.
+
+<Callout title="Reach for an enum when the values are knowable">
+Scalars are the leaves of your schema, so spend a moment on each one. Prefer `ID` over `String` for identifiers, define a custom scalar when a format deserves shared validation, and choose an **enum** whenever a field's values form a small, fixed, meaningful set. The enum moves validation into the type system and turns the schema itself into the list of legal options — fewer bugs, better tooling, clearer contract.
+</Callout>
+
+export const enumDiagram = `flowchart TD
+  Field["Order.status : OrderStatus"]
+  Enum["enum OrderStatus"]
+  V1["PENDING"]
+  V2["PAID"]
+  V3["SHIPPED"]
+  V4["DELIVERED"]
+  V5["CANCELLED"]
+  Field --> Enum
+  Enum --> V1
+  Enum --> V2
+  Enum --> V3
+  Enum --> V4
+  Enum --> V5`;
+
+export const quizScalarsEnums = [
+  {
+    q: 'Which built-in scalar is meant for opaque identifiers rather than human-readable text?',
+    options: ['String', 'ID', 'Int', 'Boolean'],
+    answer: 1,
+  },
+  {
+    q: 'Why might you define a custom scalar such as DateTime?',
+    options: [
+      'To make queries run faster',
+      'To centralize one format and its validation so every field of that type behaves the same',
+      'Because String cannot hold dates',
+      'To replace the need for object types',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When is an enum a better choice than a String field?',
+    options: [
+      'When the values are user-supplied and open-ended',
+      'When the valid values form a small, known, fixed set meaningful to the domain',
+      'Whenever the field is non-null',
+      'Only inside the Query type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What happens if a resolver returns a value that is not one of an enum’s declared members?',
+    options: [
+      'GraphQL coerces it to the nearest member',
+      'It is returned to the client as a plain string',
+      'GraphQL raises an error instead of returning the invalid value',
+      'The field becomes null silently with no error',
+    ],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="schema-design/scalars-enums" questions={quizScalarsEnums} />
+
+<ProgressTracker client:visible id="schema-design/scalars-enums" />

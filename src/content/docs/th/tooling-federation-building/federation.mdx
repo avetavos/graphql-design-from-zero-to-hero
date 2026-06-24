@@ -1,0 +1,146 @@
+---
+title: Federation
+description: 'การแยกกราฟข้ามหลายเซอร์วิส — subgraphs และ gateway, entities และ references และการประกอบ supergraph เดียวจากหลาย domain'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL service เดียวเป็นคำตอบที่ถูกต้องไปได้นานทีเดียว แต่เมื่อบริษัทเติบโตขึ้น schema เดียวที่ทีมเดียวเป็นเจ้าของกลายเป็นคอขวด: ทุกการเปลี่ยนแปลงต้องลอดผ่าน codebase เดียว, deploy เดียว, ชุด reviewer เดียว **Federation** คือ pattern ที่ยอมให้หลายทีมต่างเป็นเจ้าของกราฟคนละชิ้น ขณะที่ client ยังเห็น API เดียวที่รวมเป็นหนึ่ง
+
+## หนึ่งกราฟ หลายเจ้าของ
+
+แนวคิดคือการแยกกราฟออกเป็น **subgraphs** — GraphQL service อิสระ แต่ละตัวเป็นเจ้าของ types และ fields ของหนึ่ง **domain** ทีม `accounts` เป็นเจ้าของ `User` ทีม `catalog` เป็นเจ้าของ `Product` ทีม `reviews` เป็นเจ้าของ `Review` แต่ละ subgraph เป็น GraphQL server ปกติที่คุณรันด้วยตัวมันเองได้
+
+ข้างหน้าพวกมันมี **gateway** (หรือ router) ตั้งอยู่ gateway อ่าน schema ของทุก subgraph **ประกอบ** (compose) พวกมันเป็น schema รวมหนึ่งเดียวที่เรียกว่า **supergraph** แล้วนำเสนอ schema เดียวนั้นให้ client client ส่ง query หนึ่งครั้ง gateway คิดออกว่าต้องเรียก subgraph ไหนบ้าง ตามลำดับใด แล้วเย็บชิ้นส่วนกลับเป็น response เดียว
+
+<Mermaid title="แต่ละทีมเป็นเจ้าของ subgraph หนึ่ง gateway ประกอบพวกมันเป็น supergraph เดียวที่ client query" code={fedFlow} />
+
+ชัยชนะคือเรื่อง **องค์กร**: ทีม reviews ปล่อยการเปลี่ยนแปลงที่ `Review` ได้โดยไม่ต้องแตะ — หรือประสานงานกับ — ทีม accounts กราฟขยายตัวไปตามผังองค์กรแทนที่จะต่อสู้กับมัน
+
+## Entities และ references — subgraphs เชื่อมกันอย่างไร
+
+เวทมนตร์ที่ทำให้ `Review` เชื่อมไปยัง `User` ได้ทั้งที่อยู่คนละเซอร์วิสคือ **entity** entity คือ type ที่ subgraph มากกว่าหนึ่งตัวมาช่วยเติมได้ ระบุด้วย key คุณ mark มันด้วย `@key` พร้อม field ที่ระบุตัวตนของมันได้แบบไม่ซ้ำ
+
+subgraph `accounts` *นิยาม* entity `User`:
+
+```graphql
+# accounts subgraph
+type User @key(fields: "id") {
+  id: ID!
+  name: String!
+}
+
+type Query {
+  me: User
+}
+```
+
+subgraph `reviews` *อ้างอิง* `User` โดยไม่ได้เป็นเจ้าของข้อมูลของมัน มันประกาศ entity เป็น `extend` ด้วย key เดียวกันและตัวยึดที่ (placeholder) สำหรับ field ที่มันต้องการ จากนั้นเพิ่ม link `author` ของมันเอง:
+
+```graphql
+# reviews subgraph
+type Review {
+  id: ID!
+  body: String!
+  author: User!
+}
+
+extend type User @key(fields: "id") {
+  id: ID! @external
+}
+```
+
+เมื่อ client ขอ `review { author { name } }` gateway เรียก subgraph reviews เพื่อเอา review และ `author.id` ของมัน จากนั้นขอให้ subgraph accounts **resolve the reference** — "เอา `User` ที่มี `id` นี้มาให้หน่อย" แต่ละ subgraph implement reference resolver ที่เปลี่ยน key ให้เป็น entity เต็ม:
+
+```ts
+// accounts subgraph resolvers
+const resolvers = {
+  User: {
+    // The gateway hands over the key; the owning subgraph returns the entity.
+    __resolveReference(ref: { id: string }) {
+      return findUserById(ref.id);
+    },
+  },
+};
+```
+
+`__resolveReference` นั้นคือรอยต่อ (seam) ของ federation subgraph reviews ไม่เคย query database ของ accounts เลย มันแค่ส่ง `User` *reference* ออกมา (เป็น `id`) แล้ว subgraph ที่เป็นเจ้าของก็เติมส่วนที่เหลือให้ ความเป็นเจ้าของยังคงสะอาดแม้ว่า type หนึ่งจะถูกเสริมโดยหลายเซอร์วิส
+
+## กฎการประกอบทำให้กราฟซื่อสัตย์
+
+gateway ไม่ได้รวม schema แบบมั่ว ๆ มัน **validate composition**: subgraph สองตัวไม่สามารถนิยาม field เดียวกันบน type หนึ่งในแบบที่ขัดแย้งกันได้ ทุก entity ที่ถูกอ้างถึงต้องถูกนิยามไว้ที่ใดที่หนึ่งด้วย `@key` ที่ตรงกัน และ field `@external` ต้องมีอยู่จริงบน subgraph ที่เป็นเจ้าของ หากการประกอบล้มเหลว supergraph จะไม่ถูก publish — ซึ่งหมายความว่าการเปลี่ยนแปลงที่พังถูกจับได้ก่อนที่ client คนใดจะเห็น composition เป็นต่อ federation เหมือนที่ code generation เป็นต่อบทเรียนที่แล้ว: การตรวจสอบด้วยเครื่องว่า contract ที่รวมกันแล้วยังคงสอดคล้องกัน
+
+## federate ตาม domain ไม่ใช่ตาม layer
+
+ความผิดพลาดที่พบบ่อยที่สุดของ federation คือการแยกตาม *layer ทางเทคนิค* — "database subgraph", "validation subgraph" นั่นสร้างคอขวดขึ้นมาใหม่ เพราะทุกฟีเจอร์ยังคงแตะทุก layer อยู่ดี ให้แยกตาม **domain** แทน: accounts, catalog, reviews, billing แต่ละ subgraph จึงตรงกับทีมที่เป็นเจ้าของชิ้นส่วนแนวตั้งทั้งชิ้นแบบ end to end ได้ และรอยต่อของ `@key`/reference ตกลงบนขอบเขต domain ตามธรรมชาติ (review *มี* author หนึ่งคน; product *มี* reviews)
+
+<Callout title="federate ตาม domain และเฉพาะเมื่อจำเป็นเท่านั้น">
+หันไปหา federation เมื่อ schema เดียวและทีมเดียวกลายเป็นคอขวดแล้ว — ไม่ใช่ก่อนหน้านั้น เซอร์วิสเดียวสร้าง, test และเข้าใจได้ง่ายกว่า และผลิตภัณฑ์ส่วนใหญ่ไม่เคยโตเกินมัน เมื่อคุณแยกจริง ๆ ให้แยกตาม **domain** เพื่อให้แต่ละ subgraph ตรงกับทีมหนึ่งและชิ้นส่วนของธุรกิจที่มีขอบเขตชัดเจน ปล่อยให้ entities และ `@key` แบกการเชื่อมโยงข้าม domain เก็บ `__resolveReference` ไว้เป็นรอยต่อเพียงอันเดียว และไว้ใจ composition validation ให้ปฏิเสธการเปลี่ยนแปลงใด ๆ ที่จะทำให้กราฟที่รวมกันแล้วพัง
+</Callout>
+
+export const fedFlow = `flowchart TD
+  Client["Client (one query)"]
+  Gateway["Gateway / Router"]
+  Super["Supergraph (composed schema)"]
+  Accounts["accounts subgraph (User)"]
+  Catalog["catalog subgraph (Product)"]
+  Reviews["reviews subgraph (Review)"]
+  Client --> Gateway
+  Gateway --> Super
+  Gateway --> Accounts
+  Gateway --> Catalog
+  Gateway --> Reviews
+  Reviews -->|"author: User via @key id"| Accounts`;
+
+export const quizFederation = [
+  {
+    q: 'subgraph ในสถาปัตยกรรม GraphQL แบบ federated คืออะไร?',
+    options: [
+      'ส่วนย่อยของ query หนึ่ง',
+      'GraphQL service อิสระที่เป็นเจ้าของ types และ fields ของหนึ่ง domain',
+      'ตาราง database',
+      'cache ฝั่ง client',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'gateway สร้างอะไรขึ้นมาด้วยการรวม schema ของ subgraph เข้าด้วยกัน?',
+    options: [
+      'REST API',
+      'schema ที่ประกอบแล้วหนึ่งเดียวที่เรียกว่า supergraph',
+      'schema แยกหนึ่งตัวต่อ client หนึ่งคน',
+      'database migration',
+    ],
+    answer: 1,
+  },
+  {
+    q: '__resolveReference ทำอะไร?',
+    options: [
+      'มัน validate argument ของ query',
+      'มันเปลี่ยน entity key (เช่น id) จาก subgraph อื่นให้เป็น entity เต็ม',
+      'มันลบ record',
+      'มันประกอบ supergraph',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'คุณควรแยกกราฟออกเป็น subgraphs อย่างไร?',
+    options: [
+      'ตาม layer ทางเทคนิค — database subgraph, validation subgraph',
+      'ตาม domain — accounts, catalog, reviews — เพื่อให้แต่ละอันตรงกับทีมหนึ่ง',
+      'ตามลำดับตัวอักษรของชื่อ type',
+      'หนึ่ง subgraph ต่อหนึ่ง field',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/federation" questions={quizFederation} />
+
+<ProgressTracker client:visible id="tooling-federation-building/federation" />

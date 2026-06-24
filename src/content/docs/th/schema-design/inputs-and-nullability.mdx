@@ -1,0 +1,209 @@
+---
+title: Inputs และ Nullability
+description: 'input object type สำหรับ argument, เครื่องหมาย non-null, list type, ค่า default และวิธีออกแบบ input ให้สะอาด'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ส่วนประกอบพื้นฐานชิ้นสุดท้ายคือข้อมูลที่ไหล *เข้า* สู่ schema ของคุณ object type อธิบายสิ่งที่คืนกลับมา **input object type** อธิบายสิ่งที่ client ส่งเข้ามา เมื่อรวมกับ **nullability**, **list** และ **ค่า default** แล้ว input คือวิธีที่คุณออกแบบ argument ที่ทั้งสื่อความหมายได้ดีและทำให้ผิดพลาดได้ยาก บทเรียนนี้ปิดท้ายโมดูลด้วยฝั่งของสัญญาที่ client เป็นผู้เขียนเข้ามา
+
+## Input object type
+
+เมื่อ field รับ argument มากกว่าสองสามตัว การไล่ลิสต์ทั้งหมดแบบ inline จะเริ่มเทอะทะ **input object type** มัด argument ที่เกี่ยวข้องกันเข้าไว้ในโครงสร้างเดียวที่มีชื่อ มันดูเหมือน object type แต่ถูกประกาศด้วยคีย์เวิร์ด `input` และอาจมีได้แค่ scalar, enum, list และ input อื่น ๆ — ไม่มีทางเป็น object type:
+
+```graphql
+input CreateBookInput {
+  title: String!
+  authorId: ID!
+  pageCount: Int
+}
+
+type Mutation {
+  createBook(input: CreateBookInput!): Book
+}
+```
+
+ตอนนี้ `createBook` รับ argument หนึ่งตัวคือ `input` แทนที่จะเป็นสามตัวที่กระจัดกระจาย นี่คือรูปแบบมาตรฐานสำหรับ mutation: argument `input` เดียวช่วยให้ลายเซ็นของ mutation คงเสถียรแม้ field ภายในมันจะวิวัฒน์ไป input และ object type เป็นชนิดที่แยกจากกันโดยจงใจ — object type มีไว้สำหรับ *output* input type มีไว้สำหรับ *input* และ GraphQL จะไม่ยอมให้คุณปนกัน
+
+## Nullability — เครื่องหมายอัศเจรีย์
+
+การอ้างอิง type ทุกตัว **เป็น nullable โดยปริยาย** เครื่องหมาย `!` ต่อท้ายทำให้มันเป็น **non-null** บน field ของ input เครื่องหมาย `!` หมายความว่า client *ต้อง* ให้ค่านั้นมา:
+
+```graphql
+input CreateBookInput {
+  title: String!     # required — the client must send it
+  authorId: ID!      # required
+  pageCount: Int     # optional — may be omitted or sent as null
+}
+```
+
+`title` และ `authorId` เป็น non-null ดังนั้นการละเว้นมันจึงเป็นข้อผิดพลาดด้านการตรวจสอบที่ถูกดักไว้ก่อนที่ resolver ใด ๆ จะทำงาน `pageCount` เป็น nullable จึงเป็น optional nullability บน input คือวิธีที่คุณแสดง "จำเป็น vs ไม่จำเป็น" โดยไม่ต้องเขียนโค้ดตรวจสอบสักบรรทัด — ระบบ type บังคับใช้มันให้คุณ
+
+## List และเครื่องหมายอัศเจรีย์สองตัว
+
+**list type** เขียนด้วยวงเล็บเหลี่ยม: `[Book]` เพราะทั้งตัว list และสมาชิกของมันสามารถเป็น null ได้อย่างเป็นอิสระ list type จึงมักพกเครื่องหมายอัศเจรีย์สองตัวที่ทำงานสองหน้าที่ต่างกัน:
+
+```graphql
+input AddTagsInput {
+  bookId: ID!
+  tags: [String!]!
+}
+```
+
+ถอดรหัส `[String!]!` จากในออกนอก:
+
+- `String!` ด้านในหมายความว่า **ทุกสมาชิก** ของ list เป็น string ที่ non-null — ไม่มีรู `null` อยู่ข้างใน
+- `!` ด้านนอกหมายความว่า **ตัว list เอง** ไม่เป็น null เลย — แม้ว่ามันยังว่างเปล่าได้ `[]`
+
+ดังนั้น `tags` เป็น list เสมอ และทุก tag ในนั้นเป็น string จริง ๆ การอ่านแบบเดียวกันใช้กับ output field อย่าง `[Book!]!` การเลือกชุดเครื่องหมายที่ถูกต้องบอก client เป๊ะ ๆ ว่าจะคาดหวังอะไร: client ต้องจัดการกับ list ที่หายไปไหม? list ที่มีช่องว่างไหม? `[String!]!` ตอบว่าไม่ ทั้งสองข้อ
+
+<Mermaid title="input object มัด argument เข้าด้วยกัน; nullability และ list กำหนดว่าอะไรจำเป็น" code={inputDiagram} />
+
+## ค่า default
+
+argument หรือ field ของ input ที่เป็น optional สามารถประกาศ **ค่า default** ด้วย `=` ได้ หาก client ละเว้นมัน ค่า default จะถูกใช้:
+
+```graphql
+type Query {
+  books(first: Int = 10, sortBy: String = "title"): [Book!]!
+}
+```
+
+หาก client เรียก `books` โดยไม่มี argument มันจะได้หนังสือ 10 เล่มแรกเรียงตาม title ค่า default ช่วยให้คุณคง argument ให้เป็น optional ได้ในขณะที่ยังให้ค่าที่สมเหตุสมผลแก่ resolver ไว้ทำงาน — resolver ไม่เคยเห็น `undefined` สำหรับ `first` มันเห็น `10` field ที่มี default นั้นโดยนิยามแล้วเป็น optional ดังนั้นอย่าทำเครื่องหมาย non-null ให้มันในแบบที่ขัดแย้งกับ default ด้วย
+
+## ออกแบบ input ที่ทนทานต่อเวลา
+
+นิสัยไม่กี่อย่างช่วยให้ input น่าใช้เมื่อเวลาผ่านไป ห่อ argument ของ mutation ไว้ใน `input` type เดียวเพื่อให้ลายเซ็นคงเสถียร ทำให้ field เป็น non-null เฉพาะเมื่อการดำเนินการทำต่อไปไม่ได้จริง ๆ หากขาดมัน — การใช้ `!` มากเกินไปทำให้ API แข็งทื่อและทำให้ client พังเมื่อข้อกำหนดผ่อนคลายลง ให้ค่า default สำหรับการแบ่งหน้าและการเรียงลำดับ เพื่อให้การเรียกแบบง่ายเป็นการเรียกที่ทำได้ง่าย และคง input type ให้มีจุดโฟกัส: หนึ่ง input ต่อหนึ่งการดำเนินการ ตั้งชื่อตามการดำเนินการ ดีกว่าถุงรวมขนาดยักษ์ของ field optional ที่ใช้ร่วมกัน
+
+## Inputs, nullability และ default รันได้จริง
+
+ตัวอย่างด้านล่างนิยาม `CreateBookInput` mutation ที่บริโภคมัน และรัน mutation ด้วย input บางส่วน — โดยพึ่งพา nullability เพื่ออนุญาตให้ละเว้น field ที่เป็น optional ได้ กดปุ่ม **Run**
+
+export const inputsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // An input type bundles arguments; "!" marks the required ones.
+  const schema = buildSchema(\`
+    input CreateBookInput {
+      title: String!
+      authorId: ID!
+      pageCount: Int
+    }
+
+    type Book {
+      id: ID!
+      title: String!
+      authorId: ID!
+      pageCount: Int
+      tags: [String!]!
+    }
+
+    type Mutation {
+      createBook(input: CreateBookInput!): Book
+    }
+
+    type Query {
+      hello: String
+    }
+  \`);
+
+  let nextId = 100;
+  const root = {
+    createBook: ({ input }) => ({
+      id: String(nextId++),
+      title: input.title,
+      authorId: input.authorId,
+      pageCount: input.pageCount ?? null,
+      tags: [],
+    }),
+  };
+
+  // pageCount is optional, so we omit it; the field comes back as null.
+  const mutation = \`
+    mutation {
+      createBook(input: { title: "Graphs for Everyone", authorId: "au9" }) {
+        id
+        title
+        pageCount
+        tags
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: mutation, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={inputsCode} />
+
+mutation ส่งมาเฉพาะสอง field ที่จำเป็นเท่านั้น เพราะ `pageCount` เป็น nullable ใน input การละเว้นมันจึงถูกต้องตามกฎ และ resolver เติมมันด้วย `null` field `tags` คืนกลับมาเป็น `[]` — list ที่ non-null เพียงแต่ว่างเปล่า — ตรงตามที่ `[String!]!` สัญญาไว้เป๊ะ ระบบ type ตรวจสอบ input ทั้งหมดก่อนที่ resolver จะทำงานเสียอีก
+
+<Callout title="Input และ nullability คือวิธีที่สัญญาตรวจสอบตัวเอง">
+มัด argument ที่เกี่ยวข้องกันเข้าไว้ใน `input` object type — โดยเฉพาะสำหรับ mutation — และปล่อยให้ nullability ทำการตรวจสอบให้คุณ: `!` สำหรับสิ่งที่จำเป็น แบบธรรมดาสำหรับสิ่งที่ optional และ `[T!]!` สำหรับ list ที่รับประกันของค่าที่รับประกัน เพิ่มค่า default เพื่อให้การเรียกที่พบบ่อยสั้นกระชับ เมื่อออกแบบเช่นนี้ argument ของคุณจะอธิบายเป๊ะ ๆ ว่า client ส่งอะไรได้ และปฏิเสธสิ่งที่เหลือโดยอัตโนมัติ โดยไม่ต้องเขียนโค้ดตรวจสอบด้วยมือใน resolver ของคุณเลย
+</Callout>
+
+export const inputDiagram = `flowchart TD
+  Mutation["Mutation.createBook(input)"]
+  Input["input CreateBookInput"]
+  Required["title: String! (required)"]
+  Required2["authorId: ID! (required)"]
+  Optional["pageCount: Int (optional)"]
+  List["tags: [String!]! (non-null list of non-null)"]
+  Mutation --> Input
+  Input --> Required
+  Input --> Required2
+  Input --> Optional
+  Input --> List`;
+
+export const quizInputsNullability = [
+  {
+    q: 'input object type ใช้สำหรับอะไร?',
+    options: [
+      'คืนข้อมูลที่ซ้อนกันกลับไปยัง client',
+      'มัด argument ที่เกี่ยวข้องกันซึ่ง client ส่งเข้าไปใน field',
+      'ประกาศ union ของ type',
+      'แทนที่ scalar',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'บน field ของ input เครื่องหมาย ! ต่อท้ายหมายความว่าอะไร?',
+    options: [
+      'field นั้นเลิกใช้แล้ว (deprecated)',
+      'client ต้องให้ค่ามา — มันจำเป็น',
+      'ค่าจะถูกตั้งเป็น default โดยอัตโนมัติ',
+      'field คืน list',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'type [String!]! อธิบายอะไร?',
+    options: [
+      'list ที่เป็น nullable ซึ่งอาจมี string ที่เป็น null',
+      'list ที่ non-null ซึ่งทุกสมาชิกเป็น string ที่ non-null (list อาจว่างเปล่าได้)',
+      'string เดียวเป๊ะ ๆ ไม่มีทางเป็น list',
+      'list ของ input object',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ค่า default (เช่น first: Int = 10) ทำให้เกิดอะไร?',
+    options: [
+      'มันทำให้ argument จำเป็น',
+      'มันให้ค่าเมื่อ client ละเว้น argument ที่เป็น optional',
+      'มันแปลง argument ให้เป็น enum',
+      'มันบังคับให้ field เป็น non-null',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/inputs-and-nullability" questions={quizInputsNullability} />
+
+<ProgressTracker client:visible id="schema-design/inputs-and-nullability" />

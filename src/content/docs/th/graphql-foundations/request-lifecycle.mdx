@@ -1,0 +1,128 @@
+---
+title: Request Lifecycle
+description: 'วิธีที่ server เปลี่ยน query ให้เป็น response — parse, validate เทียบกับ schema แล้วจึง execute resolver ที่เดินไปตาม query'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ตอนนี้คุณรู้แล้วว่า schema และ query คืออะไร พื้นฐานข้อสุดท้ายคือการเข้าใจว่าเกิดอะไรขึ้น *ระหว่าง* การส่ง query กับการรับ response GraphQL server ประมวลผลทุก request ในสามเฟสที่เรียงลำดับกัน: **parse**, **validate** และ **execute** การรู้เฟสเหล่านี้บอกคุณได้อย่างแม่นยำว่า request จะล้มเหลวที่ไหนและทำไม
+
+## สามเฟส
+
+<Mermaid title="ทุก request ของ GraphQL ไหลผ่าน parse แล้ว validate แล้วจึง execute" code={lifecycleDiagram} />
+
+### 1. Parse
+
+server รับ query มาเป็นข้อความธรรมดา แล้วเปลี่ยนมันให้เป็น tree ที่มีโครงสร้างเรียกว่า **Abstract Syntax Tree (AST)** เฟสนี้ตรวจสอบเฉพาะ *ไวยากรณ์* — วงเล็บปีกกาสมดุลไหม syntax ถูกต้องตามรูปแบบหรือเปล่า วงเล็บปิดที่หายไปหรือ comma หลงทางจะล้มเหลวที่นี่ ก่อนที่จะปรึกษา schema ด้วยซ้ำ
+
+### 2. Validate
+
+ตอนนี้ server เทียบ AST กับ **schema** นี่คือจุดที่ type system ทำงานคุ้มค่า ตัว validator ยืนยันว่าทุก field ที่คุณเลือกมีอยู่จริงบน type ของมัน argument มี type ที่ถูกต้อง คุณไม่ได้ขอ scalar field พร้อม sub-selection และกฎอีกหลายสิบข้อ หาก validation ล้มเหลว server จะปฏิเสธ request และคืน array ของ `errors` — และที่สำคัญคือ **ไม่มี resolver ตัวใดรัน** query ไม่เคยแตะข้อมูลหรือ business logic ของคุณเลย
+
+### 3. Execute
+
+เมื่อ query ถูก parse และ validate แล้ว server จะ **execute** มันโดยเดินไปตาม AST และเรียก **resolver** สำหรับแต่ละ field การ execute เริ่มที่ root type (`Query`, `Mutation` หรือ `Subscription`) แล้วไล่ลงทีละ field resolver แต่ละตัวคืนค่า; หากค่านั้นเป็น object type engine จะ recurse เข้าไปใน sub-field ที่ถูกเลือก แล้วเรียก resolver ของมันตามลำดับ ค่าที่คืนมาจะถูกประกอบเป็น response ที่มีรูปร่างสะท้อน query
+
+## validation ปฏิเสธ field ที่ไม่ถูกต้อง
+
+วิธีที่ดีที่สุดในการสัมผัสความต่างระหว่าง validation กับ execution คือดู validation จับ error ตัวรันด้านล่างส่ง query ที่ขอ field ชื่อ `colour` ซึ่งไม่มีอยู่บน `Book` type กด **Run**: schema ถูกต้องและ resolver พร้อมแล้ว แต่ request ไม่เคยไปถึงมัน แทนที่จะเป็นเช่นนั้น response กลับเป็น array ของ `errors` ที่อธิบายปัญหา
+
+export const lifecycleCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Book {
+      title: String!
+      year: Int!
+    }
+    type Query {
+      book: Book
+    }
+  \`);
+
+  const root = {
+    // This resolver is perfectly fine — but it will never be called,
+    // because the query fails validation first.
+    book: () => ({ title: 'The Lifecycle of a Query', year: 2025 }),
+  };
+
+  // "colour" is not a field on Book. The schema has no such field,
+  // so validation rejects the whole request before execution.
+  const query = \`
+    {
+      book {
+        title
+        colour
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={lifecycleCode} />
+
+อ่านผลลัพธ์อย่างระมัดระวัง ไม่มี `data` สำหรับ book; แต่คุณได้ array ของ `errors` ที่มีข้อความบอกว่า `colour` ไม่สามารถถูก query บน type `Book` ได้ พร้อมบรรทัดและคอลัมน์ที่มันปรากฏ นี่คือเฟส validate ที่กำลังทำหน้าที่ของมัน แก้ query — เปลี่ยน `colour` เป็น `year` — แล้วรันอีกครั้งเพื่อดู request แล่นผ่าน validation เข้าสู่ execution และคืนข้อมูลจริง
+
+<Callout title="ประเด็นสำคัญ">
+Parse จับ *ไวยากรณ์ที่ผิด* Validate จับ *query ที่ schema ทำตามไม่ได้* — และหยุดมันก่อนที่ resolver ตัวใดจะรัน ซึ่งเป็นเหตุผลว่าทำไม schema ที่มี type กำกับจึงทำให้ GraphQL API ทั้งปลอดภัยกว่าและคาดเดาได้มากกว่า Execute คือเฟสเดียวที่แตะข้อมูลของคุณ เมื่อคุณเห็น array ของ `errors` โดยไม่มี `data` แทบทุกครั้ง request ล้มเหลวที่ parse หรือ validate ดังนั้นจงดูที่ query และ schema ก่อนที่จะสงสัย resolver ของคุณ
+</Callout>
+
+export const lifecycleDiagram = `sequenceDiagram
+  participant C as Client
+  participant P as Parse
+  participant V as Validate
+  participant E as Execute (resolvers)
+  participant D as Data sources
+  C->>P: query text
+  P->>V: AST (grammar OK)
+  Note over V: check AST against the schema
+  V--xC: errors array if a field is invalid (no resolver runs)
+  V->>E: validated AST
+  E->>D: call resolvers, walk the query
+  D-->>E: field values
+  E-->>C: response shaped like the query`;
+
+export const quizLifecycle = [
+  {
+    q: 'สามเฟสของการจัดการ request ของ GraphQL เรียงตามลำดับคืออะไร?',
+    options: [
+      'Authenticate, parse, return',
+      'Parse, validate, execute',
+      'Validate, execute, cache',
+      'Compile, run, serialize',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในเฟสใดที่ query ถูกตรวจสอบเทียบกับ schema เพื่อหา field ที่ไม่รู้จักและ type ของ argument ที่ผิด?',
+    options: ['Parse', 'Validate', 'Execute', 'Serialize'],
+    answer: 1,
+  },
+  {
+    q: 'หาก query ขอ field ที่ไม่มีอยู่บน type จะเกิดอะไรขึ้น?',
+    options: [
+      'resolver รันและคืน null',
+      'validation ปฏิเสธ request และไม่มี resolver ตัวใดรัน',
+      'server crash',
+      'field ถูกตัดทิ้งอย่างเงียบ ๆ และคืนข้อมูลกลับมา',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'เฟสใดที่เรียก resolver จริง ๆ และแตะแหล่งข้อมูลของคุณ?',
+    options: ['Parse', 'Validate', 'Execute', 'Introspect'],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/request-lifecycle" questions={quizLifecycle} />
+
+<ProgressTracker client:visible id="graphql-foundations/request-lifecycle" />

@@ -1,0 +1,153 @@
+---
+title: Persisted Queries & Caching
+description: 'Allowlisting operations with persisted and automatic persisted queries, response and per-field caching, and rate limiting — turning a flexible endpoint into a fast, predictable one.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The last of our four questions is **have we seen this before?** A GraphQL endpoint that re-does identical work for every request is both slow and exposed. The techniques in this lesson — persisted queries, caching, and rate limiting — turn repeated work into cheap, predictable work, and as a bonus shrink the attack surface from the previous lesson to almost nothing.
+
+## Persisted queries: register first, send an ID later
+
+In ordinary GraphQL the client ships the full query string on every request. A **persisted query** flips that: the operation text is registered with the server ahead of time and given a short identifier (usually a SHA-256 hash). At runtime the client sends only the ID. Two big wins follow:
+
+- **Security (allowlisting).** If the server *only* accepts IDs it has registered, an attacker can no longer invent the deep, aliased, expensive queries of the previous lesson. The set of executable operations is frozen to exactly what your own apps shipped. This is often called an **operation allowlist** or **trusted documents**.
+- **Performance.** A small hash travels over the wire instead of a multi-kilobyte query, and the server can skip re-parsing text it has already seen.
+
+```ts
+// Build time: hash every operation your client ships and store the map.
+const persisted = {
+  // sha256(query) -> the trusted operation text
+  'b1946ac9...': 'query Me { me { id name } }',
+};
+
+// Runtime: the client sends only { id }. Reject anything unknown.
+function resolveOperation(id: string): string {
+  const query = persisted[id];
+  if (!query) {
+    throw new Error('PersistedQueryNotFound'); // not on the allowlist
+  }
+  return query;
+}
+```
+
+**Automatic Persisted Queries (APQ)** are a popular variant. The client optimistically sends just the hash; if the server has never seen it, it replies `PersistedQueryNotFound`, and the client retries once with the full query *and* the hash so the server can register it. After that first miss, every client uses the short hash. APQ is great for shrinking request size, but note it is *not* an allowlist by itself — it will register whatever a client sends. For security you want a *pre-registered* allowlist; for bandwidth, APQ.
+
+<Mermaid title="Automatic Persisted Queries: a one-time miss registers the operation, then only the hash travels." code={apqSequence} />
+
+## Caching at two levels
+
+Because persisted (or allowlisted) operations are a known, finite set, they cache beautifully.
+
+- **Response caching.** Cache the whole response for a given operation + variables + viewer for a short time-to-live. Identical requests within the window are served from memory or a shared store (e.g. Redis) without running a single resolver. Be careful to key by *who is asking* so you never serve one user's private data to another — the authentication context from lesson 2 is exactly the key material you need.
+- **Per-field (entity) caching.** Finer-grained: cache individual objects by ID with their own TTLs, so an expensive `product(id: 5)` is reused across many different queries that happen to mention product 5. Tools like Apollo Server's `@cacheControl` directive and response-cache plugins let a field declare `maxAge` and a scope of `PUBLIC` or `PRIVATE`.
+
+```graphql
+type Product {
+  id: ID!
+  # This field is cacheable for 60s and identical for everyone.
+  name: String! @cacheControl(maxAge: 60, scope: PUBLIC)
+  # Per-viewer data: cache privately, never share across users.
+  recommendation: String @cacheControl(maxAge: 30, scope: PRIVATE)
+}
+```
+
+The schema declares a *static GET* possibility too: because a persisted query is just an ID plus variables, it can be sent as an HTTP `GET`, which lets a CDN cache it like any other URL — something a normal `POST`-with-body GraphQL request cannot do.
+
+## Rate limiting
+
+Caching reduces *repeated* cost; rate limiting caps *total* cost per client. Rather than counting raw HTTP requests, the most effective GraphQL rate limiting spends the **complexity score** from the previous lesson: each caller gets a budget (say, 2000 cost units per minute), and every query debits its computed cost. A client can make many cheap queries or few expensive ones, but not unlimited expensive ones.
+
+```ts
+// Token-bucket style budget keyed by the authenticated user.
+function charge(context, queryCost: number) {
+  const bucket = buckets.get(context.user?.id ?? context.ip);
+  if (bucket.remaining < queryCost) {
+    throw new GraphQLError('Rate limit exceeded', {
+      extensions: { code: 'RATE_LIMITED' },
+    });
+  }
+  bucket.remaining -= queryCost; // refilled on a schedule
+}
+```
+
+<Mermaid title="The defenses compose: an allowlisted operation is cost-checked, rate-limited, and served from cache when possible." code={defenseStack} />
+
+Stacked with the earlier lessons, the full picture is reassuring. Authentication names the caller, authorization gates each field, depth and complexity analysis reject abusive shapes, persisted queries freeze the set of allowed operations, caching removes repeated work, and rate limiting caps what remains. Each layer is simple; together they make a single flexible endpoint genuinely safe and fast.
+
+<Callout title="Freeze what runs, cache what repeats, cap what is left">
+The endpoint's flexibility is wonderful in development and dangerous in production. Tame it with three habits. **Allowlist operations** with persisted (trusted) queries so only the operations your own apps shipped can execute — and remember APQ alone shrinks bandwidth but does not allowlist. **Cache** at the response level (keyed by viewer) and the per-field level (with `@cacheControl` TTLs), and serve persisted queries over `GET` so a CDN can help. **Rate limit** by spending the complexity budget, not raw request counts. Do all three and you keep GraphQL's ergonomics while removing most of its security and performance footguns.
+</Callout>
+
+export const apqSequence = `sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C->>S: send hash only
+  S-->>C: PersistedQueryNotFound (first time)
+  C->>S: retry with full query + hash
+  S->>S: register hash -> query
+  S-->>C: result
+  Note over C,S: Subsequent requests send only the hash`;
+
+export const defenseStack = `flowchart TD
+  Q["Incoming operation"] --> A["Allowlist check (persisted query ID)"]
+  A -->|"unknown id"| Rej["Reject: PersistedQueryNotFound"]
+  A -->|"known"| Cost["Complexity check"]
+  Cost --> RL["Rate limit: debit cost budget"]
+  RL -->|"over budget"| RLrej["Reject: RATE_LIMITED"]
+  RL --> Cache{"Cached response?"}
+  Cache -->|"hit"| Hit["Serve from cache (no resolvers)"]
+  Cache -->|"miss"| Exec["Execute, then cache by viewer + TTL"]`;
+
+export const quizPersisted = [
+  {
+    q: 'How does a pre-registered persisted-query allowlist improve security?',
+    options: [
+      'It encrypts every response',
+      'The server executes only operations it registered ahead of time, so attackers cannot invent expensive new queries',
+      'It removes the need for authentication',
+      'It makes every field non-null',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why is Automatic Persisted Queries (APQ) NOT an allowlist on its own?',
+    options: [
+      'Because it only works over WebSockets',
+      'Because it will register and run whatever query a client sends on the first miss',
+      'Because it disables caching',
+      'Because it requires admin privileges',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When response caching private data, what must the cache key include?',
+    options: [
+      'Only the operation name',
+      'Who is asking (the viewer/context), so one user’s data is never served to another',
+      'The server’s hostname',
+      'The current timestamp to the millisecond',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the most effective unit to rate-limit a GraphQL API by?',
+    options: [
+      'Raw HTTP request count',
+      'The computed complexity (cost) of each query, debited from a per-client budget',
+      'Response byte size only',
+      'Number of fields in the schema',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/persisted-queries-and-caching" questions={quizPersisted} />
+
+<ProgressTracker client:visible id="security-and-performance/persisted-queries-and-caching" />

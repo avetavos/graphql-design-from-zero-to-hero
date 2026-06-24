@@ -1,0 +1,217 @@
+---
+title: Subscriptions
+description: 'Model real-time as a stream of events with subscribe and resolve, understand the SSE and WebSocket transports, and learn when not to use subscriptions.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A query returns once. A mutation returns once. A **subscription** is different: the client subscribes a single time, and the server keeps pushing new payloads for as long as the connection stays open. It is the third root type, and it is how GraphQL models real-time — a new review appears, a track finishes processing, someone starts typing — without the client polling over and over.
+
+The in-browser runner used in the other lessons executes one operation and stops, so it cannot demonstrate a live stream. We will study subscriptions as code plus a sequence diagram, and then point you at a runnable Yoga server you can open and watch stream for real.
+
+## Declaring a subscription
+
+A subscription field lives on the `Subscription` root type. It looks like a query field — a name, arguments, a return type — but its meaning is "push me one of these every time the matching event happens":
+
+```graphql
+type Subscription {
+  reviewAdded(trackId: ID!): Review!
+}
+```
+
+The `trackId` argument scopes the stream: the client only wants reviews for one track, not the whole catalogue. The return type, `Review!`, is the shape of each pushed payload.
+
+## subscribe vs resolve
+
+A subscription resolver is not one function but two, and keeping them straight is the whole concept:
+
+- **`subscribe`** returns an *async iterator* — the source of events. Each time something is pushed onto that iterator, the server wakes up and produces one result for the client.
+- **`resolve`** is the ordinary field resolver that runs *per event*. It receives the value yielded by the iterator and maps it to the payload the client selected.
+
+In `graphql-yoga` and most servers the event source is a **pub/sub** bus: a mutation publishes an event, and every matching subscription's `subscribe` iterator yields it.
+
+```ts
+import { createPubSub } from 'graphql-yoga';
+
+const pubSub = createPubSub<{ reviewAdded: [trackId: string, review: Review] }>();
+
+export const resolvers = {
+  Mutation: {
+    addReview: (_parent, { input }) => {
+      const review = saveReview(input);
+      // Publish the event — every matching subscriber is woken up.
+      pubSub.publish('reviewAdded', input.trackId, review);
+      return { review, userErrors: [] };
+    },
+  },
+  Subscription: {
+    reviewAdded: {
+      // subscribe: the event source, scoped to one track.
+      subscribe: (_parent, { trackId }) => pubSub.subscribe('reviewAdded', trackId),
+      // resolve: map each published event to the payload.
+      resolve: (review: Review) => review,
+    },
+  },
+};
+```
+
+The flow is: a mutation writes data and publishes; the pub/sub bus fans the event out; each subscriber's `subscribe` iterator yields it; `resolve` shapes it; the client receives a payload. The same write that the earlier lessons returned synchronously now *also* notifies everyone listening.
+
+<Mermaid title="One subscribe call opens a stream; each later mutation publishes an event that is pushed to the client." code={subSequence} />
+
+## Transports: how the stream reaches the client
+
+Queries and mutations ride a single HTTP request/response. A subscription needs a channel that stays open and pushes, so it uses a different transport:
+
+- **Server-Sent Events (SSE)** — a long-lived HTTP response that streams text events one way, server to client. It works over ordinary HTTP, passes through most proxies, and is the modern default in `graphql-yoga` via the `graphql-sse` protocol. It is one-directional, which is all a subscription needs.
+- **WebSocket** — a full-duplex connection, traditionally used with the `graphql-ws` protocol. It is more capable (two-way) and widely supported by clients, but it is a separate connection to manage and can be harder to route through some infrastructure.
+
+Both carry the same GraphQL subscription operation; they differ only in plumbing. Start with SSE unless you have a concrete reason to need a WebSocket.
+
+## When NOT to use a subscription
+
+Subscriptions are stateful, long-lived connections — they cost server memory and complicate scaling. Reach for them only when the data genuinely changes on the *server's* schedule. Prefer alternatives when:
+
+- **A mutation result is enough.** If a change is driven by the client's own action, return the affected data from the mutation. Do not subscribe to your own writes.
+- **The data changes rarely or the client can poll.** A dashboard that refreshes every 30 seconds does not need a persistent connection; a periodic query (or a refetch on focus) is simpler and cheaper.
+- **You need a one-time async result.** "Generate this report, tell me when it's done" is a job-status poll or a webhook, not necessarily a subscription.
+
+A subscription earns its complexity when many clients must see the same event the instant it happens — a live feed, a presence indicator, a price tick.
+
+## A streaming server you can run
+
+The schema below is a complete Yoga project: it exports `typeDefs` and `resolvers` with a mutation that publishes and a subscription that streams. The in-browser runner cannot keep a stream open, so open this in StackBlitz, fire `addReview` in one GraphiQL tab, and watch `reviewAdded` push the payload in another.
+
+export const subSchemaCode = `import { createPubSub } from 'graphql-yoga';
+
+type Review = { id: string; trackId: string; rating: number; body: string | null };
+
+export const typeDefs = /* GraphQL */ \`
+  type Review {
+    id: ID!
+    trackId: ID!
+    rating: Int!
+    body: String
+  }
+
+  input AddReviewInput {
+    trackId: ID!
+    rating: Int!
+    body: String
+  }
+
+  type AddReviewPayload {
+    review: Review
+  }
+
+  type Query {
+    reviews(trackId: ID!): [Review!]!
+  }
+
+  type Mutation {
+    addReview(input: AddReviewInput!): AddReviewPayload!
+  }
+
+  type Subscription {
+    reviewAdded(trackId: ID!): Review!
+  }
+\`;
+
+const store: Review[] = [];
+let nextId = 1;
+
+const pubSub = createPubSub<{ reviewAdded: [trackId: string, review: Review] }>();
+
+export const resolvers = {
+  Query: {
+    reviews: (_p: unknown, { trackId }: { trackId: string }) =>
+      store.filter((r) => r.trackId === trackId),
+  },
+  Mutation: {
+    addReview: (
+      _p: unknown,
+      { input }: { input: { trackId: string; rating: number; body?: string } },
+    ) => {
+      const review: Review = {
+        id: String(nextId++),
+        trackId: input.trackId,
+        rating: input.rating,
+        body: input.body ?? null,
+      };
+      store.push(review);
+      // Notify every subscriber listening on this track.
+      pubSub.publish('reviewAdded', input.trackId, review);
+      return { review };
+    },
+  },
+  Subscription: {
+    reviewAdded: {
+      subscribe: (_p: unknown, { trackId }: { trackId: string }) =>
+        pubSub.subscribe('reviewAdded', trackId),
+      resolve: (review: Review) => review,
+    },
+  },
+};`;
+
+<NodeRunner node client:visible code={subSchemaCode} />
+
+To see it stream: open the project, then in one GraphiQL tab run `subscription { reviewAdded(trackId: "t1") { id rating } }` and leave it running. In a second tab run the `addReview` mutation for `trackId: "t1"`. The subscription tab updates the instant the mutation publishes — that is the whole value of the stream, and no amount of polling matches its latency.
+
+<Callout title="Subscriptions are open channels, not extra reads">
+A subscription is a long-lived, stateful connection: one `subscribe` call, many pushed payloads, until the client disconnects. Implement it as two halves — `subscribe` produces the event stream (usually from a pub/sub bus a mutation publishes to), and `resolve` shapes each event into the payload. Carry it over SSE by default, or WebSocket when you need two-way. And resist the temptation to subscribe to everything: if a change is driven by the client's own mutation, just return the result. Save subscriptions for events that arrive on the server's clock, not the client's.
+</Callout>
+
+export const subSequence = `sequenceDiagram
+  participant C as Client
+  participant S as GraphQL Server
+  participant B as Pub/Sub bus
+  participant W as Writer (another client)
+  C->>S: subscription reviewAdded(trackId: "t1")
+  S->>B: subscribe to "reviewAdded" for t1
+  Note over C,S: stream stays open
+  W->>S: mutation addReview(input)
+  S->>B: publish "reviewAdded" event
+  B-->>S: yield event to subscriber
+  S-->>C: push Review payload
+  W->>S: mutation addReview(input) again
+  S->>B: publish again
+  B-->>S: yield event
+  S-->>C: push next Review payload`;
+
+export const quizSubscriptions = [
+  {
+    q: 'What is the role of the subscribe function in a subscription resolver?',
+    options: [
+      'It shapes each event into the payload the client selected',
+      'It returns the async iterator that is the source of events',
+      'It runs the mutation that writes data',
+      'It closes the connection after one event',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which transport is the modern default for GraphQL subscriptions in graphql-yoga and only streams one way?',
+    options: ['WebSocket', 'Server-Sent Events (SSE)', 'Plain HTTP POST', 'gRPC'],
+    answer: 1,
+  },
+  {
+    q: 'When is a subscription the WRONG tool?',
+    options: [
+      'When many clients must see the same event the instant it happens',
+      'When the change is driven by the client’s own mutation and the result can simply be returned',
+      'For a live feed of new items',
+      'For a presence indicator',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/subscriptions" questions={quizSubscriptions} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/subscriptions" />

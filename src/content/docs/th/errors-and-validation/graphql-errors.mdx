@@ -1,0 +1,141 @@
+---
+title: GraphQL Errors
+description: 'top-level errors array ทั้ง message, locations และ path กับความต่างระหว่าง request errors และ field execution errors'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ใน[บทเรียนก่อนหน้า](/th/errors-and-validation/) เราได้เห็นว่า response สามารถพก `errors` array มาด้วย คราวนี้เราจะแกะ array นั้นออกมาดู ทุก entry ในนั้นคือ object ที่มีโครงสร้างพร้อมชุด key ที่ตายตัว และการเรียนรู้ที่จะอ่าน key เหล่านั้นจะเปลี่ยนคำว่า "มีอะไรพังสักอย่าง" ที่คลุมเครือ ให้กลายเป็น "field นี้ ณ ตำแหน่งนี้ใน query ของคุณ ล้มเหลวด้วยเหตุผลนี้" ที่ชัดเจน
+
+## กายวิภาคของ error entry
+
+แต่ละ element ใน `errors` มี key ที่จำเป็นหนึ่งตัว และตัวเลือกอีกหลายตัวที่ specification กำหนดไว้
+
+- `message` — สตริงที่มนุษย์อ่านได้ซึ่งอธิบายว่าเกิดอะไรผิดพลาด นี่คือ key เดียวที่บังคับให้มี
+- `locations` — รายการตำแหน่ง `{ line, column }` ที่ชี้ไปยังจุดที่แน่นอนใน**ตัว query text** ที่กระตุ้นให้เกิด error
+- `path` — รายการของชื่อ field และ index ของ list ที่ไล่จาก root ของ response ลงไปยัง field ที่ล้มเหลว ตัวอย่างเช่น `["currentTrack", "title"]`
+- `extensions` — map สำหรับรายละเอียดที่เครื่องอ่านได้ ซึ่งเราจะอุทิศบทเรียนถัดจากนี้อีกหนึ่งบทให้กับมัน
+
+`message` มีไว้สำหรับมนุษย์ ส่วน `locations` และ `path` มีไว้สำหรับเครื่องมือและ client ที่ต้องตอบสนองในเชิงโปรแกรม เมื่อรวมกันแล้วทั้งสองตัวช่วยให้ client ไฮไลต์ส่วนที่มีปัญหาของ query และส่งความล้มเหลวไปยังที่ที่ถูกต้องใน UI ของมันได้
+
+## error สองตระกูล
+
+ไม่ใช่ error ทุกตัวจะมาถึงในขั้นตอนเดียวกัน specification แบ่งแยกออกเป็นสองตระกูล และความแตกต่างนี้สำคัญเพราะมันเป็นตัวตัดสินว่าคุณจะได้ `data` กลับมาเลยหรือไม่
+
+<Mermaid title="Request errors หยุดก่อนการ execute ส่วน field errors เกิดขึ้นระหว่างการ execute" code={errorFamilies} />
+
+**Request errors** เกิดขึ้น *ก่อน* การ execute จะเริ่ม query parse ไม่ผ่าน หรือ parse ผ่านแต่ validate กับ schema ไม่ผ่าน เช่น field ที่ไม่รู้จัก argument ผิด type หรือ selection ที่ผิดรูป เพราะการ execute ไม่เคยเริ่มเลย response จึง**ไม่มี `data` key เลย** (แม้แต่ `null` ก็ไม่มี) มันพกมาแค่ `errors` เท่านั้น
+
+**Field errors** (หรือเรียกอีกอย่างว่า execution errors) เกิดขึ้น *ระหว่าง* การ execute เมื่อ resolver throw หรือ return ค่าที่ไม่ถูกต้อง เมื่อตัวใดตัวหนึ่งทำงาน server กำลังสร้าง `data` อยู่แล้ว ดังนั้น response จึงรวม `data` โดยมี field ที่ล้มเหลวถูก null ออกไป พร้อมกับ `errors` entry สำหรับมัน นี่คือกรณีความสำเร็จบางส่วนที่เราจะศึกษาเชิงลึกในบทเรียนถัดไป
+
+## ดู request error เทียบกับ field error
+
+runner ด้านล่างรัน operation สองอันกับ schema เดียวกัน อันแรกขอ field ที่ไม่มีอยู่จริง ซึ่งเป็น**ความล้มเหลวของ validation** จึงเป็น request error ที่ไม่มี `data` อันที่สองรัน query ที่ถูกต้องแต่ resolver ของมัน throw จึงเป็น **field error** ทำให้ `data` กลับมาโดยมี field ที่ล้มเหลวเป็น `null` ลองเปรียบเทียบ output ทั้งสอง
+
+export const errorsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      nowPlaying: String
+    }
+  \`);
+
+  const root = {
+    nowPlaying: () => {
+      throw new Error('player offline');
+    },
+  };
+
+  // 1) Request error: "ghostField" is not on Query, so validation fails
+  //    BEFORE execution. Expect errors only, and NO data key.
+  const invalid = \`
+    {
+      ghostField
+    }
+  \`;
+  const requestError = await graphql({ schema, source: invalid, rootValue: root });
+
+  // 2) Field error: the query is valid, but the resolver throws DURING
+  //    execution. Expect data present with the field nulled, plus errors.
+  const valid = \`
+    {
+      nowPlaying
+    }
+  \`;
+  const fieldError = await graphql({ schema, source: valid, rootValue: root });
+
+  console.log('--- request error (no data key) ---');
+  console.log(JSON.stringify(requestError, null, 2));
+  console.log('--- field error (data present, field null) ---');
+  console.log(JSON.stringify(fieldError, null, 2));
+})();`;
+
+<NodeRunner client:visible code={errorsCode} />
+
+ดูที่ block แรก ไม่มี `data` key มีแค่ `errors` และ entry นั้นพก `locations` ที่ชี้ไปยังจุดที่ `ghostField` ปรากฏใน query ทีนี้ดู block ที่สอง `data` มีอยู่โดย `nowPlaying` ถูกตั้งเป็น `null` และ error ที่ตรงกันพก `path` เป็น `["nowPlaying"]` เพื่อให้ client รู้ได้แน่ชัดว่า field ไหนหายไป `errors` array เดียวกันแท้ๆ แต่เป็นสองสถานการณ์ที่ต่างกันมาก และคุณแยกแยะมันได้จากว่ามี `data` อยู่หรือไม่
+
+<Callout title="200 ก็ยังพก errors มาได้">
+HTTP status ของ GraphQL response ส่วนใหญ่เป็นเรื่องของ transport ไม่ใช่ของ operation operation ที่ parse, validate และ execute แล้วมักจะ return HTTP `200` แม้ว่า field ครึ่งหนึ่งของมันจะ throw ก็ตาม อย่าตีความ `200` ว่า "ทุกอย่างทำงานได้" เด็ดขาด ความจริงอยู่ใน `errors` array และอยู่ที่ว่ามี `data` หรือไม่ ให้อ่านสองสิ่งนั้น ไม่ใช่บรรทัด status
+</Callout>
+
+export const errorFamilies = `flowchart TD
+  Query["Incoming query"]
+  Parse["Parse + validate"]
+  Exec["Execute resolvers"]
+  ReqErr["Request error: errors only, NO data key"]
+  FieldErr["Field error: data present (field null) + errors"]
+  OK["Success: data only"]
+  Query --> Parse
+  Parse -->|"fails"| ReqErr
+  Parse -->|"passes"| Exec
+  Exec -->|"resolver throws"| FieldErr
+  Exec -->|"all resolve"| OK`;
+
+export const quizGraphqlErrors = [
+  {
+    q: 'key ใดเป็น key เดียวที่จำเป็นต้องมีบน GraphQL error entry?',
+    options: ['path', 'locations', 'message', 'extensions'],
+    answer: 2,
+  },
+  {
+    q: 'key path บน error entry อธิบายถึงอะไร?',
+    options: [
+      'URL ที่ request ถูกส่งไป',
+      'รายการของชื่อ field และ index จาก root ของ response ไปยัง field ที่ล้มเหลว',
+      'file path ของ resolver บน server',
+      'บรรทัดและคอลัมน์ใน query text',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'query อ้างถึง field ที่ไม่มีอยู่บน type นั้น response จะหน้าตาเป็นอย่างไร?',
+    options: [
+      'data มีอยู่โดย field ถูกตั้งเป็น null พร้อมกับ error',
+      'มีแค่ errors ไม่มี data key เพราะ validation ล้มเหลวก่อนการ execute',
+      'response body ว่างเปล่า',
+      'มีแค่ data โดย field ที่ไม่รู้จักถูกตัดออก',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'query ที่ถูกต้องรันแต่ resolver หนึ่งตัว throw response จะ:',
+    options: [
+      'ไม่มี data key เลย',
+      'รวม data โดย field ที่ล้มเหลวถูก null พร้อมกับ errors entry ที่มี path ชี้ไปยังมัน',
+      'return HTTP 500 โดยไม่มี body',
+      'ตัด errors array ออกทั้งหมด',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/graphql-errors" questions={quizGraphqlErrors} />
+
+<ProgressTracker client:visible id="errors-and-validation/graphql-errors" />

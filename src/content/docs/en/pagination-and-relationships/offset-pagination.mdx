@@ -1,0 +1,165 @@
+---
+title: Offset Pagination
+description: 'Simple limit/offset (or page-number) pagination, how to resolve it, and the deep-offset and shifting-window problems that make it leak.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A list field can return thousands of rows. Sending all of them at once is slow and wasteful, so a list takes **pagination arguments** that ask for one window at a time. The most familiar style — the one every SQL developer already knows — is **offset pagination**: skip some rows, then take some rows.
+
+## limit and offset
+
+You expose two integer arguments. `limit` (sometimes `first` or `pageSize`) says *how many* items to return; `offset` (sometimes `skip`) says *how many to skip* before starting:
+
+```graphql
+type Query {
+  posts(limit: Int = 10, offset: Int = 0): [Post!]!
+}
+```
+
+`posts(limit: 10, offset: 0)` returns items 1–10. `posts(limit: 10, offset: 10)` returns items 11–20. The resolver maps these straight onto a slice of the underlying data — and onto `LIMIT`/`OFFSET` in SQL, which is exactly why this style is so common.
+
+## Page numbers are the same idea
+
+A `page`/`pageSize` API is just offset pagination with friendlier numbers. You convert internally:
+
+```graphql
+type Query {
+  posts(page: Int = 1, pageSize: Int = 10): [Post!]!
+}
+```
+
+The resolver computes `offset = (page - 1) * pageSize` and proceeds exactly as before. Page numbers are nicer for building "Page 1 2 3" footers; raw `offset` is nicer for infinite scroll. The mechanics underneath are identical.
+
+## The two leaks
+
+Offset pagination is simple, but it has two well-known problems.
+
+The first is the **deep-offset cost**. To return items 100,001–100,010, a database with `OFFSET 100000` must still *count past* the first hundred thousand rows before discarding them. The deeper you page, the slower each page gets — the work grows with the offset, not with the page size.
+
+The second is the **shifting window**. Offsets address *positions*, not *items*. If a new post is inserted at the top while a user is reading, every item shifts down one slot. Page 2 now begins with an item the user already saw on page 1, and one item silently slips through the gap between pages. With deletes, the reverse happens — an item can be skipped entirely.
+
+<Mermaid title="Inserting a new item at the top shifts every position, so a page boundary can duplicate or skip items." code={shiftDiagram} />
+
+## Paging for real
+
+The runner below holds a small ordered list and resolves `posts(limit, offset)` by slicing it. Run it as-is to fetch page two; then change `offset` and re-run to feel how the window moves.
+
+export const offsetCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Post {
+      id: ID!
+      title: String!
+    }
+
+    type Page {
+      items: [Post!]!
+      totalCount: Int!
+      hasMore: Boolean!
+    }
+
+    type Query {
+      posts(limit: Int = 2, offset: Int = 0): Page!
+    }
+  \`);
+
+  // A stable, ordered list of items.
+  const all = Array.from({ length: 7 }, (_, i) => ({
+    id: 'p' + (i + 1),
+    title: 'Post number ' + (i + 1),
+  }));
+
+  const root = {
+    posts: ({ limit, offset }) => {
+      const window = all.slice(offset, offset + limit);
+      return {
+        items: window,
+        totalCount: all.length,
+        // We can compute hasMore because we know the total.
+        hasMore: offset + limit < all.length,
+      };
+    },
+  };
+
+  // Page two: skip the first 2, take the next 2.
+  const query = \`
+    {
+      posts(limit: 2, offset: 2) {
+        items { id title }
+        totalCount
+        hasMore
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={offsetCode} />
+
+The result returns items 3–4 (`offset: 2`, `limit: 2`), plus a `totalCount` and a `hasMore` flag the client can use to render a pager. This is offset pagination working well — a small, stable list where deep offsets and concurrent edits are not a concern. The moment your list is large or actively changing, the two leaks above start to bite, which is exactly what the next lesson on cursor connections is designed to solve.
+
+<Callout title="Reach for offset when the list is small and stable">
+Offset pagination is the right default for short, mostly static lists — admin tables, settings, a handful of pages where users expect numbered navigation. It is trivial to implement and maps directly onto SQL. But it pays a growing cost on deep pages, and it can duplicate or skip items when the underlying list changes between requests. For large or fast-moving collections, cursor-based pagination is the safer choice.
+</Callout>
+
+export const shiftDiagram = `flowchart TD
+  subgraph Before["Before insert"]
+    B1["pos 1: A"]
+    B2["pos 2: B"]
+    B3["pos 3: C — page boundary"]
+    B4["pos 4: D"]
+  end
+  subgraph After["After inserting X at top"]
+    A1["pos 1: X (new)"]
+    A2["pos 2: A"]
+    A3["pos 3: B — page boundary"]
+    A4["pos 4: C"]
+  end
+  Before -->|"offset shifts by one"| After`;
+
+export const quizOffset = [
+  {
+    q: 'What do the limit and offset arguments do in offset pagination?',
+    options: [
+      'limit sets how many items to return; offset sets how many to skip first',
+      'limit sets a time budget; offset sets a memory budget',
+      'They encode an opaque cursor pointing at a specific item',
+      'offset returns items and limit skips them',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'Why does a very large offset (e.g. OFFSET 100000) tend to be slow?',
+    options: [
+      'GraphQL forbids offsets above 1000',
+      'The database must scan past all the skipped rows before discarding them',
+      'Each skipped row triggers a separate network request',
+      'Large offsets disable the query cache permanently',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the "shifting window" problem with offset pagination?',
+    options: [
+      'The server randomly reorders results on each request',
+      'Inserts or deletes change item positions, so a page boundary can duplicate or skip items',
+      'The limit argument is ignored after page one',
+      'Offsets cannot exceed the list length',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/offset-pagination" questions={quizOffset} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/offset-pagination" />

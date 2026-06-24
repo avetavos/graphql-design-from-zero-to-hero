@@ -1,0 +1,147 @@
+---
+title: Authentication & Context
+description: 'Resolving the current user once per request from a token and placing it on the GraphQL context, so resolvers read identity instead of re-parsing credentials.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The first of our four questions is **who is asking?** Answering it is **authentication**: turning an opaque credential — usually a token in an HTTP header — into a known identity. The key GraphQL idea is *where* that work happens. You do it **once per request**, before any resolver runs, and you hand the result to every resolver through a shared object called the **context**.
+
+## The context object
+
+When a GraphQL server executes a request, it threads a single **context** value through every resolver. You have already seen the signature: a resolver receives `(parent, args, context, info)`. The context is yours to fill. It is the natural home for anything that is true for the *whole request* but not part of the schema: the current user, a database connection, a request-scoped cache, a logger.
+
+Authentication populates the context. A small function — often called a *context factory* — runs once when the request arrives. It reads the `Authorization` header, verifies the token, looks up the user, and returns a context object. From then on, every resolver simply reads `context.user`.
+
+<Mermaid title="The token is verified once at the edge; resolvers only ever read the resulting identity." code={authSequence} />
+
+## Authenticate at the edge, not in the schema
+
+A common beginner mistake is to put authentication *inside* a field — adding a `login(token: String)` field, or having each resolver re-parse the `Authorization` header. Resist it. The schema describes your data; it should not describe how credentials are decoded. Decode the token once, at the edge, and let the schema stay clean:
+
+```ts
+// Runs once per request, before any resolver. With GraphQL Yoga or Apollo
+// Server you supply this as the `context` factory.
+async function createContext({ request }: { request: Request }) {
+  const header = request.headers.get('authorization') ?? '';
+  const token = header.replace(/^Bearer\s+/i, '');
+
+  // verifyToken throws or returns null for bad/expired tokens.
+  const user = token ? await verifyToken(token) : null;
+
+  // Note: we do NOT throw here for anonymous requests. Some fields are
+  // public. Authentication establishes identity; it does not grant access.
+  return { user };
+}
+```
+
+Two design points are worth underlining. First, the factory returns a `user` of `null` for anonymous requests rather than rejecting them — plenty of fields (a public product catalogue, a marketing page query) are meant to be reachable without logging in. **Authentication answers "who," not "may they"**; the "may they" decision is authorization, the subject of the next lesson. Second, the token is verified exactly once, so an expensive operation (signature verification, a user lookup) does not repeat for every field in a large query.
+
+## A resolver reading the context
+
+The example below builds a tiny schema with two fields. `me` returns the name of the authenticated user, or `null` when nobody is logged in. `serverTime` is public and ignores identity entirely. Crucially, the resolvers never touch a token — they only read `context.user`, which a context factory resolved up front. Press **Run** to execute it with the real GraphQL engine; the context is passed in as `contextValue`.
+
+export const authContextCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      me: String
+      serverTime: String
+    }
+  \`);
+
+  // Resolvers read identity from the context — they never decode a token.
+  const root = {
+    me: (_args, context) => (context.user ? context.user.name : null),
+    serverTime: () => 'always public',
+  };
+
+  // This is what a context factory would have produced for THIS request,
+  // after verifying the incoming token exactly once.
+  const verifiedContext = { user: { id: 'u1', name: 'Ada Lovelace' } };
+
+  const query = \`{ me serverTime }\`;
+
+  const result = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: verifiedContext,
+  });
+  console.log('Authenticated request:');
+  console.log(JSON.stringify(result, null, 2));
+
+  // Now the same query as an anonymous visitor: user is null.
+  const anonResult = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: null },
+  });
+  console.log('\\nAnonymous request:');
+  console.log(JSON.stringify(anonResult, null, 2));
+})();`;
+
+<NodeRunner client:visible code={authContextCode} />
+
+Look at the two outputs. With a verified user on the context, `me` returns `"Ada Lovelace"`. With `user: null`, `me` comes back as `null` while `serverTime` still works — the public field does not care who is asking. The resolvers stayed identical between the two runs; only the context changed. That is the whole point: identity is established once, outside the resolvers, and the schema reads it like any other request-scoped fact.
+
+<Callout title="Authenticate in the context, authorize in resolvers">
+Keep the two jobs separate. **Authentication** — verifying a token and resolving the current user — happens once per request in the context factory, never inside a schema field. **Authorization** — deciding whether that user may see a particular field — happens later, in the resolvers. A clean context factory that returns `{ user }` (and `null` for anonymous callers) gives every resolver a trustworthy answer to "who is asking?" without re-parsing credentials, and leaves the "are they allowed?" question for the next lesson.
+</Callout>
+
+export const authSequence = `sequenceDiagram
+  participant C as Client
+  participant F as Context factory
+  participant V as Token verifier
+  participant R as Resolvers
+  C->>F: Request + Authorization header
+  F->>V: Verify token (once)
+  V-->>F: user (or null if anonymous)
+  F-->>R: context = { user }
+  R->>R: read context.user
+  R-->>C: Response`;
+
+export const quizAuthContext = [
+  {
+    q: 'Where should a GraphQL server verify the incoming token and resolve the current user?',
+    options: [
+      'Inside every resolver that needs the user',
+      'Once per request in a context factory, before any resolver runs',
+      'In a dedicated login(token) field in the schema',
+      'In the client before sending the query',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What should the context factory return for an anonymous request that carries no valid token?',
+    options: [
+      'It should throw immediately so the request fails',
+      'A context whose user is null, leaving access decisions to authorization',
+      'A fake guest user with admin rights',
+      'Nothing — anonymous requests must be blocked at the HTTP layer',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the runnable example, why did the me resolver not need to read the Authorization header?',
+    options: [
+      'Because the header is automatically copied into args',
+      'Because identity was already resolved into context.user by the context factory',
+      'Because me is a built-in GraphQL field',
+      'Because the schema decodes tokens for you',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/auth-context" questions={quizAuthContext} />
+
+<ProgressTracker client:visible id="security-and-performance/auth-context" />

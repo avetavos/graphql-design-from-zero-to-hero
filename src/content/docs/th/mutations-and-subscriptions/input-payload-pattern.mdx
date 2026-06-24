@@ -1,0 +1,200 @@
+---
+title: รูปแบบ Input / Payload
+description: 'ห่อ argument ไว้ใน object input เดียว และคืน type payload ที่พา entity พร้อม userErrors กลับมา รูปแบบที่ทำให้ mutation วิวัฒน์ได้อย่างปลอดภัย'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+mutation ในบทเรียนที่แล้วรับ argument แบบกระจัดกระจายและคืน object เปล่า ๆ กลับมา นั่นก็โอเคสำหรับสอง field แต่ mutation จริง ๆ เติบโตขึ้น คุณเพิ่ม field แบบ optional หนึ่งตัว แล้วอีกตัว แล้วก็กฎ validation ที่อาจล้มเหลวได้ด้วยเหตุผลสามแบบต่างกัน มีสองธรรมเนียมที่ช่วยควบคุมการเติบโตนั้น คือ argument **`input`** เดียวที่ไหลเข้าไป และ type **`payload`** ที่มีโครงสร้างซึ่งไหลออกมา เมื่อรวมกันแล้วมันคือรูปร่างที่ถูกนำมาใช้กันแพร่หลายที่สุดใน GraphQL ระดับโปรดักชัน
+
+## argument input เดียว
+
+แทนที่จะกระจายทุก field ออกไปทั่ว argument list ให้นิยาม **input object type** หนึ่งตัวและรับมันเป็น argument เดียวชื่อ `input`
+
+```graphql
+input CreateReviewInput {
+  trackId: ID!
+  rating: Int!
+  body: String
+}
+
+type Mutation {
+  createReview(input: CreateReviewInput!): CreateReviewPayload!
+}
+```
+
+type `input` หน้าตาเหมือน object type แต่ใช้คีย์เวิร์ด `input` และ field ของมันเป็นได้แค่ scalar, enum หรือ input type อื่นเท่านั้น ไม่มีทางเป็น object type ผลตอบแทนคือการวิวัฒน์ การเพิ่ม field แบบ optional ลงใน `CreateReviewInput` ไม่ได้เปลี่ยน signature ของ mutation ดังนั้น client เดิมจึงทำงานต่อได้โดยไม่ต้องแตะต้องอะไร อีกทั้งยังให้ชื่อกับ input ทั้งชุดที่คุณอ้างอิง จัดทำเอกสาร และนำกลับมาใช้ซ้ำได้
+
+## type คืนค่า payload
+
+type คืนค่าแบบ `Review!` เปล่า ๆ ไม่มีที่ว่างสำหรับอะไรนอกจากตัวรีวิว แต่ mutation ต้องรายงานสองสิ่ง คือ entity ที่ถูกสร้างหรือเปลี่ยนแปลง *และ* ว่ามีอะไรผิดพลาดไปไหมในแบบที่ client ลงมือจัดการได้ type **payload** พาทั้งสองอย่างนี้ไป
+
+```graphql
+type UserError {
+  message: String!
+  field: [String!]
+}
+
+type CreateReviewPayload {
+  review: Review
+  userErrors: [UserError!]!
+}
+```
+
+มีตัวเลือกการออกแบบสองอย่างที่สำคัญตรงนี้ `review` เป็น **nullable** เมื่อล้มเหลวก็ไม่มีอะไรให้คืน มันจึงกลับมาเป็น `null` และ `userErrors` เป็น **list ที่ non-null ของ error ที่ non-null** มีอยู่เสมอ เพียงแต่ว่างเปล่า (`[]`) เมื่อทุกอย่างสำเร็จ logic ของ client จึงเป็นแบบเดียวกันสม่ำเสมอ คือตรวจ `userErrors` ก่อน ถ้ามันว่าง ก็เชื่อ `review` ได้
+
+<Mermaid title="input หนึ่งตัวไหลเข้า; payload พา entity หรือไม่ก็ user error กลับออกไป" code={payloadDiagram} />
+
+## ทำไมมันถึงสเกลได้
+
+`userErrors` เหล่านี้คือปัญหาที่ *คาดไว้แล้วและกู้คืนได้* เช่น rating ที่อยู่นอกช่วง หรือ title ที่หายไป เป็นประเภทที่ผู้ใช้แก้ไขแล้วลองใหม่ได้ มันอยู่ใน payload ในรูปของข้อมูล ดังนั้น client จึงแสดงผลมันข้าง ๆ field ของฟอร์มที่มีปัญหาได้ ซึ่งต่างจาก error ระดับ protocol (query ที่ผิดรูปแบบ การ auth ล้มเหลว) ที่ควรอยู่ใน array `errors` ระดับบนสุด บทเรียนถัดไปเรื่องแนวปฏิบัติที่ดีจะลากเส้นแบ่งนั้นอย่างละเอียด สำหรับตอนนี้กฎคือ **การ validate เชิงธุรกิจอยู่ใน payload**
+
+## รูปแบบนี้ รันได้จริง
+
+ตัวอย่างนี้อิมพลีเมนต์ `createReview(input: CreateReviewInput!): CreateReviewPayload!` พร้อม validation จริง กด **Run** การเรียกครั้งแรกส่ง rating ที่ไม่ถูกต้องและได้ `userErrors` ที่มีข้อมูลกลับมาพร้อม review ที่เป็น `null` ส่วนครั้งที่สองส่งข้อมูลที่ถูกต้องและได้รีวิวกลับมาพร้อม `userErrors` ที่ว่างเปล่า
+
+export const payloadCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type UserError {
+      message: String!
+      field: [String!]
+    }
+
+    type CreateReviewPayload {
+      review: Review
+      userErrors: [UserError!]!
+    }
+
+    input CreateReviewInput {
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type Mutation {
+      createReview(input: CreateReviewInput!): CreateReviewPayload!
+    }
+
+    type Query {
+      _empty: String
+    }
+  \`);
+
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const root = {
+    createReview: ({ input }) => {
+      const errors = [];
+      if (input.rating < 1 || input.rating > 5) {
+        errors.push({ message: 'Rating must be between 1 and 5.', field: ['rating'] });
+      }
+      if (errors.length > 0) {
+        // Validation failed: no entity, populated userErrors.
+        return { review: null, userErrors: errors };
+      }
+      const review = {
+        id: String(nextId++),
+        trackId: input.trackId,
+        rating: input.rating,
+        body: input.body ?? null,
+      };
+      store.reviews.push(review);
+      // Success: the entity, and an empty (but non-null) userErrors list.
+      return { review, userErrors: [] };
+    },
+  };
+
+  const op = \`
+    mutation Create(\$input: CreateReviewInput!) {
+      createReview(input: \$input) {
+        review { id rating }
+        userErrors { message field }
+      }
+    }
+  \`;
+
+  // 1) Invalid input — expect userErrors and a null review.
+  const bad = await graphql({
+    schema,
+    source: op,
+    rootValue: root,
+    variableValues: { input: { trackId: 't1', rating: 9 } },
+  });
+  console.log('invalid:', JSON.stringify(bad, null, 2));
+
+  // 2) Valid input — expect a review and an empty userErrors list.
+  const good = await graphql({
+    schema,
+    source: op,
+    rootValue: root,
+    variableValues: { input: { trackId: 't1', rating: 5, body: 'On repeat.' } },
+  });
+  console.log('valid:', JSON.stringify(good, null, 2));
+})();`;
+
+<NodeRunner client:visible code={payloadCode} />
+
+อ่านผลลัพธ์ทั้งสองเทียบกัน การเรียกที่ไม่ถูกต้องคืน `review: null` และ entry ใน `userErrors` ที่ชี้ไปยัง field `rating` และที่สำคัญคือ array `errors` ระดับบนสุดไม่ปรากฏ เพราะไม่มีอะไร *ผิดพลาด* กับ request ผู้ใช้แค่ส่งข้อมูลที่ไม่ดีมา ส่วนการเรียกที่ถูกต้องคืนรีวิวและ `userErrors: []` ที่ว่างเปล่า client สามารถแตกกิ่งด้วยกฎเดียว คือ "`userErrors` ว่างหรือไม่?" ไม่ว่ามันจะเรียก mutation ตัวไหนก็ตาม
+
+<Callout title="input เข้า, payload ออก">
+ให้ทุก mutation ที่ไม่ใช่เรื่องเล็ก ๆ มี argument `input: SomeInput!` เดียวและ type คืนค่า `SomePayload!` ตัว input ทำให้คุณเพิ่ม field แบบ optional ในภายหลังได้โดยไม่ทำลาย signature ส่วน payload ที่มี entity แบบ nullable และ list `userErrors` แบบ non-null ให้รูปร่างเดียวที่สม่ำเสมอกับ client เพื่อจัดการทุก mutation คือตรวจ `userErrors` แล้วถ้ามันว่าง ก็ใช้ entity นี่คือธรรมเนียมที่ GraphQL API ขนาดใหญ่เกือบทุกตัวมาบรรจบกัน รับมันมาใช้ก่อนที่คุณจะต้องการมัน
+</Callout>
+
+export const payloadDiagram = `flowchart LR
+  In["CreateReviewInput!"] --> Mut["createReview"]
+  Mut --> Valid{"valid?"}
+  Valid -->|"yes"| OK["payload: review set, userErrors []"]
+  Valid -->|"no"| Err["payload: review null, userErrors [...]"]`;
+
+export const quizPayload = [
+  {
+    q: 'ข้อได้เปรียบหลักของการรับ input object เดียวแทนการรับ argument แยกหลายตัวคืออะไร?',
+    options: [
+      'มันทำให้ mutation รันเร็วขึ้น',
+      'คุณเพิ่ม field แบบ optional ในภายหลังได้โดยไม่เปลี่ยน signature ของ mutation ดังนั้น client เดิมจึงทำงานต่อได้',
+      'input type สามารถบรรจุ object type ได้',
+      'มันลบความจำเป็นในการมี type คืนค่าออกไป',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในรูปแบบ payload ทำไม field ของ entity (เช่น review) จึงเป็น nullable ขณะที่ userErrors เป็น list แบบ non-null?',
+    options: [
+      'มันเป็นตัวเลือกสไตล์ตามอำเภอใจที่ไม่มีความหมายอะไร',
+      'เมื่อล้มเหลวก็ไม่มี entity ให้คืน (null) แต่ userErrors มีอยู่เสมอ เพียงแต่ว่างเปล่าเมื่อสำเร็จ',
+      'ทั้งคู่ควรเป็น non-null เสมอ',
+      'list ไม่สามารถเป็น non-null ใน GraphQL ได้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ปัญหาประเภทใดควรอยู่ใน userErrors ของ payload แทนที่จะอยู่ใน array errors ระดับบนสุด?',
+    options: [
+      'query ที่ผิดรูปแบบจน parse ไม่ผ่าน',
+      'การ authentication ล้มเหลว',
+      'การ validate เชิงธุรกิจที่คาดไว้แล้วและกู้คืนได้ เช่น rating ที่อยู่นอกช่วง',
+      'network timeout',
+    ],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/input-payload-pattern" questions={quizPayload} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/input-payload-pattern" />

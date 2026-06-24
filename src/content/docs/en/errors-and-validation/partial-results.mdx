@@ -1,0 +1,140 @@
+---
+title: Partial Results
+description: 'How nullability controls error propagation: a non-null field error bubbles to the nearest nullable parent, while nullable fields keep siblings alive.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+We ended the last lesson with field errors: a resolver throws, the field becomes `null`, and an error entry describes it. But there is a subtle rule lurking here. What if the field that threw was declared **non-null** with a `!`? A non-null field can never be `null` — so what does the server put there? The answer is **error propagation**, and it is one of the most important runtime behaviors in GraphQL.
+
+## The propagation rule
+
+When a field errors, the server tries to set it to `null`. If the schema allows `null` there — the field is nullable — it stops, records the error, and moves on. The error stays local, and every sibling field continues to resolve.
+
+But if the field is **non-null**, `null` is illegal there. The server cannot leave it, so the error **bubbles up** to the parent. If the parent field is nullable, it becomes `null` and propagation stops there. If the parent is *also* non-null, the error keeps climbing. It bubbles until it reaches the **nearest nullable ancestor** — and if no nullable field exists all the way to the root, the entire `data` becomes `null`.
+
+<Mermaid title="A non-null field error bubbles up until it meets a nullable parent." code={propagation} />
+
+The diagram traces it: a non-null leaf throws, its non-null parent cannot hold `null`, so the error climbs to the first nullable field above it. That field is the firewall — it absorbs the error and protects the rest of the response.
+
+## Why this changes how you design schemas
+
+This rule turns the `!` into a blast radius decision. A non-null field is a promise, but it is also a liability: if it fails, it takes its non-null ancestors down with it. A nullable field is a safety valve — it confines a failure to itself and lets siblings survive, producing **partial data**.
+
+So nullability is not only about whether a value can be absent in the happy path. It is also about how far a failure spreads. Mark a field non-null when you are confident the server can always produce it; leave it nullable when you would rather degrade gracefully than collapse a whole subtree.
+
+## Seeing partial data in action
+
+The runner below builds a `Profile` with two siblings: a nullable `bio` whose resolver throws, and a non-null `displayName` that resolves cleanly. Because `bio` is nullable, its failure is contained — `displayName` still comes back. Press **Run** and look for partial data alongside a single error.
+
+export const partialCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Profile {
+      displayName: String!
+      bio: String
+    }
+
+    type Query {
+      profile: Profile
+    }
+  \`);
+
+  const root = {
+    profile: () => ({
+      displayName: () => 'Ada Lovelace',
+      bio: () => {
+        // Nullable field throws — failure is contained to "bio".
+        throw new Error('bio service timed out');
+      },
+    }),
+  };
+
+  const query = \`
+    {
+      profile {
+        displayName
+        bio
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+
+  // data.profile.displayName survives; data.profile.bio is null; one error.
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={partialCode} />
+
+Read the output as a story of containment. `bio` is nullable, so when its resolver threw the server set it to `null` and recorded one error with `path: ["profile", "bio"]`. Crucially, `displayName` is untouched — you still get `"Ada Lovelace"`. That is **partial data**: a usable response despite a failure. Had `bio` been declared `bio: String!`, the error would have bubbled to `profile` (nullable), nulling the whole profile object instead of just one field.
+
+<Callout title="Nullability is a failure-containment tool">
+Every `!` you add is a decision about both presence and propagation. Non-null fields give clients strong guarantees but turn a single resolver failure into a subtree-wide outage when they throw. Nullable fields cost the client a guard but contain failures and enable partial responses. Design the boundary deliberately: make the leaves you can always produce non-null, and keep failure-prone or optional fields nullable so one flaky dependency cannot blank out an entire query.
+</Callout>
+
+export const propagation = `flowchart TD
+  Root["Query (root)"]
+  Profile["profile: Profile (nullable)"]
+  Account["account: Account! (non-null)"]
+  Name["legalName: String! (non-null, throws)"]
+  Root --> Profile
+  Profile --> Account
+  Account --> Name
+  Name -->|"null illegal, bubble up"| Account
+  Account -->|"non-null, keep bubbling"| Profile
+  Profile -->|"nullable: absorbs error, becomes null"| Root`;
+
+export const quizPartialResults = [
+  {
+    q: 'A nullable field’s resolver throws. What happens to its sibling fields?',
+    options: [
+      'They are all set to null too',
+      'They still resolve normally — the failure is contained to the nullable field',
+      'The whole data tree becomes null',
+      'The request is rejected before execution',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When a non-null field errors, where does the error propagate to?',
+    options: [
+      'It stays on the non-null field as null',
+      'It bubbles up to the nearest nullable ancestor',
+      'It is silently dropped',
+      'It always nulls the entire response regardless of ancestors',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'If a non-null field errors and there is no nullable field anywhere up to the root, what is the result?',
+    options: [
+      'data is left partially filled',
+      'The entire data becomes null',
+      'The server returns the field as an empty string',
+      'Execution restarts from the root',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does marking a field non-null with ! imply about failures?',
+    options: [
+      'Failures in that field are ignored',
+      'A failure there can bubble up and null out non-null ancestors, widening the blast radius',
+      'The field can never produce an error',
+      'Errors are converted into empty lists',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/partial-results" questions={quizPartialResults} />
+
+<ProgressTracker client:visible id="errors-and-validation/partial-results" />

@@ -1,0 +1,185 @@
+---
+title: Relay Connections
+description: 'สเปก Relay cursor connection — edges, node, cursor, pageInfo พร้อม hasNextPage และ endCursor และการ paging ไปข้างหน้าด้วย first/after'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+offset pagination ระบุ *ตำแหน่ง* ซึ่งเลื่อนไปเมื่อ list เปลี่ยนแปลง **cursor pagination** แก้เรื่องนี้ด้วยการระบุ *item*: แต่ละ item จะได้ **cursor** ทึบแสงหนึ่งตัว และคุณขอ "item ถัดไป N อัน **หลังจาก** cursor นี้" เพราะ cursor ตั้งชื่อให้ item เฉพาะตัวแทนที่จะเป็นช่อง การแทรกและลบที่อื่นใน list จึงไม่ทำให้ผลลัพธ์ซ้ำหรือถูกข้ามอีกต่อไป
+
+รูปร่างของ cursor pagination ที่ถูกนำไปใช้อย่างแพร่หลายที่สุดคือ **Relay Connection specification** มันทำให้ชื่อ field เป็นมาตรฐาน เพื่อให้ tooling และ client สามารถทำ pagination กับ list ใด ๆ ด้วยวิธีเดียวกัน
+
+## รูปร่างของ connection
+
+connection ห่อ list ไว้ในสามชั้นที่ซ้อนกัน แทนที่จะคืน `[Post!]!` โดยตรง field ที่เป็น list จะคืน `PostConnection`:
+
+```graphql
+type Query {
+  posts(first: Int, after: String): PostConnection!
+}
+
+type PostConnection {
+  edges: [PostEdge!]!
+  pageInfo: PageInfo!
+}
+
+type PostEdge {
+  node: Post!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+```
+
+ถอดรหัสแต่ละชั้น:
+
+- **`edges`** คือ list — แต่แต่ละรายการคือ *edge* ไม่ใช่ node เปล่า ๆ
+- **`node`** คือ item ตัวจริง (`Post`) การห่อมันไว้ใน edge เผื่อที่ไว้สำหรับข้อมูลเฉพาะของแต่ละ edge
+- **`cursor`** คือ string ทึบแสงที่ระบุตำแหน่งของ edge นั้นใน connection *นี้* จงปฏิบัติกับมันเหมือนกล่องดำ อย่า parse มันเด็ดขาด
+- **`pageInfo`** บรรจุ metadata สำหรับ paging `hasNextPage` บอกว่ามี item เพิ่มอีกหรือไม่ ส่วน `endCursor` คือ cursor ของ edge สุดท้าย ซึ่งคุณป้อนเข้าไปใน request ถัดไป
+
+## first และ after
+
+pagination ไปข้างหน้าใช้ argument สองตัว `first: N` ขอ item ถัดไป N อัน `after: cursor` บอกว่า "เริ่ม *หลังจาก* cursor นี้" หน้าแรกละ `after` ไว้:
+
+```graphql
+{
+  posts(first: 2) {
+    edges { node { title } cursor }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+```
+
+ในการเอาหน้าถัดไป คุณหยิบ `pageInfo.endCursor` จาก response แล้วส่งกลับเป็น `after` (สเปกยังนิยาม `last`/`before` สำหรับ paging ย้อนกลับ ซึ่งเป็นภาพสะท้อนกระจกของ `first`/`after`)
+
+<Mermaid title="connection ห่อแต่ละ item ไว้ใน edge ที่มี cursor; pageInfo บอกคุณว่าจะดึงหน้าถัดไปอย่างไร" code={connDiagram} />
+
+## connection รันจริง
+
+runner ด้านล่างสร้าง schema `PostConnection` ตัวจริง และ resolve `first`/`after` ด้วยการเข้ารหัส id ของแต่ละ item เป็น cursor รันมันเพื่อดึงหน้าหนึ่ง จากนั้นคัดลอก `endCursor` จากผลลัพธ์ไปใส่ใน argument `after:` แล้วรันใหม่เพื่อเดินไปข้างหน้า
+
+export const connCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Post { id: ID! title: String! }
+    type PostEdge { node: Post! cursor: String! }
+    type PageInfo { hasNextPage: Boolean! endCursor: String }
+    type PostConnection {
+      edges: [PostEdge!]!
+      pageInfo: PageInfo!
+    }
+    type Query {
+      posts(first: Int = 2, after: String): PostConnection!
+    }
+  \`);
+
+  const all = Array.from({ length: 5 }, (_, i) => ({
+    id: 'p' + (i + 1),
+    title: 'Post number ' + (i + 1),
+  }));
+
+  // Opaque cursor: base64 of the item id. Clients must not parse it.
+  const encode = (id) => btoa('cursor:' + id);
+  const decode = (cur) => atob(cur).replace('cursor:', '');
+
+  const root = {
+    posts: ({ first, after }) => {
+      // Find the starting index: the item right after the given cursor.
+      let start = 0;
+      if (after) {
+        const id = decode(after);
+        const idx = all.findIndex((p) => p.id === id);
+        start = idx + 1;
+      }
+      const slice = all.slice(start, start + first);
+      const edges = slice.map((p) => ({ node: p, cursor: encode(p.id) }));
+      const endCursor = edges.length ? edges[edges.length - 1].cursor : null;
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage: start + first < all.length,
+          endCursor,
+        },
+      };
+    },
+  };
+
+  // Page one: the first 2 items, no "after".
+  const query = \`
+    {
+      posts(first: 2) {
+        edges { node { title } cursor }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={connCode} />
+
+ผลลัพธ์ให้ edge สองอัน แต่ละอันมี `node` และ `cursor` ทึบแสง พร้อมกับ `pageInfo` ที่บอก `hasNextPage: true` และส่ง `endCursor` กลับมา ส่ง `endCursor` นั้นเป็น `after` แล้วคุณจะได้สองอันถัดไป — และเพราะ cursor ตั้งชื่อให้ *item* ไม่ใช่ตำแหน่ง การแทรก post ใหม่ที่ด้านบนของ list จะไม่ทำให้หน้าสองซ้ำหรือข้ามอะไรไป ความเสถียรนั้นคือเหตุผลทั้งหมดที่ connection มีอยู่
+
+<Callout title="ใช้ cursor สำหรับ list ที่ใหญ่หรือเปลี่ยนแปลง">
+รูปร่างของ Relay connection — `edges { node cursor }` และ `pageInfo { hasNextPage endCursor }` ที่ paging ด้วย `first`/`after` — มี boilerplate มากกว่า `limit`/`offset` แต่มันคุ้มค่ากับ list ที่ใหญ่หรือเปลี่ยนแปลงขณะที่ผู้ใช้กำลังเรียกดู cursor ระบุ item แทนที่จะเป็นตำแหน่ง การแทรกและลบแบบพร้อมกันจึงไม่ทำให้ขอบเขตของหน้าเสียหาย และฐานข้อมูลสามารถ seek ตรงไปยัง cursor ได้แทนที่จะนับผ่านแถวที่ถูกข้าม สำหรับ feed, ผลการค้นหา และ collection ที่มีปริมาณมาก จงหยิบ connection มาใช้
+</Callout>
+
+export const connDiagram = `flowchart TD
+  Conn["PostConnection"]
+  Conn --> Edges["edges: [PostEdge!]!"]
+  Conn --> PI["pageInfo: PageInfo!"]
+  Edges --> Edge["PostEdge"]
+  Edge --> Node["node: Post!"]
+  Edge --> Cursor["cursor: String! (opaque)"]
+  PI --> HNP["hasNextPage: Boolean!"]
+  PI --> EC["endCursor: String — feed into next 'after'"]`;
+
+export const quizRelay = [
+  {
+    q: 'ใน Relay connection แต่ละรายการใน edges บรรจุอะไร?',
+    options: [
+      'node เปล่า ๆ เท่านั้น',
+      'node (ตัว item) บวกกับ cursor ที่ระบุตำแหน่งของมัน',
+      'string ที่เป็น cursor เท่านั้น',
+      'pageInfo ฉบับเต็มสำหรับ item นั้น',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'คุณดึงหน้าที่อยู่ถัดจากหน้าปัจจุบันอย่างไร?',
+    options: [
+      'เพิ่มค่า offset ที่เป็นจำนวนเต็มขึ้นตามขนาดของหน้า',
+      'ส่ง pageInfo.endCursor เป็น argument after ของ query ถัดไป',
+      'รัน query เดิมซ้ำโดยไม่ใส่ argument ใด ๆ',
+      'parse cursor เพื่อคำนวณ id ของแถวถัดไป',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ทำไม cursor จึงทนทานกว่า offset เมื่อ list เปลี่ยนแปลงระหว่างการเรียกดู?',
+    options: [
+      'cursor เป็น string ที่สั้นกว่าเสมอ',
+      'cursor ระบุ item เฉพาะตัว การแทรกหรือลบที่อื่นจึงไม่เลื่อนขอบเขตของหน้า',
+      'cursor ปิดการใช้งาน caching บังคับให้ได้ข้อมูลใหม่',
+      'cursor ถูกเข้ารหัสและไม่สามารถถูกดัดแปลงได้',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/relay-connections" questions={quizRelay} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/relay-connections" />

@@ -1,0 +1,91 @@
+---
+title: Tooling, Federation & Building
+description: 'From a designed schema to a documented, tested, running, and composed GraphQL service — the workflow and tools this module covers.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Every module before this one taught you to *design* a schema: types, resolvers, mutations, pagination, errors, security. This module is about everything that turns a good design into a service that real teams ship. A schema on its own is a document. A **service** is that document made runnable, typed, tested, and — when one team and one process is no longer enough — split across many systems and recomposed into a single graph.
+
+## From a drawing to a service
+
+A designed schema is like an architect's drawing. It is precise and it is the contract, but nobody lives in a drawing. Four things stand between the drawing and a building people can use:
+
+- **Implement** — choose how the SDL and the resolver code relate. Is the SDL the source of truth (schema-first), or is it generated from your code (code-first)? This choice shapes your whole codebase.
+- **Type & document** — wire the schema to your language's type system so the compiler catches a wrong resolver before a client ever does. GraphQL Code Generator turns the schema into TypeScript types for both server and client.
+- **Test** — prove the service behaves. Unit-test individual resolvers, and integration-test by executing real operations against the schema and asserting on the result.
+- **Federate** — when the graph outgrows a single service, split it into **subgraphs** owned by different teams and compose them back into one **supergraph** behind a gateway.
+
+## The shape of this module
+
+<Mermaid title="The path this module walks: design feeds implementation, which is tested, and — at scale — federated into one graph." code={moduleFlow} />
+
+Read that flow as a pipeline you already started. **Design** is behind you. Now you decide *how* to implement, you make the implementation **typed** and **tested**, and only once a single service strains under many teams do you reach for **federation**. The last lesson pulls it all together in a working TypeScript server.
+
+## What each lesson gives you
+
+- **Schema-first vs code-first** — the two ways to build a GraphQL server, their trade-offs, and a demo where both styles produce the identical schema.
+- **Codegen and testing** — generating typed resolvers and operations, plus unit and integration testing strategies you can run today.
+- **Federation** — splitting a graph by domain into subgraphs, entities and references, and composing a supergraph behind a gateway.
+- **Building with Yoga** — a cohesive, runnable TypeScript implementation with GraphQL Yoga that ties typeDefs, resolvers, and context together.
+
+By the end you will be able to take any schema you designed in the earlier modules and stand it up as a documented, typed, tested, and — if you need to — federated GraphQL service.
+
+<Callout title="Design is necessary, not sufficient">
+A beautiful schema that nobody can run, no compiler checks, and no test guards is still just a drawing. The work in this module is what makes the contract *trustworthy*: types so the compiler enforces it, tests so regressions are caught, and composition so the contract holds even when many teams build behind it.
+</Callout>
+
+export const moduleFlow = `flowchart LR
+  Design["Design (earlier modules)"]
+  Implement["Implement (schema-first / code-first)"]
+  Test["Type & Test (codegen + tests)"]
+  Federate["Federate (subgraphs + gateway)"]
+  Service["Running GraphQL service"]
+  Design --> Implement
+  Implement --> Test
+  Test --> Federate
+  Federate --> Service
+  Test --> Service`;
+
+export const quizIndex = [
+  {
+    q: 'According to this module, what stands between a designed schema and a running service?',
+    options: [
+      'Only choosing a hosting provider',
+      'Implementing, typing/documenting, testing, and (at scale) federating it',
+      'Rewriting the schema in JSON',
+      'Nothing — a schema is already a service',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When should a team reach for federation according to this lesson?',
+    options: [
+      'Always, from the very first resolver',
+      'Only when a single service strains under many teams and domains',
+      'Never — federation is deprecated',
+      'Before designing any types',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the central choice the "implement" step forces you to make?',
+    options: [
+      'Which database to use',
+      'Whether the SDL is the source of truth (schema-first) or generated from code (code-first)',
+      'Which port to listen on',
+      'Whether to support subscriptions',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="tooling-federation-building/index" />

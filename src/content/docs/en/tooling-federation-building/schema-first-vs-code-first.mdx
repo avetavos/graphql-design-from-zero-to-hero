@@ -1,0 +1,199 @@
+---
+title: Schema-First vs Code-First
+description: 'Two ways to build a GraphQL server — SDL as the source of truth versus a schema generated from code — their trade-offs, and a demo where both produce the same schema.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Every GraphQL server has a schema and a set of resolvers. The question this lesson answers is: **which one do you write first, and which one is the source of truth?** There are two answers, and the choice colours your whole codebase.
+
+## Schema-first — the SDL leads
+
+In **schema-first** development you write the schema in SDL — the same `type`, `Query`, and `!` syntax you learned in earlier modules — and treat that text as the single source of truth. The resolvers are written separately and *attached* to that schema by name. The SDL file is the contract; the resolvers are the implementation that fulfils it.
+
+```graphql
+type Query {
+  hello(name: String!): String!
+}
+```
+
+```ts
+const typeDefs = /* GraphQL */ `
+  type Query {
+    hello(name: String!): String!
+  }
+`;
+
+const resolvers = {
+  Query: {
+    hello: (_parent: unknown, args: { name: string }) => `Hello, ${args.name}!`,
+  },
+};
+```
+
+The strength is that the contract is **front and centre**. Anyone — frontend, backend, a non-engineer — can read the SDL and know exactly what the API offers. The risk is **drift**: nothing in plain SDL forces your resolver's return type to match the field's declared type. A resolver can quietly return the wrong shape, and you only find out at runtime. That gap is exactly what the next lesson's code generation closes.
+
+## Code-first — the code leads
+
+In **code-first** development you build the schema with your programming language. You construct type objects in code, and the SDL is **generated** from those objects. The code is the source of truth; the SDL is an artifact you can print out.
+
+```ts
+import {
+  GraphQLObjectType,
+  GraphQLSchema,
+  GraphQLString,
+  GraphQLNonNull,
+} from 'graphql';
+
+const QueryType = new GraphQLObjectType({
+  name: 'Query',
+  fields: {
+    hello: {
+      type: new GraphQLNonNull(GraphQLString),
+      args: { name: { type: new GraphQLNonNull(GraphQLString) } },
+      resolve: (_parent, args: { name: string }) => `Hello, ${args.name}!`,
+    },
+  },
+});
+
+const schema = new GraphQLSchema({ query: QueryType });
+```
+
+Here the field, its type, its arguments, and its resolver live **together** in one object. The compiler checks them as a unit, so the drift problem mostly disappears — a resolver that returns the wrong type is a type error before you run anything. The cost is readability: the contract is now buried in constructor calls instead of clean SDL, and a newcomer has to read code, not a document, to understand the API.
+
+## The trade-offs, side by side
+
+<Mermaid title="The same schema reached two ways — and the source of truth flows in opposite directions." code={approachFlow} />
+
+- **Source of truth.** Schema-first: the SDL. Code-first: the code.
+- **Readability of the contract.** Schema-first wins — the SDL is plain and shareable. Code-first hides it behind constructors.
+- **Type safety out of the box.** Code-first wins — code and types are checked together. Schema-first needs code generation (next lesson) to catch resolver drift.
+- **Tooling and collaboration.** Schema-first SDL files diff cleanly in review and can be shared with non-engineers and design tools. Code-first changes read like ordinary code changes.
+
+Neither is universally right. Many modern TypeScript stacks land in the middle: write SDL (schema-first) for its readable contract, then **generate types** from it so you also get the code-first safety. That hybrid is what the rest of this module builds on.
+
+## Same schema, two styles, run for real
+
+The demo below builds the *identical* `hello(name)` schema twice — once schema-first with `buildSchema` from SDL, once code-first by constructing types — and prints both schemas as SDL so you can confirm they are the same. Then it runs the same query through each. Press **Run**.
+
+export const sameSchemaCode = `(async () => {
+  const {
+    graphql,
+    buildSchema,
+    printSchema,
+    GraphQLObjectType,
+    GraphQLSchema,
+    GraphQLString,
+    GraphQLNonNull,
+  } = await import('https://esm.sh/graphql@16');
+
+  // ----- Schema-first: SDL is the source of truth -----
+  const schemaFirst = buildSchema(\`
+    type Query {
+      hello(name: String!): String!
+    }
+  \`);
+  const rootValue = {
+    hello: ({ name }) => \`Hello, \${name}!\`,
+  };
+
+  // ----- Code-first: the schema is built from code -----
+  const QueryType = new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      hello: {
+        type: new GraphQLNonNull(GraphQLString),
+        args: { name: { type: new GraphQLNonNull(GraphQLString) } },
+        resolve: (_parent, args) => \`Hello, \${args.name}!\`,
+      },
+    },
+  });
+  const codeFirst = new GraphQLSchema({ query: QueryType });
+
+  // Print both as SDL — they should be identical.
+  console.log('--- schema-first prints as ---');
+  console.log(printSchema(schemaFirst).trim());
+  console.log('--- code-first prints as ---');
+  console.log(printSchema(codeFirst).trim());
+
+  const query = \`{ hello(name: "Graph") }\`;
+
+  const r1 = await graphql({ schema: schemaFirst, source: query, rootValue });
+  const r2 = await graphql({ schema: codeFirst, source: query });
+
+  console.log('--- results ---');
+  console.log('schema-first:', JSON.stringify(r1.data));
+  console.log('code-first:  ', JSON.stringify(r2.data));
+})();`;
+
+<NodeRunner client:visible code={sameSchemaCode} />
+
+Notice that `printSchema` returns the same SDL for both, and both queries return the same data. The destination — a typed, runnable schema — is identical. All that differs is which artifact you hand-write and which one the machine derives. That is the whole essence of the schema-first versus code-first decision.
+
+<Callout title="Pick by what you optimise for">
+Choose **schema-first** when the contract's readability and shareability matter most — a clean SDL file your whole org can read — and plan to add code generation for safety. Choose **code-first** when end-to-end type safety with zero extra build step matters most, and you accept that the contract lives in code. Whatever you pick, make one of them the single source of truth and never hand-edit the other.
+</Callout>
+
+export const approachFlow = `flowchart TD
+  SF["Schema-first: write SDL"]
+  SFR["Attach resolvers by name"]
+  CF["Code-first: build types in code"]
+  CFR["Generate SDL from types"]
+  Schema["Executable schema (identical)"]
+  SF --> SFR
+  SFR --> Schema
+  CF --> CFR
+  CFR --> Schema`;
+
+export const quizSchemaVsCode = [
+  {
+    q: 'In schema-first development, what is the single source of truth?',
+    options: [
+      'The resolver functions',
+      'The SDL — the written schema',
+      'The database tables',
+      'The generated TypeScript types',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the main risk of plain schema-first development that code generation later solves?',
+    options: [
+      'The SDL cannot express non-null fields',
+      'Drift — nothing forces a resolver to return the type the field declares',
+      'It cannot define a Query type',
+      'It only works in JavaScript',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the chief downside of code-first development?',
+    options: [
+      'It cannot produce a valid schema',
+      'The contract is buried in constructor calls instead of a readable SDL document',
+      'It has no type safety',
+      'It requires federation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the demo, what does printSchema show about the two approaches?',
+    options: [
+      'The two schemas are different',
+      'They print as identical SDL — the destination is the same',
+      'Only the code-first schema can be printed',
+      'Neither can run a query',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/schema-first-vs-code-first" questions={quizSchemaVsCode} />
+
+<ProgressTracker client:visible id="tooling-federation-building/schema-first-vs-code-first" />

@@ -1,0 +1,180 @@
+---
+title: Depth & Complexity
+description: 'Defending against deeply nested and aliased queries with depth limiting, complexity (cost) analysis, and execution timeouts — including computing query depth in the browser.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+We have settled *who* is asking and *whether* they are allowed. Now the third question: **how expensive is this query?** A request can be perfectly authenticated, fully authorized, and still bring a server to its knees — because GraphQL lets clients author the *shape* of the work, and a small query string can describe an enormous amount of it.
+
+## How a tiny query becomes a denial of service
+
+Two features of a connected graph make abuse easy:
+
+- **Deep nesting.** If `User` has `friends: [User!]!`, then `user → friends → friends → friends → …` is legal SDL forever. Each level multiplies the rows the server must fetch. Ten levels of a modest fan-out is millions of objects from a few lines of query.
+- **Aliases.** A client may request the same expensive field many times under different names: `a: search(...) b: search(...) c: search(...)`. The query stays short, but the server runs the work once per alias.
+
+```graphql
+# Short to write, ruinous to execute: nesting plus aliasing.
+query Abuse {
+  user(id: "1") {
+    friends {           # level 1
+      friends {         # level 2
+        friends {       # level 3 ... and on, and on
+          a: posts { title }
+          b: posts { title }   # same field, billed twice via aliases
+        }
+      }
+    }
+  }
+}
+```
+
+You cannot fix this with authentication or authorization — the attacker may be a legitimate, logged-in user. You fix it by measuring cost and refusing what is too expensive *before execution*.
+
+<Mermaid title="Cost checks run after parsing and validation but before resolvers touch any data source." code={costFlow} />
+
+## Three defenses, cheapest first
+
+1. **Depth limiting.** Walk the parsed query and reject it if nesting exceeds a fixed maximum (say, 7). It is blunt but cheap and catches the recursive-nesting attack outright. This is the easiest control to add and the one we will compute live below.
+2. **Complexity (cost) analysis.** Assign each field a cost — a flat number, or a formula based on arguments like `first: 100` for a paginated list — sum the costs for the whole query, multiply through nesting, and reject anything over a budget. This handles wide *and* deep queries and accounts for aliases, since each alias is a separate selection that adds to the total.
+3. **Timeouts.** A backstop for whatever slips through static analysis: cap wall-clock execution (and per-data-source calls) so a query that turns out expensive at runtime is aborted rather than allowed to run forever.
+
+Libraries such as `graphql-depth-limit` and `graphql-query-complexity` implement the first two as validation rules, so the query is rejected during validation — no resolver ever runs. The cost rule reads like this:
+
+```ts
+import { createComplexityRule, simpleEstimator } from 'graphql-query-complexity';
+
+const complexityRule = createComplexityRule({
+  maximumComplexity: 1000,
+  estimators: [
+    // A list field costs (childComplexity * the requested page size).
+    simpleEstimator({ defaultComplexity: 1 }),
+  ],
+  onComplete: (cost) => {
+    if (cost > 1000) throw new Error('Query is too complex: ' + cost);
+  },
+});
+// Pass complexityRule in the server's validationRules so it runs before execution.
+```
+
+## Computing depth from a parsed query, live
+
+Depth limiting is something you can implement in a few lines, and the heart of it is the GraphQL `parse` function — the same one a server uses. It turns a query string into an **AST** (abstract syntax tree). Walk the `selectionSet`s, and the deepest chain of nested selections is the query's depth. The demo below parses three queries and measures each, then applies a limit of 5. Press **Run**.
+
+export const depthCode = `(async () => {
+  const { parse } = await import('https://esm.sh/graphql@16');
+
+  // Depth = the deepest chain of nested selection sets in the operation.
+  function selectionDepth(selectionSet, current) {
+    let max = current;
+    for (const sel of selectionSet.selections) {
+      if (sel.selectionSet) {
+        max = Math.max(max, selectionDepth(sel.selectionSet, current + 1));
+      } else {
+        max = Math.max(max, current + 1);
+      }
+    }
+    return max;
+  }
+
+  function queryDepth(source) {
+    const doc = parse(source);
+    let max = 0;
+    for (const def of doc.definitions) {
+      if (def.kind === 'OperationDefinition') {
+        max = Math.max(max, selectionDepth(def.selectionSet, 0));
+      }
+    }
+    return max;
+  }
+
+  const MAX_DEPTH = 5;
+
+  const queries = {
+    shallow: \`{ user { name } }\`,
+    medium: \`{ user { friends { posts { title } } } }\`,
+    abusive: \`{
+      user {
+        friends { friends { friends { friends { friends { name } } } } }
+      }
+    }\`,
+  };
+
+  for (const [label, source] of Object.entries(queries)) {
+    const depth = queryDepth(source);
+    const verdict = depth > MAX_DEPTH ? 'REJECTED' : 'allowed';
+    console.log(label + ': depth ' + depth + ' -> ' + verdict + ' (limit ' + MAX_DEPTH + ')');
+  }
+})();`;
+
+<NodeRunner client:visible code={depthCode} />
+
+The output ranks the three queries by depth and applies the limit. The shallow and medium queries pass; the abusive one — five levels of `friends` deep — exceeds the limit of 5 and is rejected. Note that *no resolver ran*: we worked purely on the parsed AST, exactly as a validation rule does, so a malicious query is thrown out before it can cost anything. Real depth-limit libraries do the same walk; complexity analysis extends it by weighting each field instead of just counting nesting levels.
+
+<Callout title="Measure cost, then reject before you execute">
+A query can pass authentication and authorization and still be a denial-of-service weapon, because the client controls the shape of the work. Defend in layers: **depth limiting** stops runaway nesting, **complexity analysis** budgets total cost (counting arguments and aliases), and **timeouts** catch whatever proves expensive at runtime. The first two are static — they read the parsed query and reject it during validation, so resolvers never run. Always set a maximum depth and a complexity budget on any public GraphQL endpoint; an endpoint without them is one clever query away from an outage.
+</Callout>
+
+export const costFlow = `flowchart LR
+  P["parse: query string -> AST"] --> V["validate against schema"]
+  V --> Depth{"Depth within limit?"}
+  Depth -->|"No"| Rej["Reject (no resolver runs)"]
+  Depth -->|"Yes"| Cost{"Complexity within budget?"}
+  Cost -->|"No"| Rej
+  Cost -->|"Yes"| Exec["Execute with a timeout"]
+  Exec -->|"too slow"| Abort["Abort on timeout"]
+  Exec --> R["Response"]`;
+
+export const quizDepth = [
+  {
+    q: 'Why can a short query string cause a denial of service in GraphQL?',
+    options: [
+      'Because the response is always compressed',
+      'Because the client controls the shape: deep nesting and aliases describe huge amounts of work in few characters',
+      'Because GraphQL retries failed requests automatically',
+      'Because every query opens a new database connection',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does depth limiting actually inspect?',
+    options: [
+      'The number of bytes in the HTTP request',
+      'The deepest chain of nested selection sets in the parsed query',
+      'The user’s role on the context',
+      'The number of variables defined',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'At what point do depth and complexity rules reject an over-budget query?',
+    options: [
+      'After the resolvers return, during serialization',
+      'During validation, after parsing but before any resolver runs',
+      'Only after a timeout fires',
+      'In the client before sending',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why is complexity (cost) analysis more powerful than depth limiting alone?',
+    options: [
+      'It encrypts the query',
+      'It weights each field and accounts for arguments like page size and repeated aliases, catching wide queries too',
+      'It removes the need for authentication',
+      'It caches every response automatically',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/depth-and-complexity" questions={quizDepth} />
+
+<ProgressTracker client:visible id="security-and-performance/depth-and-complexity" />

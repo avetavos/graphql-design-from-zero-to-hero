@@ -1,0 +1,182 @@
+---
+title: การเขียน Query
+description: 'syntax ของ query ตั้งแต่พื้นฐาน — field, nested selection set, และการตั้งชื่อ operation ของคุณ'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL query คือข้อความ และข้อความนั้นมีรูปร่าง เมื่อคุณอ่านรูปร่างนั้นออก และเขียนมันขึ้นเองได้ คุณก็จะคุยกับ GraphQL API ตัวไหนก็ได้ บทเรียนนี้สร้าง query ขึ้นมาทีละชิ้น ตั้งแต่ field แล้วเป็น nested selection set จากนั้นก็เป็น operation name ที่ห่อทุกอย่างเข้าด้วยกัน
+
+## field
+
+หน่วยที่เล็กที่สุดของ query คือ **field** ชื่อเดียวที่ร้องขอข้อมูลชิ้นเดียว field ถูกห่อด้วยปีกกา ซึ่งเรียกว่า **selection set** selection set ที่อยู่บนสุดของ query เลือกข้อมูลจาก `Query` root
+
+```graphql
+{
+  currentUser
+}
+```
+
+นี่ร้องขอ field หนึ่งตัวคือ `currentUser` ถ้า field คืน scalar เช่น `String`, `Int` และอื่น ๆ การระบุชื่อมันก็เพียงพอแล้ว คุณมาถึง leaf และ query หยุดตรงนั้น คุณสามารถขอหลาย field เคียงข้างกันได้ง่าย ๆ เพียงแค่ระบุรายการ
+
+```graphql
+{
+  serverTime
+  apiVersion
+}
+```
+
+## nested selection set
+
+เมื่อ field คืน **object type** แทนที่จะเป็น scalar การระบุชื่อมันเพียงอย่างเดียวไม่พอ GraphQL ต้องรู้ว่าคุณต้องการ field *ตัวไหน* ของ object นั้น คุณตอบด้วยการเปิด nested selection set ที่มีปีกกาของตัวเอง
+
+```graphql
+{
+  currentUser {
+    id
+    name
+    email
+  }
+}
+```
+
+`currentUser` คืน `User` object ดังนั้นมันจึงต้องตามด้วย selection set ที่ระบุ field ของ `User` ที่คุณสนใจ การซ้อนแบบนี้สามารถลึกเท่าที่ graph เปิดให้ได้ ถ้า `User` มี field `address` ที่คืน `Address` object คุณก็ซ้อนอีกชั้น
+
+```graphql
+{
+  currentUser {
+    name
+    address {
+      city
+      country
+    }
+  }
+}
+```
+
+ปีกกาแต่ละชั้นก้าวลึกลงไปใน graph อีกหนึ่ง edge ดังนั้น query จึงเป็น **tree ของ field** ที่สะท้อนรูปร่างของ response ที่คุณจะได้กลับมา
+
+<Mermaid title="query ที่ซ้อนกันคือ tree ของ field ที่สะท้อนรูปร่างของ response" code={treeDiagram} />
+
+หลักคิดที่เป็นประโยชน์ field ที่คืน object type *ต้องมี* selection set และ field ที่คืน scalar *ห้ามมี* selection set ลืมกฎข้อใดข้อหนึ่ง แล้ว server จะปฏิเสธ query ระหว่างการ validate ก่อนที่ resolver ตัวใดจะได้รัน
+
+## operation name
+
+รูปแบบ `{ ... }` เปล่า ๆ เป็นรูปแบบย่อของ query คุณสามารถ และในทีมงานจริงควร เขียนแบบเต็มที่เริ่มด้วย keyword `query` ตามด้วย **operation name** ที่คุณเลือกเอง
+
+```graphql
+query GetCurrentUser {
+  currentUser {
+    id
+    name
+  }
+}
+```
+
+`GetCurrentUser` คือ operation name มันไม่เปลี่ยนผลลัพธ์เลย แต่มันคุ้มค่าใน 3 ทาง คือมันปรากฏใน server log และ tracing ทำให้คุณแยกแยะ request ได้ มันจำเป็นเมื่อ document หนึ่งมี operation มากกว่าหนึ่งตัว และมันทำให้ query อธิบายตัวเองได้ การตั้งชื่อ operation เป็นนิสัยที่ควรสร้างตั้งแต่เนิ่น ๆ
+
+## รัน query ที่ซ้อนกัน
+
+ตัวอย่างด้านล่างเลือก field ที่ซ้อนกัน คือ `currentUser` ที่พกพา `name` และ `favoriteTrack` object ที่ซ้อนอยู่ ซึ่งในตัวมันเองก็พกพา `title` query นี้ใช้รูปแบบเต็ม `query` พร้อม operation name กด **Run** แล้วเทียบ JSON กับ tree ของ field ที่คุณเขียน
+
+export const nestedCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+    }
+
+    type User {
+      id: ID!
+      name: String!
+      favoriteTrack: Track!
+    }
+
+    type Query {
+      currentUser: User
+    }
+  \`);
+
+  const root = {
+    currentUser: () => ({
+      id: 'u1',
+      name: 'Ada',
+      favoriteTrack: { id: 't9', title: 'Selection Set Serenade' },
+    }),
+  };
+
+  // Long form: the "query" keyword plus a chosen operation name.
+  const query = \`
+    query GetCurrentUser {
+      currentUser {
+        name
+        favoriteTrack {
+          title
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={nestedCode} />
+
+response เป็น object ที่ซ้อนกัน `currentUser` เก็บ `name` และ `favoriteTrack` ส่วน `favoriteTrack` เก็บ `title` ทุกปีกกาที่คุณเปิดใน query สร้างการซ้อนหนึ่งระดับในผลลัพธ์ ลองลบบรรทัด `title` ด้านในออก server จะปฏิเสธ query เพราะ field ที่คืน `Track` object type ต้องมี selection set
+
+<Callout title="query คือรูปร่างของ response">
+GraphQL query และ response ของมันมีโครงสร้างเหมือนกัน scalar เป็น leaf และจบกิ่ง ส่วน object type เปิด selection set ใหม่และเดินต่อ เมื่อคุณเขียน query คุณกำลังวาด tree ที่ server จะเติมให้พอดีเป๊ะ ตั้งชื่อ operation ของคุณ ซ้อนเข้าไปเฉพาะใน object type เท่านั้น แล้ว response จะไม่มีวันทำให้คุณประหลาดใจ
+</Callout>
+
+export const treeDiagram = `flowchart TD
+  Root["{ } selection set (Query root)"] --> CU["currentUser (User)"]
+  CU --> Name["name (scalar leaf)"]
+  CU --> Addr["address (Address)"]
+  Addr --> City["city (scalar leaf)"]
+  Addr --> Country["country (scalar leaf)"]`;
+
+export const quizWritingQueries = [
+  {
+    q: 'When does a field require its own nested selection set?',
+    options: [
+      'เมื่อมันรับ argument',
+      'เมื่อมันคืน object type แทนที่จะเป็น scalar',
+      'เฉพาะภายใน Mutation root เท่านั้น',
+      'ไม่เคยต้องมี — selection set เป็นทางเลือกในทุกที่',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the role of the operation name in "query GetCurrentUser { ... }"?',
+    options: [
+      'มันเปลี่ยนว่า field ไหนจะถูกคืนกลับมา',
+      'มันติดป้ายให้ operation สำหรับ logging และจำเป็นเมื่อ document มีหลาย operation',
+      'มันจำเป็นสำหรับทุก ๆ query',
+      'มันบอก server ว่าควรข้าม resolver ตัวไหน',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How does the structure of a GraphQL response relate to the query?',
+    options: [
+      'response เป็น list แบนราบไม่ว่าจะซ้อนกันแค่ไหน',
+      'response สะท้อน query มันมี tree ของ field ที่เหมือนกัน',
+      'response เรียงตามลำดับตัวอักษรเสมอ',
+      'response กลับลำดับการซ้อนของ query',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/writing-queries" questions={quizWritingQueries} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/writing-queries" />

@@ -1,0 +1,96 @@
+---
+title: Security & Performance
+description: 'Why one flexible GraphQL endpoint is both powerful and risky, and how authentication, authorization, query cost limits, and caching keep it safe and fast.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Every lesson so far has celebrated GraphQL's flexibility: one endpoint, a typed graph, and a client that asks for *exactly* the fields it wants. That same flexibility is the reason GraphQL needs its own security and performance playbook. The very feature that delights front-end teams — "ask for anything you can reach" — is also an open invitation to anyone who wants to ask for *too much*.
+
+## One endpoint, two faces
+
+A REST API spreads its surface across many fixed URLs, and each one tends to do a small, predictable amount of work. A GraphQL API collapses all of that into a single endpoint that accepts arbitrary, client-authored queries. The power and the risk are two sides of the same coin:
+
+- **Power** — a client composes precisely the response shape it needs in one round trip, traversing relationships the server never had to anticipate.
+- **Risk** — a client (or an attacker) can compose a query the server *also* never anticipated: deeply nested, wildly aliased, or fanning out into thousands of database calls from a single innocent-looking request.
+
+Because the server cannot know in advance which queries it will receive, it must reason about cost, identity, and trust *per request*, dynamically. That is the whole job of this module.
+
+## The four pressure points
+
+Securing and tuning a GraphQL API comes down to four recurring questions. Keep them in mind and the rest of the module is just detail:
+
+1. **Who is asking?** — establish identity once per request. This is **authentication**, and it belongs in the request **context**, not in the schema.
+2. **Are they allowed?** — decide, per field and per type, whether this identity may see this data. This is **authorization**, and it lives in resolvers, directives, or middleware.
+3. **How expensive is this query?** — a single request can be cheap or catastrophic. **Depth limiting** and **complexity (cost) analysis** reject queries that would cost too much *before* they run.
+4. **Have we seen this before?** — **persisted queries**, **caching**, and **rate limiting** turn repeated work into cheap, predictable work and shrink the attack surface.
+
+<Mermaid title="A request passes through identity, permission, and cost checks before resolvers ever touch the data." code={overviewDiagram} />
+
+## What this module covers
+
+This is the security and performance module of the course. By the end of it you will be able to lock a GraphQL API down without sacrificing the ergonomics that made you reach for GraphQL in the first place. The five lessons are:
+
+1. **Security & Performance** (you are here) — the threat-and-cost surface of a single flexible endpoint.
+2. **Authentication & Context** — resolving the current user once per request from a token, and why the context is the right home for it.
+3. **Authorization** — field- and type-level permission checks, and the choice between returning `null` and throwing a forbidden error.
+4. **Depth & Complexity** — rejecting deep, aliased, or expensive queries with depth limits, cost analysis, and timeouts.
+5. **Persisted Queries & Caching** — allowlisting operations, automatic persisted queries, response and per-field caching, and rate limiting.
+
+Throughout, the in-browser runner executes the security-relevant logic for real — a resolver reading an authenticated context, a field that refuses an unauthorized user, and a function that measures the depth of a parsed query — so you can see the mechanisms work rather than take them on faith.
+
+<Callout title="Flexibility is a budget, not a free lunch">
+GraphQL hands every client a blank cheque to describe its own response. Your job is to put a sensible limit on that cheque: confirm *who* is spending, confirm *what* they may buy, cap *how expensive* any single purchase can be, and remember purchases you have already made. Authentication, authorization, cost analysis, and caching are not optional extras bolted onto a GraphQL API — they are what make a single flexible endpoint safe to expose to the world.
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  Q["Client query"] --> A["Authenticate: who is asking? (context)"]
+  A --> Z["Authorize: are they allowed? (resolvers)"]
+  Z --> C["Cost check: depth & complexity limits"]
+  C --> X["Execute resolvers"]
+  X --> D["Data sources"]
+  X --> R["Response (cacheable, rate-limited)"]
+  C -.->|"too deep / too costly"| Rej["Reject before execution"]`;
+
+export const quizIndex = [
+  {
+    q: 'Why does a single GraphQL endpoint need its own security playbook compared with a REST API?',
+    options: [
+      'GraphQL has no built-in HTTP support',
+      'Clients author arbitrary queries the server never anticipated, so cost and trust must be evaluated dynamically per request',
+      'GraphQL responses are always larger than REST responses',
+      'GraphQL cannot use HTTPS',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which four questions summarize securing and tuning a GraphQL API?',
+    options: [
+      'Which database, which cache, which CDN, which region',
+      'Who is asking, are they allowed, how expensive is this query, and have we seen it before',
+      'What status code, what header, what body, what method',
+      'Which client, which browser, which version, which locale',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In one sentence, what makes GraphQL’s flexibility a risk?',
+    options: [
+      'It forces every field to be nullable',
+      'A client can compose a query the server never anticipated — deeply nested or fanning out into thousands of calls',
+      'It removes the type system at runtime',
+      'It only works over WebSockets',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="security-and-performance/index" />

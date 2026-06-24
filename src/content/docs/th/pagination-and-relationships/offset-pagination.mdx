@@ -1,0 +1,165 @@
+---
+title: Offset Pagination
+description: 'pagination แบบ limit/offset (หรือเลขหน้า) อย่างง่าย วิธี resolve มัน และปัญหา deep-offset กับ shifting-window ที่ทำให้มันรั่ว'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+field ที่เป็น list สามารถคืนค่าเป็นพันแถวได้ การส่งทั้งหมดออกมาในคราวเดียวนั้นช้าและสิ้นเปลือง ดังนั้น list จึงรับ **argument สำหรับ pagination** เพื่อขอดูทีละช่วง สไตล์ที่คุ้นเคยที่สุด — สไตล์ที่นักพัฒนา SQL ทุกคนรู้จักอยู่แล้ว — คือ **offset pagination**: ข้ามบางแถว แล้วหยิบมาบางแถว
+
+## limit และ offset
+
+คุณเปิดเผย argument ที่เป็นจำนวนเต็มสองตัว `limit` (บางทีก็เป็น `first` หรือ `pageSize`) บอกว่าจะคืน item *กี่อัน* ส่วน `offset` (บางทีก็เป็น `skip`) บอกว่าจะ *ข้ามกี่อัน* ก่อนเริ่ม:
+
+```graphql
+type Query {
+  posts(limit: Int = 10, offset: Int = 0): [Post!]!
+}
+```
+
+`posts(limit: 10, offset: 0)` คืน item 1–10 ส่วน `posts(limit: 10, offset: 10)` คืน item 11–20 resolver จับคู่ค่าเหล่านี้ลงบน slice ของข้อมูลเบื้องล่างโดยตรง — และจับคู่ลงบน `LIMIT`/`OFFSET` ใน SQL ซึ่งนั่นเองเป็นเหตุผลว่าทำไมสไตล์นี้จึงพบได้ทั่วไป
+
+## เลขหน้าก็เป็นแนวคิดเดียวกัน
+
+API แบบ `page`/`pageSize` ก็คือ offset pagination ที่ใช้ตัวเลขที่เป็นมิตรกว่า คุณแปลงค่าภายในเอา:
+
+```graphql
+type Query {
+  posts(page: Int = 1, pageSize: Int = 10): [Post!]!
+}
+```
+
+resolver คำนวณ `offset = (page - 1) * pageSize` แล้วดำเนินการเหมือนเดิมทุกประการ เลขหน้าดีกว่าสำหรับการสร้างส่วนท้าย "หน้า 1 2 3" ส่วน `offset` ดิบ ๆ ดีกว่าสำหรับ infinite scroll กลไกเบื้องล่างนั้นเหมือนกัน
+
+## รอยรั่วสองจุด
+
+offset pagination นั้นเรียบง่าย แต่มันมีปัญหาที่รู้กันดีอยู่สองข้อ
+
+ข้อแรกคือ **ต้นทุนของ deep-offset** การจะคืน item 100,001–100,010 ฐานข้อมูลที่ใช้ `OFFSET 100000` ยังต้อง *นับผ่าน* แสนแถวแรกก่อนจะทิ้งมันไป ยิ่งเปิดหน้าลึกเท่าไหร่ แต่ละหน้าก็ยิ่งช้า — งานเพิ่มขึ้นตาม offset ไม่ใช่ตามขนาดของหน้า
+
+ข้อสองคือ **shifting window** offset ระบุ *ตำแหน่ง* ไม่ใช่ *item* ถ้ามี post ใหม่ถูกแทรกเข้ามาที่ด้านบนขณะที่ผู้ใช้กำลังอ่านอยู่ ทุก item จะเลื่อนลงไปหนึ่งช่อง หน้า 2 ตอนนี้จะเริ่มต้นด้วย item ที่ผู้ใช้เห็นไปแล้วในหน้า 1 และมี item หนึ่งหลุดลอดผ่านช่องว่างระหว่างหน้าไปอย่างเงียบ ๆ ในกรณีที่มีการลบ จะเกิดเหตุการณ์ตรงกันข้าม — item หนึ่งอาจถูกข้ามไปทั้งหมด
+
+<Mermaid title="การแทรก item ใหม่ที่ด้านบนทำให้ทุกตำแหน่งเลื่อน ขอบเขตของหน้าจึงทำให้ item ซ้ำหรือถูกข้ามได้" code={shiftDiagram} />
+
+## paging รันจริง
+
+runner ด้านล่างถือ list ที่เรียงลำดับขนาดเล็กไว้ และ resolve `posts(limit, offset)` ด้วยการ slice มัน รันตามที่เป็นอยู่เพื่อดึงหน้าสอง จากนั้นเปลี่ยน `offset` แล้วรันใหม่เพื่อสัมผัสว่า window เคลื่อนที่อย่างไร
+
+export const offsetCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Post {
+      id: ID!
+      title: String!
+    }
+
+    type Page {
+      items: [Post!]!
+      totalCount: Int!
+      hasMore: Boolean!
+    }
+
+    type Query {
+      posts(limit: Int = 2, offset: Int = 0): Page!
+    }
+  \`);
+
+  // A stable, ordered list of items.
+  const all = Array.from({ length: 7 }, (_, i) => ({
+    id: 'p' + (i + 1),
+    title: 'Post number ' + (i + 1),
+  }));
+
+  const root = {
+    posts: ({ limit, offset }) => {
+      const window = all.slice(offset, offset + limit);
+      return {
+        items: window,
+        totalCount: all.length,
+        // We can compute hasMore because we know the total.
+        hasMore: offset + limit < all.length,
+      };
+    },
+  };
+
+  // Page two: skip the first 2, take the next 2.
+  const query = \`
+    {
+      posts(limit: 2, offset: 2) {
+        items { id title }
+        totalCount
+        hasMore
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={offsetCode} />
+
+ผลลัพธ์คืน item 3–4 (`offset: 2`, `limit: 2`) พร้อมกับ `totalCount` และ flag `hasMore` ที่ client ใช้เพื่อ render ตัวเปิดหน้า (pager) ได้ นี่คือ offset pagination ที่ทำงานได้ดี — list เล็ก ๆ ที่เสถียร ซึ่ง deep offset และการแก้ไขแบบพร้อมกันไม่ใช่เรื่องต้องกังวล ทันทีที่ list ของคุณใหญ่ขึ้นหรือเปลี่ยนแปลงอยู่ตลอด รอยรั่วสองจุดข้างต้นจะเริ่มกัด ซึ่งนั่นคือสิ่งที่บทเรียนถัดไปเรื่อง cursor connection ถูกออกแบบมาเพื่อแก้
+
+<Callout title="หยิบ offset มาใช้เมื่อ list เล็กและเสถียร">
+offset pagination เป็นค่า default ที่ถูกต้องสำหรับ list ที่สั้นและค่อนข้างนิ่ง — ตารางในหน้า admin, การตั้งค่า, หรือไม่กี่หน้าที่ผู้ใช้คาดหวังการนำทางด้วยเลขหน้า มันง่ายมากที่จะ implement และจับคู่ลงบน SQL ได้โดยตรง แต่มันต้องจ่ายต้นทุนที่เพิ่มขึ้นในหน้าลึก ๆ และมันอาจทำให้ item ซ้ำหรือถูกข้ามได้เมื่อ list เบื้องล่างเปลี่ยนแปลงระหว่าง request สำหรับ collection ที่ใหญ่หรือเคลื่อนไหวเร็ว pagination แบบ cursor เป็นตัวเลือกที่ปลอดภัยกว่า
+</Callout>
+
+export const shiftDiagram = `flowchart TD
+  subgraph Before["Before insert"]
+    B1["pos 1: A"]
+    B2["pos 2: B"]
+    B3["pos 3: C — page boundary"]
+    B4["pos 4: D"]
+  end
+  subgraph After["After inserting X at top"]
+    A1["pos 1: X (new)"]
+    A2["pos 2: A"]
+    A3["pos 3: B — page boundary"]
+    A4["pos 4: C"]
+  end
+  Before -->|"offset shifts by one"| After`;
+
+export const quizOffset = [
+  {
+    q: 'argument limit และ offset ทำหน้าที่อะไรใน offset pagination?',
+    options: [
+      'limit กำหนดว่าจะคืน item กี่อัน; offset กำหนดว่าจะข้ามกี่อันก่อน',
+      'limit กำหนดงบประมาณด้านเวลา; offset กำหนดงบประมาณด้านหน่วยความจำ',
+      'มันเข้ารหัส cursor ทึบแสงที่ชี้ไปยัง item เฉพาะ',
+      'offset คืน item และ limit ข้ามมัน',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'ทำไม offset ที่ใหญ่มาก (เช่น OFFSET 100000) จึงมักจะช้า?',
+    options: [
+      'GraphQL ห้าม offset ที่เกิน 1000',
+      'ฐานข้อมูลต้องสแกนผ่านทุกแถวที่ถูกข้ามก่อนจะทิ้งมันไป',
+      'แต่ละแถวที่ถูกข้ามจะ trigger network request แยกต่างหาก',
+      'offset ขนาดใหญ่ปิดการใช้งาน query cache อย่างถาวร',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ปัญหา "shifting window" ของ offset pagination คืออะไร?',
+    options: [
+      'server เรียงลำดับผลลัพธ์ใหม่แบบสุ่มในแต่ละ request',
+      'การแทรกหรือลบเปลี่ยนตำแหน่งของ item ขอบเขตของหน้าจึงทำให้ item ซ้ำหรือถูกข้ามได้',
+      'argument limit ถูกเพิกเฉยหลังจากหน้าแรก',
+      'offset ไม่สามารถเกินความยาวของ list ได้',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/offset-pagination" questions={quizOffset} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/offset-pagination" />

@@ -1,0 +1,196 @@
+---
+title: Codegen and Testing
+description: 'GraphQL Code Generator for typed resolvers and operations, plus unit and integration testing — and an in-browser test-style assertion demo.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The previous lesson left a gap: schema-first SDL does not, by itself, force your resolvers to match it. This lesson closes that gap from two directions. **Code generation** makes the compiler enforce the contract before you run anything; **testing** proves the service behaves once it does run.
+
+## GraphQL Code Generator — types from the schema
+
+**GraphQL Code Generator** reads your SDL and emits TypeScript types that mirror it exactly. On the server it produces a `Resolvers` type so every resolver is checked against the field it implements. On the client it produces typed result and variable types for each operation you write. You author a small config and run a command; the types regenerate whenever the schema changes.
+
+```yaml
+# codegen.yml
+schema: ./schema.graphql
+generates:
+  ./src/generated/graphql.ts:
+    plugins:
+      - typescript
+      - typescript-resolvers
+```
+
+With that config, the generator turns this SDL:
+
+```graphql
+type Track {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+}
+
+type Query {
+  track(id: ID!): Track
+}
+```
+
+into TypeScript you import and apply to your resolver map:
+
+```ts
+import type { Resolvers } from './generated/graphql';
+
+// `Resolvers` is generated from the SDL. If `track` returned the wrong
+// shape — or forgot a non-null field — this would be a compile error.
+export const resolvers: Resolvers = {
+  Query: {
+    track: (_parent, args) => ({
+      id: args.id,
+      title: 'Walking the Graph',
+      durationSeconds: 214,
+    }),
+  },
+};
+```
+
+Now schema-first gets the safety that code-first had for free: the SDL stays the readable contract, and the compiler refuses to build if a resolver drifts away from it. Change `durationSeconds` to a `String!` in the SDL and the resolver above stops compiling until you fix it. That is the whole point of codegen — make drift impossible to ship.
+
+## Testing — two layers
+
+Type checks prove the *shapes* are right. Tests prove the *behaviour* is right. There are two layers worth writing.
+
+- **Unit tests for resolvers.** A resolver is just a function of `(parent, args, context, info)`. Call it directly with fake inputs and assert on the return value. These are fast and pin down a single resolver's logic — no schema, no network.
+- **Integration tests for operations.** Build the executable schema and run a real GraphQL **operation** against it with the `graphql` function, then assert on `result.data` and `result.errors`. This exercises parsing, validation, the right resolvers firing, and nullability — the contract end to end.
+
+<Mermaid title="Codegen guards the shapes at compile time; unit and integration tests guard the behaviour at run time." code={testFlow} />
+
+The integration layer is the one people skip and regret. It is the only test that proves a *query a client would actually send* returns what the schema promises — including that non-null fields never come back `null` and that arguments thread through to the resolver.
+
+## A test-style assertion, run for real
+
+The demo below is an integration test in miniature. It builds a tiny schema, executes a real query against it, and then runs a few **assertions** — exactly what a test framework like Vitest does under the hood with `expect`. A small `assert` helper prints a pass or fail line for each check. Press **Run**.
+
+export const testDemoCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Minimal assert helper — stands in for expect().toEqual() in a test runner.
+  let passed = 0;
+  let failed = 0;
+  function assert(label, actual, expected) {
+    const a = JSON.stringify(actual);
+    const e = JSON.stringify(expected);
+    if (a === e) {
+      passed++;
+      console.log('PASS  ' + label);
+    } else {
+      failed++;
+      console.log('FAIL  ' + label + '  expected ' + e + ' got ' + a);
+    }
+  }
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+    }
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const root = {
+    track: ({ id }) => ({ id, title: 'Walking the Graph', durationSeconds: 214 }),
+  };
+
+  // --- The operation under test ---
+  const result = await graphql({
+    schema,
+    source: \`{ track(id: "t1") { id title durationSeconds } }\`,
+    rootValue: root,
+  });
+
+  // --- Assertions ---
+  assert('no errors', result.errors, undefined);
+  assert('id threads through the argument', result.data.track.id, 't1');
+  assert('title resolves', result.data.track.title, 'Walking the Graph');
+  assert('duration is the right Int', result.data.track.durationSeconds, 214);
+
+  console.log('---');
+  console.log(passed + ' passed, ' + failed + ' failed');
+})();`;
+
+<NodeRunner client:visible code={testDemoCode} />
+
+Read the output as a test report. Each `PASS` line is one `expect` that held. The `id` assertion is the interesting one: it proves the argument `"t1"` actually reached the resolver and came back in the data. Swap the expected `214` for `999` and re-run to watch a `FAIL` line appear — that red line is exactly what catches a regression before it ships.
+
+<Callout title="Generate the types, test the behaviour">
+Codegen and tests are not competitors — they cover different failures. Code generation catches **shape** errors at compile time, so a resolver can never quietly return the wrong type. Tests catch **behaviour** errors at run time — wrong logic, a missed argument, an unexpected `null`. Write both: regenerate types on every schema change, unit-test the tricky resolvers, and keep at least one integration test that runs the real operations a client will send.
+</Callout>
+
+export const testFlow = `flowchart TD
+  SDL["SDL schema"]
+  Codegen["GraphQL Code Generator"]
+  Types["Generated Resolvers + operation types"]
+  Unit["Unit tests: call resolver functions directly"]
+  Integration["Integration tests: execute operations with graphql()"]
+  Confidence["Trusted, shippable service"]
+  SDL --> Codegen
+  Codegen --> Types
+  Types --> Unit
+  Types --> Integration
+  Unit --> Confidence
+  Integration --> Confidence`;
+
+export const quizCodegen = [
+  {
+    q: 'What does the typescript-resolvers plugin of GraphQL Code Generator produce?',
+    options: [
+      'A running server',
+      'A Resolvers type so each resolver is compile-checked against its SDL field',
+      'A database migration',
+      'A REST client',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What kind of error does code generation catch that a unit test does not?',
+    options: [
+      'Wrong business logic at run time',
+      'Shape/type errors at compile time — a resolver returning the wrong type',
+      'Network timeouts',
+      'Slow queries',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How does an integration test exercise the schema?',
+    options: [
+      'By reading the SDL file as text',
+      'By executing a real operation with the graphql function and asserting on data and errors',
+      'By pinging the server port',
+      'By regenerating the types',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the demo, what does the id assertion specifically prove?',
+    options: [
+      'That the server is fast',
+      'That the argument "t1" reached the resolver and returned in the data',
+      'That the schema has no Query type',
+      'That codegen ran successfully',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/codegen-and-testing" questions={quizCodegen} />
+
+<ProgressTracker client:visible id="tooling-federation-building/codegen-and-testing" />

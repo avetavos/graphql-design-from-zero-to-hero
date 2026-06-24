@@ -1,0 +1,165 @@
+---
+title: Query และ Resolver
+description: 'query อ่านข้อมูลอย่างไร, resolver สร้างข้อมูลอย่างไร, Query root, และ resolver chain ที่เปลี่ยน request ให้กลายเป็น response'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ในโมดูล foundations คุณได้เรียนรู้ว่า schema คือสัญญา และ query คือเส้นทางที่ลากผ่าน graph ของ type ต่าง ๆ โมดูลนี้พูดถึงสองส่วนที่ทำให้เส้นทางนั้นมีชีวิต นั่นคือ **query** ที่ร้องขอข้อมูล และ **resolver** ที่สร้างข้อมูลนั้นขึ้นมา query คือเจตนาล้วน ๆ มันระบุชื่อ field แต่ไม่ได้บอกว่าค่ามาจากไหน ส่วน resolver คือ logic ที่ server รันทีละ field เพื่อเติมชื่อเหล่านั้นด้วยค่าจริง
+
+## query อ่าน; resolver สร้าง
+
+แยกสองบทบาทนี้ออกจากกันให้ชัดในใจ แล้วทุกอย่างที่เหลือจะตามมาเอง
+
+- **query** คือ operation สำหรับอ่านที่ฝั่ง client เขียนขึ้น มันเลือก field และอาจส่ง argument ได้ แต่ไม่มี logic อยู่ในนั้น มันคือรายการของที่จะซื้อ
+- **resolver** คือ function ฝั่ง server ที่ผูกกับ field เพียงตัวเดียว เมื่อการ execute มาถึง field นั้น resolver จะรันและคืนค่ากลับมา มันคือพนักงานคลังสินค้าที่ไปหยิบของแต่ละชิ้นตามรายการ
+
+server ไม่เคยเดา สำหรับทุก field ใน query มันจะเรียก resolver ที่ตรงกัน รวบรวมสิ่งที่ได้กลับมา แล้วประกอบเป็น JSON response ที่มีรูปร่างเหมือนกับ query เป๊ะ
+
+## Query root
+
+ทุกการอ่านต้องเริ่มต้นจากที่ใดที่หนึ่ง และที่นั่นคือ root object type พิเศษชื่อ `Query` field ที่อยู่ใต้ `Query` โดยตรงคือ **จุดเข้า (entry points)** ของ API ซึ่งเป็นที่เดียวที่การอ่านสามารถเริ่มได้ จากนั้น field สามารถคืน object type ที่มี field ของตัวเองพาเราลึกเข้าไปใน graph ต่อได้
+
+```graphql
+type Query {
+  currentUser: User
+  track(id: ID!): Track
+}
+
+type User {
+  id: ID!
+  name: String!
+}
+
+type Track {
+  id: ID!
+  title: String!
+}
+```
+
+client อาจเริ่มการอ่านด้วย `currentUser` หรือ `track` เพราะทั้งสองเป็น field ของ `Query` แต่จะเริ่มด้วย `title` ไม่ได้ เพราะ `title` อยู่บน `Track` ซึ่งอยู่ลึกเข้าไปใน graph คุณจะเข้าถึงมันได้ก็ต่อเมื่อก้าวผ่าน field ที่คืน `Track` มาก่อน
+
+## resolver chain
+
+การ resolve ไม่ใช่ function ก้อนใหญ่ก้อนเดียว แต่มันคือ **chain** ของ function เล็ก ๆ การ execute เริ่มที่ field ระดับบนสุดของ query (ที่ `Query` root) รัน resolver ของมัน แล้วลงลึกไปยังแต่ละ sub-field ที่ถูกเลือก รัน resolver *ของมัน* ไปเรื่อย ๆ จนทุก selection ไปจบที่ scalar ค่าที่ resolver ตัวพ่อ (parent) คืนมาจะกลายเป็น input ให้ resolver ของลูก ๆ นั่นคือเส้นด้ายที่ร้อย chain เข้าด้วยกัน
+
+<Mermaid title="การ execute เดินจาก Query root ลงไปผ่าน resolver ของแต่ละ field" code={chainDiagram} />
+
+อ่าน diagram จากบนลงล่าง resolver ของ field `track` รันก่อนและคืน track object จากนั้น engine จะ resolve แต่ละ sub-field ที่ร้องขอของ object นั้น คือ `title` โดยตรง และ `artist` ซึ่ง resolver ของมันคืน artist object ที่ engine resolve ต่อลงไปอีกหนึ่งระดับเป็น `name` แต่ละกล่องคือการเรียก resolver หนึ่งครั้ง และแต่ละลูกศรคือค่าจาก parent ที่ไหลไปสู่ลูก
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+เมื่อจบทั้งห้าบทเรียนนี้ คุณจะสามารถเขียน query ด้วยมือเองได้ และเขียน resolver ที่ตอบ query เหล่านั้นได้ บทเรียนมีดังนี้
+
+1. **Query และ Resolver** (คุณอยู่ตรงนี้) — การแยก อ่าน/สร้าง, Query root, และ resolver chain
+2. **การเขียน Query** — field, nested selection set, และ operation name
+3. **Resolver Function** — argument สี่ตัวที่ทุก resolver ได้รับ และ default resolver ทำงานอย่างไร
+4. **Argument และ Variable** — field argument และ query variable ที่นำกลับมาใช้ซ้ำได้ เช่น `$id`
+5. **Fragment และ Alias** — การนำ selection set กลับมาใช้ซ้ำ และการเปลี่ยนชื่อ field ใน response
+
+## ดู chain ทำงานจริง
+
+ตัวอย่างด้านล่างนิยาม `Query` ที่มีจุดเข้าหนึ่งจุดคือ `track` ซึ่ง resolver ของมันคืน track object จากนั้น engine จะ resolve field `artist` ของ track และ `name` ของ artist กด **Run** แล้วดู query หนึ่งตัวเดินทางตลอดทั้ง chain
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Query is the read entry point; track returns an object with its own fields.
+  const schema = buildSchema(\`
+    type Artist {
+      id: ID!
+      name: String!
+    }
+
+    type Track {
+      id: ID!
+      title: String!
+      artist: Artist!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  // Each field has logic that produces its value — these are the resolvers.
+  const root = {
+    track: ({ id }) => ({
+      id,
+      title: 'First Resolution',
+      artist: { id: 'a1', name: 'The Chain Gang' },
+    }),
+  };
+
+  // The query is a pure read: it names fields and starts at the Query root.
+  const query = \`
+    {
+      track(id: "t1") {
+        title
+        artist {
+          name
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+output สะท้อน query ออกมา `track` เก็บ `title` และ `artist` ที่ซ้อนอยู่ ส่วน `artist` เก็บ `name` ไม่มีอะไรใน response ที่อยู่ตรงนั้นโดยบังเอิญ ค่าทุกตัวถูกสร้างโดย resolver ที่ engine เรียกขณะเดินไปตาม chain จาก `Query` root ลงไปจนถึง leaf
+
+<Callout title="แยกสองคำนี้ออกจากกัน">
+**query** คือเจตนาของ client เขียนเป็น tree ของชื่อ field ส่วน **resolver** คือ logic ของ server เขียนเป็น function ต่อหนึ่ง field งานทั้งหมดของ engine คือเดินไปตาม query tree และที่แต่ละ node ก็เรียก resolver ที่เติมค่าให้มัน เก็บคำว่า "ร้องขอ" กับ "สร้าง" แยกกันในใจ แล้วส่วนที่เหลือของโมดูลนี้ก็เป็นแค่รายละเอียด
+</Callout>
+
+export const chainDiagram = `flowchart TD
+  Q["Query root"] -->|"track(id) resolver"| T["Track object"]
+  T -->|"title resolver"| Title["title: String"]
+  T -->|"artist resolver"| A["Artist object"]
+  A -->|"name resolver"| Name["name: String"]`;
+
+export const quizIndex = [
+  {
+    q: 'What is the difference between a query and a resolver?',
+    options: [
+      'query รันบน server; resolver รันในเบราว์เซอร์',
+      'query คือการอ่านที่ client เขียนขึ้นเพื่อระบุชื่อ field; resolver คือ function ฝั่ง server ที่สร้างค่าของ field',
+      'ทั้งสองเป็นชื่อเรียกของสิ่งเดียวกัน',
+      'resolver เลือก field; query คืนค่า',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where must every read operation begin?',
+    options: [
+      'ที่ field ใดก็ได้ใน schema',
+      'ที่ field ของ root type พิเศษชื่อ Query',
+      'ที่ Mutation root',
+      'ที่ field ที่เป็น scalar leaf',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the resolver chain, what does a parent field’s resolver pass to its children’s resolvers?',
+    options: [
+      'ไม่ส่งอะไรเลย — resolver แต่ละตัวเริ่มใหม่จากศูนย์',
+      'ค่าที่มันคืนมา ซึ่งจะกลายเป็น parent input ให้ resolver ของลูก',
+      'แค่ query string เท่านั้น',
+      'JSON response สุดท้าย',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/index" />

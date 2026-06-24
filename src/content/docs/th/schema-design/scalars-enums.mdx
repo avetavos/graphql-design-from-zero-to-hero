@@ -1,0 +1,197 @@
+---
+title: Scalars และ Enums
+description: 'scalar แบบ built-in, custom scalar อย่าง DateTime, enum type และเมื่อใดควรเลือก enum แทน string แบบอิสระ'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ทุก query ไม่ว่าจะเดินลึกแค่ไหน สุดท้ายก็มาถึง **ใบ (leaf)** — ค่ารูปธรรมเดี่ยว ๆ ค่าหนึ่ง ใบเหล่านั้นคือ scalar และ enum มันคือชิ้นส่วนที่เล็กที่สุดของ schema ของคุณ แต่การเลือกมันอย่างระมัดระวังคือสิ่งที่ทำให้ field อธิบายตัวเองได้และยากต่อการใช้ผิด บทเรียนนี้ครอบคลุม scalar แบบ built-in, custom scalar และ enum — เครื่องมือที่คมที่สุดของคุณสำหรับชุดตัวเลือกที่ตายตัว
+
+## scalar แบบ built-in
+
+GraphQL มาพร้อม scalar type ห้าแบบ ทุก schema ใช้มันได้โดยไม่ต้องประกาศอะไรเลย:
+
+- `Int` — จำนวนเต็มแบบมีเครื่องหมายขนาด 32 บิต เหมาะกับการนับ ปริมาณ และจำนวนเต็มน้อย ๆ
+- `Float` — จำนวนทศนิยมแบบมีเครื่องหมายความละเอียดสองเท่า (double-precision) เหมาะกับราคา คะแนน การวัดค่าต่าง ๆ
+- `String` — ข้อความ UTF-8
+- `Boolean` — `true` หรือ `false`
+- `ID` — ตัวระบุที่ไม่ซ้ำ (unique identifier) มัน serialize เป็น string แต่ **ทึบเชิงความหมาย (semantically opaque)**: มันมีไว้ใช้เป็นคีย์ ไม่ใช่เพื่อ parse หรือนำไปคำนวณ
+
+ความแตกต่างระหว่าง `ID` และ `String` นั้นสำคัญแม้ว่าทั้งคู่จะเดินทางในรูปข้อความ การประกาศ field เป็น `ID` บอกผู้อ่านทุกคนว่า "นี่คือตัวระบุ ให้ปฏิบัติกับมันเหมือน token" ซึ่งเป็นคำสัญญาที่ต่างจาก "นี่คือข้อความที่มนุษย์อ่านได้"
+
+```graphql
+type Product {
+  id: ID!
+  name: String!
+  priceUSD: Float!
+  stock: Int!
+  inStock: Boolean!
+}
+```
+
+## Custom scalar
+
+ห้าแบบที่ built-in มาไม่ได้ครอบคลุมทุกอย่าง ไม่มี date type ในตัว ไม่มี email type ไม่มี URL type เมื่อค่าหนึ่งมีรูปแบบและกฎการตรวจสอบของตัวเอง คุณสามารถประกาศ **custom scalar** ได้:
+
+```graphql
+scalar DateTime
+
+type Product {
+  id: ID!
+  name: String!
+  releasedAt: DateTime!
+}
+```
+
+การประกาศ `scalar DateTime` เพิ่มชื่อนั้นเข้าไปใน schema ของคุณ จากนั้นเซิร์ฟเวอร์จะแนบตรรกะที่ serialize และตรวจสอบค่านั้น (โดยทั่วไปคือ string แบบ ISO-8601 เช่น `2026-06-25T10:00:00Z`) custom scalar รวมศูนย์รูปแบบไว้ในที่เดียว: ทุก field ที่เป็น `DateTime` ถูก parse และตรวจสอบในแบบเดียวกัน ดังนั้น client จึงรู้เสมอว่าจะคาดหวังรูปร่างแบบใด custom scalar ยอดนิยมได้แก่ `DateTime`, `EmailAddress`, `URL` และ `JSON` — หยิบมันมาใช้เมื่อใดก็ตามที่ `String` จะบังคับให้ทุก client ต้องประดิษฐ์กฎการ parse แบบเดียวกันซ้ำขึ้นมาใหม่
+
+## Enums — ชุดของค่าที่มีชื่อแบบตายตัว
+
+**enum** คือ type ที่ค่าของมันต้องเป็นหนึ่งในชุดที่มีชื่อและตายตัว เมื่อ field หนึ่งสามารถเป็นได้แค่หนึ่งในตัวเลือกที่รู้จักไม่กี่ตัว enum ก็จับสิ่งนั้นไว้ในระบบ type:
+
+```graphql
+enum OrderStatus {
+  PENDING
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+type Order {
+  id: ID!
+  status: OrderStatus!
+}
+```
+
+ค่าของ `status` รับประกันว่าเป็นหนึ่งในห้าชื่อนั้น — เซิร์ฟเวอร์จะปฏิเสธสิ่งอื่นก่อนที่ resolver จะทำงาน ค่า enum ตามธรรมเนียมเขียนเป็น `SCREAMING_SNAKE_CASE` และมันไม่ใช่ string: `PAID` คือสัญลักษณ์ที่ schema รู้จัก ไม่ใช่ข้อความ `"PAID"`
+
+<Mermaid title="enum จำกัด field ให้เป็นหนึ่งในชุดของค่าที่มีชื่อแบบตายตัว" code={enumDiagram} />
+
+## เมื่อใดควรใช้ enum เทียบกับ string
+
+นี่คือหนึ่งในการตัดสินใจด้านการออกแบบที่คุณจะพบบ่อยที่สุด ใช้ **enum** เมื่อชุดของค่าที่ถูกต้องนั้น **รู้จัก เล็ก และมีความหมายต่อ domain ของคุณ** — สถานะ บทบาท ขนาด ทิศทางการเรียงลำดับ ผลตอบแทนเป็นของจริง:
+
+- **การตรวจสอบฟรี** — ค่าที่ไม่ถูกต้องถูกปฏิเสธโดยระบบ type ไม่ใช่โดย resolver ของคุณ
+- **สัญญาอธิบายตัวเอง** — client เห็นทุกค่าที่ถูกต้องตามกฎใน schema
+- **เครื่องมือ autocomplete** ตัวเลือกให้ และตัวสร้างโค้ดผลิต enum type ที่แท้จริง
+
+ใช้ **`String`** ธรรมดาเมื่อชุดของค่านั้น **เปิดกว้างหรือมาจากผู้ใช้** — ชื่อ คำค้นหา บันทึกแบบอิสระ อะไรก็ตามที่คุณควบคุมไม่ได้ กฎคร่าว ๆ ที่มีประโยชน์: *หากคุณสามารถเขียนทุกค่าที่ถูกต้องลงไปได้ตั้งแต่วันนี้และรายการนั้นแทบไม่เปลี่ยน มันคือ enum หากค่ามาจากผู้ใช้หรือเติบโตอย่างคาดเดาไม่ได้ มันคือ string*
+
+## enum ในการใช้งานจริง รันได้จริง
+
+ตัวอย่างด้านล่างนิยาม enum `OrderStatus` และ type `Order` จากนั้น query คำสั่งซื้อและอ่านสถานะของมันกลับมาเป็นค่า enum กดปุ่ม **Run**
+
+export const enumCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // An enum locks "status" to one of a fixed, named set of values.
+  const schema = buildSchema(\`
+    enum OrderStatus {
+      PENDING
+      PAID
+      SHIPPED
+      DELIVERED
+      CANCELLED
+    }
+
+    type Order {
+      id: ID!
+      total: Float!
+      status: OrderStatus!
+    }
+
+    type Query {
+      order(id: ID!): Order
+    }
+  \`);
+
+  const root = {
+    order: ({ id }) => ({ id, total: 42.5, status: 'SHIPPED' }),
+  };
+
+  // The enum value comes back as a bare symbol, not a quoted string.
+  const query = \`
+    {
+      order(id: "o1") {
+        id
+        total
+        status
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={enumCode} />
+
+field `status` คืนค่า `SHIPPED` หาก resolver ผลิตค่าที่อยู่นอก enum — เช่น `RETURNED` — GraphQL จะยกข้อผิดพลาดขึ้นมาแทนที่จะส่งข้อมูลไม่ดีไปยัง client อย่างเงียบ ๆ นั่นคือการรับประกันที่ enum มอบให้คุณ
+
+<Callout title="หยิบ enum มาใช้เมื่อค่าสามารถรู้ได้">
+scalar คือใบของ schema ของคุณ ดังนั้นจงใช้เวลาสักครู่กับแต่ละตัว เลือก `ID` แทน `String` สำหรับตัวระบุ นิยาม custom scalar เมื่อรูปแบบหนึ่งสมควรได้รับการตรวจสอบร่วมกัน และเลือก **enum** เมื่อใดก็ตามที่ค่าของ field ก่อเกิดเป็นชุดที่เล็ก ตายตัว และมีความหมาย enum ย้ายการตรวจสอบเข้าไปในระบบ type และเปลี่ยนตัว schema เองให้กลายเป็นรายการของตัวเลือกที่ถูกต้องตามกฎ — บั๊กน้อยลง เครื่องมือดีขึ้น สัญญาชัดเจนขึ้น
+</Callout>
+
+export const enumDiagram = `flowchart TD
+  Field["Order.status : OrderStatus"]
+  Enum["enum OrderStatus"]
+  V1["PENDING"]
+  V2["PAID"]
+  V3["SHIPPED"]
+  V4["DELIVERED"]
+  V5["CANCELLED"]
+  Field --> Enum
+  Enum --> V1
+  Enum --> V2
+  Enum --> V3
+  Enum --> V4
+  Enum --> V5`;
+
+export const quizScalarsEnums = [
+  {
+    q: 'scalar แบบ built-in ตัวใดมีไว้สำหรับตัวระบุแบบทึบ (opaque) มากกว่าข้อความที่มนุษย์อ่านได้?',
+    options: ['String', 'ID', 'Int', 'Boolean'],
+    answer: 1,
+  },
+  {
+    q: 'ทำไมคุณจึงอาจนิยาม custom scalar อย่าง DateTime?',
+    options: [
+      'เพื่อทำให้ query รันเร็วขึ้น',
+      'เพื่อรวมศูนย์รูปแบบหนึ่งและการตรวจสอบของมัน เพื่อให้ทุก field ของ type นั้นทำงานเหมือนกัน',
+      'เพราะ String ไม่สามารถเก็บวันที่ได้',
+      'เพื่อแทนที่ความจำเป็นในการใช้ object type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'เมื่อใด enum เป็นตัวเลือกที่ดีกว่า field แบบ String?',
+    options: [
+      'เมื่อค่ามาจากผู้ใช้และเปิดกว้าง',
+      'เมื่อค่าที่ถูกต้องก่อเกิดเป็นชุดที่เล็ก รู้จัก และตายตัว ซึ่งมีความหมายต่อ domain',
+      'เมื่อใดก็ตามที่ field เป็น non-null',
+      'เฉพาะภายใน type Query เท่านั้น',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'เกิดอะไรขึ้นหาก resolver คืนค่าที่ไม่ใช่หนึ่งในสมาชิกที่ประกาศไว้ของ enum?',
+    options: [
+      'GraphQL บีบมันให้เป็นสมาชิกที่ใกล้ที่สุด',
+      'มันถูกคืนไปยัง client ในรูป string ธรรมดา',
+      'GraphQL ยกข้อผิดพลาดขึ้นมาแทนที่จะคืนค่าที่ไม่ถูกต้อง',
+      'field กลายเป็น null อย่างเงียบ ๆ โดยไม่มีข้อผิดพลาด',
+    ],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="schema-design/scalars-enums" questions={quizScalarsEnums} />
+
+<ProgressTracker client:visible id="schema-design/scalars-enums" />

@@ -1,0 +1,185 @@
+---
+title: Relay Connections
+description: 'The Relay cursor connection spec — edges, node, cursor, pageInfo with hasNextPage and endCursor, and forward paging with first/after.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Offset pagination addresses *positions*, which shift when the list changes. **Cursor pagination** fixes this by addressing *items*: each item gets an opaque **cursor**, and you ask for "the next N items **after** this cursor." Because a cursor names a specific item rather than a slot, inserts and deletes elsewhere in the list no longer duplicate or skip results.
+
+The most widely adopted shape for cursor pagination is the **Relay Connection specification**. It standardizes the field names so that tooling and clients can paginate any list the same way.
+
+## The connection shape
+
+A connection wraps a list in three nested levels. Instead of returning `[Post!]!` directly, a list field returns a `PostConnection`:
+
+```graphql
+type Query {
+  posts(first: Int, after: String): PostConnection!
+}
+
+type PostConnection {
+  edges: [PostEdge!]!
+  pageInfo: PageInfo!
+}
+
+type PostEdge {
+  node: Post!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+```
+
+Decoding the layers:
+
+- **`edges`** is the list — but each entry is an *edge*, not a bare node.
+- **`node`** is the actual item (a `Post`). Wrapping it in an edge leaves room for per-edge data.
+- **`cursor`** is an opaque string identifying that edge's position in *this* connection. Treat it as a black box; never parse it.
+- **`pageInfo`** carries paging metadata. `hasNextPage` says whether more items exist; `endCursor` is the cursor of the last edge, which you feed into the next request.
+
+## first and after
+
+Forward pagination uses two arguments. `first: N` asks for the next N items. `after: cursor` says "start *after* this cursor." The first page omits `after`:
+
+```graphql
+{
+  posts(first: 2) {
+    edges { node { title } cursor }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+```
+
+To get the next page, you take `pageInfo.endCursor` from the response and pass it back as `after`. (The spec also defines `last`/`before` for backward paging, the mirror image of `first`/`after`.)
+
+<Mermaid title="A connection wraps each item in an edge with a cursor; pageInfo tells you how to fetch the next page." code={connDiagram} />
+
+## A connection, run for real
+
+The runner below builds a real `PostConnection` schema and resolves `first`/`after` by encoding each item's id into a cursor. Run it to fetch page one; then copy the `endCursor` from the output into the `after:` argument and re-run to walk forward.
+
+export const connCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Post { id: ID! title: String! }
+    type PostEdge { node: Post! cursor: String! }
+    type PageInfo { hasNextPage: Boolean! endCursor: String }
+    type PostConnection {
+      edges: [PostEdge!]!
+      pageInfo: PageInfo!
+    }
+    type Query {
+      posts(first: Int = 2, after: String): PostConnection!
+    }
+  \`);
+
+  const all = Array.from({ length: 5 }, (_, i) => ({
+    id: 'p' + (i + 1),
+    title: 'Post number ' + (i + 1),
+  }));
+
+  // Opaque cursor: base64 of the item id. Clients must not parse it.
+  const encode = (id) => btoa('cursor:' + id);
+  const decode = (cur) => atob(cur).replace('cursor:', '');
+
+  const root = {
+    posts: ({ first, after }) => {
+      // Find the starting index: the item right after the given cursor.
+      let start = 0;
+      if (after) {
+        const id = decode(after);
+        const idx = all.findIndex((p) => p.id === id);
+        start = idx + 1;
+      }
+      const slice = all.slice(start, start + first);
+      const edges = slice.map((p) => ({ node: p, cursor: encode(p.id) }));
+      const endCursor = edges.length ? edges[edges.length - 1].cursor : null;
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage: start + first < all.length,
+          endCursor,
+        },
+      };
+    },
+  };
+
+  // Page one: the first 2 items, no "after".
+  const query = \`
+    {
+      posts(first: 2) {
+        edges { node { title } cursor }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={connCode} />
+
+The output gives two edges, each with a `node` and an opaque `cursor`, plus a `pageInfo` saying `hasNextPage: true` and handing back an `endCursor`. Pass that `endCursor` as `after` and you get the next two — and because the cursor names an *item*, not a position, inserting a new post at the top of the list would not make page two repeat or skip anything. That stability is the whole reason connections exist.
+
+<Callout title="Use cursors for large or changing lists">
+The Relay connection shape — `edges { node cursor }` and `pageInfo { hasNextPage endCursor }`, paged with `first`/`after` — costs more boilerplate than `limit`/`offset`, but it earns it on lists that are large or change while users browse. Cursors address items rather than positions, so concurrent inserts and deletes do not corrupt page boundaries, and a database can seek directly to a cursor instead of counting past skipped rows. For feeds, search results, and any high-volume collection, reach for connections.
+</Callout>
+
+export const connDiagram = `flowchart TD
+  Conn["PostConnection"]
+  Conn --> Edges["edges: [PostEdge!]!"]
+  Conn --> PI["pageInfo: PageInfo!"]
+  Edges --> Edge["PostEdge"]
+  Edge --> Node["node: Post!"]
+  Edge --> Cursor["cursor: String! (opaque)"]
+  PI --> HNP["hasNextPage: Boolean!"]
+  PI --> EC["endCursor: String — feed into next 'after'"]`;
+
+export const quizRelay = [
+  {
+    q: 'In a Relay connection, what does each entry in edges contain?',
+    options: [
+      'A bare node only',
+      'A node (the item) plus a cursor identifying its position',
+      'Only a cursor string',
+      'The full pageInfo for that item',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How do you fetch the page after the current one?',
+    options: [
+      'Increment an integer offset by the page size',
+      'Pass pageInfo.endCursor as the after argument of the next query',
+      'Re-run the same query with no arguments',
+      'Parse the cursor to compute the next row id',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why are cursors more robust than offsets when a list changes during browsing?',
+    options: [
+      'Cursors are always shorter strings',
+      'Cursors address a specific item, so inserts or deletes elsewhere do not shift page boundaries',
+      'Cursors disable caching, forcing fresh data',
+      'Cursors are encrypted and cannot be tampered with',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/relay-connections" questions={quizRelay} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/relay-connections" />

@@ -1,0 +1,204 @@
+---
+title: Types และ Fields
+description: 'Object type และ field ของมัน, argument ของ field, description และวิธีที่ object type เชื่อมโยงกันจนกลายเป็นกราฟ'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Object type คือหัวเรี่ยวหัวแรงของ GraphQL schema เกือบทุกอย่างที่ client สัมผัสคือ object type ที่มี field และวิธีที่คุณเลือก field เหล่านั้น — ชื่อของมัน type ของมัน argument ที่มันรับ — คือเนื้อแท้ส่วนใหญ่ของการออกแบบ schema *เลย* บทเรียนนี้จะลงลึกเรื่อง object type และสี่สิ่งที่คุณทำได้กับ field ของมัน
+
+## Object type และ field ของมัน
+
+**object type** คือกลุ่มของ field ที่มีชื่อ แต่ละ field มีชื่อและ type นี่คือ type ที่จำลองสูตรอาหารในแอปทำอาหาร:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  servings: Int!
+  prepMinutes: Int
+}
+```
+
+`Recipe` มีสี่ field สามตัวในนั้น resolve เป็น scalar — `ID` ตัวหนึ่ง `String` ตัวหนึ่ง และค่า `Int` สองตัว — และ type ของ field คือคำสัญญาว่า client จะได้รับอะไร ชื่อ field ควรอ่านได้เหมือนคุณสมบัติของสิ่งนั้น: `title`, `servings`, `prepMinutes` ให้เลือกคำนามใน domain ที่ชัดเจนแทนการย่อ schema ถูกอ่านบ่อยกว่าที่มันถูกเขียนมาก
+
+## Argument ของ field
+
+field สามารถรับ **argument** ได้ เหมือนพารามิเตอร์ของฟังก์ชัน argument ช่วยให้ field เดียวรองรับคำขอได้หลายรูปแบบ การใช้งานคลาสสิกคือ field สำหรับค้นหาบน type `Query` ระดับ root:
+
+```graphql
+type Query {
+  recipe(id: ID!): Recipe
+  recipes(first: Int, search: String): [Recipe!]!
+}
+```
+
+`recipe` รับ `id` ที่จำเป็นต้องมีและคืนสูตรอาหารหนึ่งรายการ (หรือ `null` หากไม่มีรายการใดตรง) `recipes` รับ argument `first` และ `search` แบบ optional เพื่อแบ่งหน้าและกรองรายการ argument ไม่ได้จำกัดอยู่แค่ field ระดับ root — field ใด ๆ ก็รับมันได้ รูปแบบที่พบบ่อยคือการให้ field ปรับรูปร่างผลลัพธ์ของตัวเอง:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  description(maxLength: Int): String
+}
+```
+
+ตรงนี้ client สามารถขอ `description` ที่ถูกตัดให้สั้นลงได้โดยส่ง `maxLength` มา และ resolver ก็ทำการตัดให้ argument อยู่บน field ที่ใช้มัน
+
+## Description — เอกสารใน schema
+
+GraphQL มีระบบเอกสารในตัว type, field หรือ argument ใด ๆ สามารถมี **description** เขียนเป็น string literal ตรง ๆ เหนือมันได้ description เหล่านี้จะปรากฏในเครื่องมือต่าง ๆ ใน GraphiQL และในเอกสารที่ถูกสร้างขึ้น:
+
+```graphql
+"""
+A single dish a user can cook, including timing and serving information.
+"""
+type Recipe {
+  "Stable unique identifier for the recipe."
+  id: ID!
+
+  "Human-readable name shown in listings and headers."
+  title: String!
+
+  "How many portions the recipe yields."
+  servings: Int!
+}
+```
+
+บล็อกที่ใช้เครื่องหมายคำพูดสามตัวรองรับข้อความหลายบรรทัด ส่วน string ที่ใช้เครื่องหมายคำพูดเดี่ยวก็พอสำหรับหนึ่งบรรทัด description ไม่ใช่เครื่องประดับ — มันเป็นส่วนหนึ่งของสัญญาที่มนุษย์อ่าน เขียนมันเหมือนกำลังอธิบาย field ให้นักพัฒนาที่ไม่เคยเห็น domain ของคุณมาก่อนฟัง
+
+## ความสัมพันธ์ — วิธีที่ type เชื่อมโยงกันเป็นกราฟ
+
+ในวินาทีที่ type ของ field เป็น *object type อีกตัวหนึ่ง* schema ของคุณก็เลิกเป็นรายการของระเบียนแบน ๆ และกลายเป็น **กราฟ** สูตรอาหารมีผู้แต่ง ผู้แต่งมีสูตรอาหาร:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  author: Author!
+}
+
+type Author {
+  id: ID!
+  name: String!
+  recipes: [Recipe!]!
+}
+```
+
+field `author` บน `Recipe` ชี้ไปที่ type `Author` และ field `recipes` บน `Author` ชี้กลับมา client สามารถเริ่มที่สูตรอาหาร ก้าวเข้าไปในผู้แต่งของมัน แล้วเดินไปยังสูตรอาหารอื่น ๆ ของผู้แต่งคนนั้น — ทั้งหมดใน query เดียว field ที่เชื่อมโยงเหล่านี้คือเส้นเชื่อม (edge) ของกราฟของคุณ และการเลือกมันให้ดีคือสิ่งที่ทำให้ API รู้สึกเป็นอันหนึ่งอันเดียวกัน
+
+<Mermaid title="Object type ที่เชื่อมโยงกันด้วย field ก่อเกิดเป็นกราฟที่ client เดินผ่าน" code={fieldsDiagram} />
+
+## ประกอบเข้าด้วยกัน รันได้จริง
+
+ตัวอย่างด้านล่างนิยาม `Recipe` และ `Author` ให้ field `recipe` มี argument และรัน query ที่เดินผ่านความสัมพันธ์ระหว่างสอง type นี้ กดปุ่ม **Run**
+
+export const typesFieldsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two linked object types; the lookup field takes an "id" argument.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      recipes: [Recipe!]!
+    }
+
+    type Recipe {
+      id: ID!
+      title: String!
+      servings: Int!
+      author: Author!
+    }
+
+    type Query {
+      recipe(id: ID!): Recipe
+    }
+  \`);
+
+  const author = { id: 'au1', name: 'Sam Saffron' };
+  const recipe = { id: 'r1', title: 'Slow Graph Stew', servings: 4, author };
+  author.recipes = [recipe];
+
+  const root = {
+    recipe: ({ id }) => (id === 'r1' ? recipe : null),
+  };
+
+  // Pass an argument, then traverse recipe -> author -> author's recipes.
+  const query = \`
+    {
+      recipe(id: "r1") {
+        title
+        servings
+        author {
+          name
+          recipes { title }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={typesFieldsCode} />
+
+query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ่งรายการ จากนั้นก้าวเข้าไปใน `author` และออกมายังรายการสูตรอาหารของผู้แต่งคนนั้น หนึ่งรอบการสื่อสาร หลาย type — นั่นคือกราฟที่กำลังทำงาน
+
+<Callout title="Field คือหน่วยของการออกแบบ">
+ทุกการตัดสินใจที่คุณทำใน schema ลงเอยที่ field: ชื่อของมัน type ของมัน argument ที่มันรับ และ description ที่อธิบายมัน ตั้งชื่อ field ตามคุณสมบัติใน domain มอบ argument ให้ field ที่ต้องการมัน เขียนเอกสารสิ่งที่ไม่ชัดเจนในตัวเอง และปล่อยให้ field ที่เป็น object type แสดงความสัมพันธ์ที่ client จะเดินผ่านจริง ๆ จัดการ field ให้ถูกต้องแล้วส่วนที่เหลือของ schema ก็จะตามมาเอง
+</Callout>
+
+export const fieldsDiagram = `flowchart LR
+  Query["Query"]
+  Recipe["type Recipe"]
+  Author["type Author"]
+  Args["Field arg: recipe(id: ID!)"]
+  Query --> Args
+  Args --> Recipe
+  Recipe -->|"author"| Author
+  Author -->|"recipes"| Recipe`;
+
+export const quizTypesFields = [
+  {
+    q: 'อะไรที่เปลี่ยนกลุ่มของ object type แบน ๆ ให้กลายเป็นกราฟที่เดินผ่านได้?',
+    options: [
+      'เพิ่ม scalar field ให้มากขึ้น',
+      'field ที่ type ของมันเป็น object type อีกตัวหนึ่ง เชื่อมโยงสองตัวเข้าด้วยกัน',
+      'เขียน description บนทุก field',
+      'นิยาม type Mutation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'argument ของ field สามารถประกาศไว้ที่ไหนได้บ้าง?',
+    options: [
+      'เฉพาะบน field ของ type Query เท่านั้น',
+      'เฉพาะบน scalar field เท่านั้น',
+      'บน field ใด ๆ ที่ต้องการมัน รวมถึง field ของ object ที่ซ้อนกัน',
+      'เฉพาะภายใน input type เท่านั้น',
+    ],
+    answer: 2,
+  },
+  {
+    q: 'ใน SDL คุณแนบเอกสารให้กับ type หรือ field ได้อย่างไร?',
+    options: [
+      'ด้วยคอมเมนต์ // เหนือมัน',
+      'ด้วย string literal (เครื่องหมายคำพูดเดี่ยวหรือสามตัว) ตรง ๆ เหนือมัน',
+      'ด้วย directive @doc',
+      'SDL ไม่รองรับ description',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/types-and-fields" questions={quizTypesFields} />
+
+<ProgressTracker client:visible id="schema-design/types-and-fields" />

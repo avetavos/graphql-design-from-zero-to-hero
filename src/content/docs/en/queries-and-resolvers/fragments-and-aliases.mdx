@@ -1,0 +1,180 @@
+---
+title: Fragments & Aliases
+description: 'Reuse selection sets with fragments, branch on type with inline fragments, and rename response fields with aliases.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The last lesson of this module is about three tools that make queries cleaner rather than more powerful. **Fragments** let you name and reuse a selection set. **Inline fragments** let a selection branch on a type. **Aliases** let you rename a field in the response. None of them change what a server can do — they change how readable and flexible your queries are.
+
+## Fragments
+
+When the same set of fields shows up in more than one place, copying it everywhere is a maintenance trap. A **fragment** is a named selection set you define once and spread wherever you need it. You declare it with the `fragment` keyword, naming the type it applies to with `on`:
+
+```graphql
+fragment TrackFields on Track {
+  id
+  title
+  durationSeconds
+}
+```
+
+You then **spread** it into a selection set with the `...` operator, as if its fields were written there directly:
+
+```graphql
+{
+  track(id: "t1") {
+    ...TrackFields
+  }
+  featured: track(id: "t2") {
+    ...TrackFields
+  }
+}
+```
+
+Both selections pull in `id`, `title`, and `durationSeconds` without repetition. Change the fragment in one place and every spread updates with it — the same payoff as factoring repeated code into a function.
+
+## Inline fragments
+
+Sometimes a field returns a type that could be one of several object types — an interface or a union. To select fields that only exist on one of those possibilities, you use an **inline fragment**: the `...` operator followed by `on SomeType` and a selection set, with no name in between.
+
+```graphql
+{
+  searchResult {
+    ... on Track {
+      title
+    }
+    ... on Artist {
+      name
+    }
+  }
+}
+```
+
+Here `searchResult` might resolve to a `Track` or an `Artist`. The inline fragments say "if it is a `Track`, give me `title`; if it is an `Artist`, give me `name`." Only the matching branch contributes to the response. Inline fragments are how you handle type branching inside a single selection.
+
+<Mermaid title="A fragment is defined once and spread into many selections." code={fragmentDiagram} />
+
+## Aliases
+
+By default, a field appears in the response under its own name. An **alias** lets you choose a different key, written as `aliasName: fieldName` before the field. This is essential when you select the same field twice with different arguments — without aliases the two results would collide on the same key:
+
+```graphql
+{
+  first: track(id: "t1") {
+    title
+  }
+  second: track(id: "t2") {
+    title
+  }
+}
+```
+
+The response then has two distinct keys, `first` and `second`, each holding its own track. Aliases are purely about the *shape of the response* — they never touch the schema or the resolvers. They are also handy for adapting field names to whatever your client code expects.
+
+## Fragment and alias together
+
+The example below defines a `TrackFields` fragment, spreads it into two selections of the same `track` field, and uses aliases — `hit` and `deepCut` — so the two results sit under distinct keys. Press **Run** and read the response keys.
+
+export const fragmentCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const catalogue = {
+    t1: { id: 't1', title: 'Spread the Word', durationSeconds: 191 },
+    t2: { id: 't2', title: 'Aliased and Renamed', durationSeconds: 247 },
+  };
+  const root = {
+    track: ({ id }) => catalogue[id] || null,
+  };
+
+  // One fragment, two aliased selections of the same field.
+  const query = \`
+    query TwoTracks {
+      hit: track(id: "t1") {
+        ...TrackFields
+      }
+      deepCut: track(id: "t2") {
+        ...TrackFields
+      }
+    }
+
+    fragment TrackFields on Track {
+      id
+      title
+      durationSeconds
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={fragmentCode} />
+
+The response has two top-level keys, `hit` and `deepCut`, instead of one colliding `track` — that is the alias at work. Each holds the full set of fields from `TrackFields`, written once and reused twice — that is the fragment at work. Together they keep the query short and the response well-shaped.
+
+<Callout title="Three tools for cleaner queries">
+**Fragments** factor a repeated selection set into one named unit you spread with `...`. **Inline fragments** (`... on Type`) pick fields that exist only on a specific type behind an interface or union. **Aliases** (`key: field`) rename a field in the response, which is what lets you request the same field twice with different arguments. All three shape the query and its response — none change the server.
+</Callout>
+
+export const fragmentDiagram = `flowchart TD
+  Frag["fragment TrackFields on Track { id, title, durationSeconds }"]
+  Frag -->|"... spread"| S1["hit: track(id: t1)"]
+  Frag -->|"... spread"| S2["deepCut: track(id: t2)"]
+  S1 --> R["Response with two aliased keys"]
+  S2 --> R`;
+
+export const quizFragmentsAndAliases = [
+  {
+    q: 'What problem does a fragment solve?',
+    options: [
+      'It lets the server skip resolvers',
+      'It names a selection set so the same fields can be reused with the ... spread instead of repeated',
+      'It passes variables into a query',
+      'It renames a field in the response',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When is an inline fragment like "... on Track" needed?',
+    options: [
+      'To rename a field in the response',
+      'To select fields that exist only on a specific type behind an interface or union',
+      'To declare a query variable',
+      'To cache the query string',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why are aliases required when selecting the same field twice with different arguments?',
+    options: [
+      'Aliases make the query run faster',
+      'Without distinct alias keys the two results would collide under the same response key',
+      'GraphQL forbids calling any field more than once',
+      'Aliases change which resolver runs',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/fragments-and-aliases" questions={quizFragmentsAndAliases} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/fragments-and-aliases" />

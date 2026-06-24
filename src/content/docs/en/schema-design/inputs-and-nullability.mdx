@@ -1,0 +1,209 @@
+---
+title: Inputs and Nullability
+description: 'Input object types for arguments, the non-null marker, list types, default values, and how to design clean inputs.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The last building block is the data that flows *into* your schema. Object types describe what comes back; **input object types** describe what clients send. Combined with **nullability**, **lists**, and **default values**, inputs are how you design arguments that are both expressive and hard to get wrong. This lesson closes the module on the side of the contract that clients write to.
+
+## Input object types
+
+When a field takes more than a couple of arguments, listing them all inline gets unwieldy. An **input object type** bundles related arguments into a single named structure. It looks like an object type but is declared with the `input` keyword and may only contain scalars, enums, lists, and other inputs — never object types:
+
+```graphql
+input CreateBookInput {
+  title: String!
+  authorId: ID!
+  pageCount: Int
+}
+
+type Mutation {
+  createBook(input: CreateBookInput!): Book
+}
+```
+
+Now `createBook` takes one argument, `input`, instead of three loose ones. This is the standard pattern for mutations: a single `input` argument keeps the mutation signature stable even as the fields inside it evolve. Inputs and object types are deliberately separate kinds — an object type is for *output*, an input type is for *input*, and GraphQL will not let you mix them.
+
+## Nullability — the exclamation mark
+
+Every type reference is **nullable by default**; a trailing `!` makes it **non-null**. On an input field, `!` means the client *must* provide the value:
+
+```graphql
+input CreateBookInput {
+  title: String!     # required — the client must send it
+  authorId: ID!      # required
+  pageCount: Int     # optional — may be omitted or sent as null
+}
+```
+
+`title` and `authorId` are non-null, so omitting them is a validation error caught before any resolver runs. `pageCount` is nullable, so it is optional. Nullability on inputs is how you express "required vs optional" without writing a line of validation code — the type system enforces it for you.
+
+## Lists and the two exclamation marks
+
+A **list type** is written with square brackets: `[Book]`. Because both the list and its elements can independently be null, list types often carry two exclamation marks doing two different jobs:
+
+```graphql
+input AddTagsInput {
+  bookId: ID!
+  tags: [String!]!
+}
+```
+
+Decode `[String!]!` from the inside out:
+
+- The inner `String!` means **every element** of the list is a non-null string — no `null` holes inside.
+- The outer `!` means **the list itself** is never null — though it may still be empty, `[]`.
+
+So `tags` is always a list, and every tag in it is a real string. The same reading applies to output fields like `[Book!]!`. Choosing the right combination of marks tells clients exactly what to expect: must they handle a missing list? a list with gaps? `[String!]!` answers no to both.
+
+<Mermaid title="An input object bundles arguments; nullability and lists shape what is required." code={inputDiagram} />
+
+## Default values
+
+An optional argument or input field can declare a **default value** with `=`. If the client omits it, the default is used:
+
+```graphql
+type Query {
+  books(first: Int = 10, sortBy: String = "title"): [Book!]!
+}
+```
+
+If a client calls `books` with no arguments, it gets the first 10 books sorted by title. Defaults let you keep arguments optional while still giving resolvers a sensible value to work with — the resolver never sees `undefined` for `first`, it sees `10`. A field with a default is, by definition, optional, so do not also mark it non-null in a way that contradicts the default.
+
+## Designing inputs that age well
+
+A few habits keep inputs pleasant over time. Wrap mutation arguments in a single `input` type so the signature is stable. Make a field non-null only when the operation truly cannot proceed without it — over-using `!` makes an API rigid and breaks clients when requirements loosen. Provide defaults for pagination and sorting so the simple call is the easy call. And keep input types focused: one input per operation, named after the operation, beats a giant shared bag of optional fields.
+
+## Inputs, nullability, and defaults, run for real
+
+The example below defines a `CreateBookInput`, a mutation that consumes it, and runs the mutation with a partial input — relying on nullability to allow the optional field to be omitted. Press **Run**.
+
+export const inputsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // An input type bundles arguments; "!" marks the required ones.
+  const schema = buildSchema(\`
+    input CreateBookInput {
+      title: String!
+      authorId: ID!
+      pageCount: Int
+    }
+
+    type Book {
+      id: ID!
+      title: String!
+      authorId: ID!
+      pageCount: Int
+      tags: [String!]!
+    }
+
+    type Mutation {
+      createBook(input: CreateBookInput!): Book
+    }
+
+    type Query {
+      hello: String
+    }
+  \`);
+
+  let nextId = 100;
+  const root = {
+    createBook: ({ input }) => ({
+      id: String(nextId++),
+      title: input.title,
+      authorId: input.authorId,
+      pageCount: input.pageCount ?? null,
+      tags: [],
+    }),
+  };
+
+  // pageCount is optional, so we omit it; the field comes back as null.
+  const mutation = \`
+    mutation {
+      createBook(input: { title: "Graphs for Everyone", authorId: "au9" }) {
+        id
+        title
+        pageCount
+        tags
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: mutation, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={inputsCode} />
+
+The mutation sent only the two required fields. Because `pageCount` was nullable in the input, omitting it was legal, and the resolver filled it with `null`. The `tags` field came back as `[]` — a non-null list, just empty — exactly as `[String!]!` promised. The type system validated the whole input before the resolver ever ran.
+
+<Callout title="Inputs and nullability are how the contract validates itself">
+Bundle related arguments into an `input` object type — especially for mutations — and let nullability do your validation: `!` for what is required, plain for what is optional, and `[T!]!` for a guaranteed list of guaranteed values. Add default values so the common call stays short. Designed this way, your arguments document exactly what clients may send and reject the rest automatically, with no hand-written validation in your resolvers.
+</Callout>
+
+export const inputDiagram = `flowchart TD
+  Mutation["Mutation.createBook(input)"]
+  Input["input CreateBookInput"]
+  Required["title: String! (required)"]
+  Required2["authorId: ID! (required)"]
+  Optional["pageCount: Int (optional)"]
+  List["tags: [String!]! (non-null list of non-null)"]
+  Mutation --> Input
+  Input --> Required
+  Input --> Required2
+  Input --> Optional
+  Input --> List`;
+
+export const quizInputsNullability = [
+  {
+    q: 'What is an input object type used for?',
+    options: [
+      'Returning nested data to the client',
+      'Bundling related arguments that a client sends into a field',
+      'Declaring a union of types',
+      'Replacing scalars',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'On an input field, what does a trailing ! mean?',
+    options: [
+      'The field is deprecated',
+      'The client must provide a value — it is required',
+      'The value is automatically defaulted',
+      'The field returns a list',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does the type [String!]! describe?',
+    options: [
+      'A nullable list that may contain null strings',
+      'A non-null list whose every element is a non-null string (the list may be empty)',
+      'Exactly one string, never a list',
+      'A list of input objects',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does a default value (e.g. first: Int = 10) achieve?',
+    options: [
+      'It makes the argument required',
+      'It supplies a value when the client omits the optional argument',
+      'It converts the argument into an enum',
+      'It forces the field to be non-null',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/inputs-and-nullability" questions={quizInputsNullability} />
+
+<ProgressTracker client:visible id="schema-design/inputs-and-nullability" />

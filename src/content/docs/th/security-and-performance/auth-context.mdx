@@ -1,0 +1,147 @@
+---
+title: Authentication & Context
+description: 'การ resolve current user หนึ่งครั้งต่อคำขอจาก token แล้ววางไว้บน GraphQL context เพื่อให้ resolver อ่าน identity แทนที่จะ parse credential ซ้ำ'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+คำถามแรกในสี่ข้อของเราคือ **ใครเป็นคนถาม?** การตอบคำถามนี้คือ **authentication**: การเปลี่ยน credential ที่ไม่อาจอ่านความหมายได้ — โดยทั่วไปคือ token ใน HTTP header — ให้กลายเป็น identity ที่รู้จัก แนวคิดสำคัญของ GraphQL คือ *ที่ใด* ที่งานนี้เกิดขึ้น คุณทำมัน **หนึ่งครั้งต่อคำขอ** ก่อนที่ resolver ใด ๆ จะรัน แล้วส่งผลลัพธ์ไปยังทุก resolver ผ่าน object ที่ใช้ร่วมกันชื่อว่า **context**
+
+## Context object
+
+เมื่อ GraphQL server รันคำขอ มันจะร้อย context value เพียงค่าเดียวผ่านทุก resolver คุณได้เห็น signature นี้มาแล้ว: resolver รับ `(parent, args, context, info)` context เป็นของคุณที่จะเติมเอง มันคือบ้านโดยธรรมชาติของอะไรก็ตามที่เป็นจริงสำหรับ *ทั้งคำขอ* แต่ไม่ใช่ส่วนหนึ่งของ schema: current user, database connection, request-scoped cache, logger
+
+Authentication เป็นผู้เติม context ฟังก์ชันเล็ก ๆ — มักเรียกว่า *context factory* — รันหนึ่งครั้งเมื่อคำขอมาถึง มันอ่าน `Authorization` header, verify token, look up user, และคืน context object จากนั้นเป็นต้นไป ทุก resolver เพียงแค่อ่าน `context.user`
+
+<Mermaid title="token ถูก verify หนึ่งครั้งที่ขอบ; resolver เพียงอ่าน identity ที่ได้ออกมาเท่านั้น" code={authSequence} />
+
+## Authenticate ที่ขอบ ไม่ใช่ใน schema
+
+ความผิดพลาดของมือใหม่ที่พบบ่อยคือการวาง authentication ไว้ *ภายใน* field — เพิ่ม field `login(token: String)` หรือให้ resolver แต่ละตัว parse `Authorization` header ซ้ำ จงต้านทานมัน schema อธิบายข้อมูลของคุณ มันไม่ควรอธิบายว่า credential ถูกถอดรหัสอย่างไร ถอดรหัส token หนึ่งครั้งที่ขอบ แล้วปล่อยให้ schema สะอาดเอาไว้:
+
+```ts
+// Runs once per request, before any resolver. With GraphQL Yoga or Apollo
+// Server you supply this as the `context` factory.
+async function createContext({ request }: { request: Request }) {
+  const header = request.headers.get('authorization') ?? '';
+  const token = header.replace(/^Bearer\s+/i, '');
+
+  // verifyToken throws or returns null for bad/expired tokens.
+  const user = token ? await verifyToken(token) : null;
+
+  // Note: we do NOT throw here for anonymous requests. Some fields are
+  // public. Authentication establishes identity; it does not grant access.
+  return { user };
+}
+```
+
+มีจุดออกแบบสองข้อที่ควรขีดเส้นใต้ไว้ ข้อแรก factory คืน `user` เป็น `null` สำหรับ anonymous request แทนที่จะปฏิเสธมัน — field จำนวนมาก (แค็ตตาล็อกสินค้าสาธารณะ, query ของหน้า marketing) มีไว้ให้เข้าถึงได้โดยไม่ต้องล็อกอิน **Authentication ตอบว่า "ใคร" ไม่ใช่ "เขาทำได้ไหม"**; การตัดสิน "เขาทำได้ไหม" คือ authorization ซึ่งเป็นหัวข้อของบทเรียนถัดไป ข้อสอง token ถูก verify เพียงครั้งเดียวเท่านั้น ดังนั้น operation ที่แพง (การ verify signature, การ look up user) จึงไม่ทำซ้ำสำหรับทุก field ใน query ขนาดใหญ่
+
+## resolver ที่อ่าน context
+
+ตัวอย่างด้านล่างสร้าง schema เล็ก ๆ ที่มีสอง field `me` คืนชื่อของ user ที่ authenticate แล้ว หรือ `null` เมื่อไม่มีใครล็อกอิน `serverTime` เป็นสาธารณะและเพิกเฉยต่อ identity โดยสิ้นเชิง ที่สำคัญคือ resolver ไม่เคยแตะ token เลย — มันเพียงอ่าน `context.user` ซึ่ง context factory ได้ resolve ไว้ล่วงหน้าแล้ว กด **Run** เพื่อรันมันด้วย GraphQL engine จริง; context ถูกส่งเข้าไปในชื่อ `contextValue`
+
+export const authContextCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      me: String
+      serverTime: String
+    }
+  \`);
+
+  // Resolvers read identity from the context — they never decode a token.
+  const root = {
+    me: (_args, context) => (context.user ? context.user.name : null),
+    serverTime: () => 'always public',
+  };
+
+  // This is what a context factory would have produced for THIS request,
+  // after verifying the incoming token exactly once.
+  const verifiedContext = { user: { id: 'u1', name: 'Ada Lovelace' } };
+
+  const query = \`{ me serverTime }\`;
+
+  const result = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: verifiedContext,
+  });
+  console.log('Authenticated request:');
+  console.log(JSON.stringify(result, null, 2));
+
+  // Now the same query as an anonymous visitor: user is null.
+  const anonResult = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: null },
+  });
+  console.log('\\nAnonymous request:');
+  console.log(JSON.stringify(anonResult, null, 2));
+})();`;
+
+<NodeRunner client:visible code={authContextCode} />
+
+ดู output ทั้งสองให้ดี เมื่อมี user ที่ verify แล้วบน context `me` คืน `"Ada Lovelace"` เมื่อ `user: null` `me` กลับมาเป็น `null` ในขณะที่ `serverTime` ยังทำงาน — field สาธารณะไม่สนใจว่าใครเป็นคนถาม resolver คงเหมือนเดิมทุกประการระหว่างสองการรัน; มีเพียง context เท่านั้นที่เปลี่ยน นั่นคือประเด็นทั้งหมด: identity ถูกสร้างหนึ่งครั้ง นอก resolver และ schema อ่านมันเหมือนข้อเท็จจริงระดับคำขออื่น ๆ
+
+<Callout title="Authenticate ใน context, authorize ใน resolver">
+แยกสองงานนี้ออกจากกัน **Authentication** — การ verify token และ resolve current user — เกิดขึ้นหนึ่งครั้งต่อคำขอใน context factory ไม่เคยอยู่ภายใน schema field **Authorization** — การตัดสินว่า user นั้นอาจเห็น field ใด field หนึ่งได้หรือไม่ — เกิดขึ้นทีหลังใน resolver context factory ที่สะอาดซึ่งคืน `{ user }` (และ `null` สำหรับผู้เรียกแบบ anonymous) ให้คำตอบที่ไว้ใจได้กับทุก resolver สำหรับคำถาม "ใครเป็นคนถาม?" โดยไม่ต้อง parse credential ซ้ำ และทิ้งคำถาม "เขาได้รับอนุญาตไหม?" ไว้ให้บทเรียนถัดไป
+</Callout>
+
+export const authSequence = `sequenceDiagram
+  participant C as Client
+  participant F as Context factory
+  participant V as Token verifier
+  participant R as Resolvers
+  C->>F: Request + Authorization header
+  F->>V: Verify token (once)
+  V-->>F: user (or null if anonymous)
+  F-->>R: context = { user }
+  R->>R: read context.user
+  R-->>C: Response`;
+
+export const quizAuthContext = [
+  {
+    q: 'GraphQL server ควร verify token ที่เข้ามาและ resolve current user ที่ใด?',
+    options: [
+      'ภายในทุก resolver ที่ต้องใช้ user',
+      'หนึ่งครั้งต่อคำขอใน context factory ก่อนที่ resolver ใด ๆ จะรัน',
+      'ใน field login(token) เฉพาะใน schema',
+      'ใน client ก่อนส่ง query',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'context factory ควรคืนอะไรสำหรับ anonymous request ที่ไม่มี token ที่ถูกต้อง?',
+    options: [
+      'มันควร throw ทันทีเพื่อให้คำขอล้มเหลว',
+      'context ที่มี user เป็น null โดยปล่อยการตัดสิน access ไว้ให้ authorization',
+      'guest user ปลอมที่มีสิทธิ admin',
+      'ไม่คืนอะไรเลย — anonymous request ต้องถูกบล็อกที่ชั้น HTTP',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในตัวอย่างที่รันได้ ทำไม resolver me จึงไม่จำเป็นต้องอ่าน Authorization header?',
+    options: [
+      'เพราะ header ถูกคัดลอกเข้าไปใน args โดยอัตโนมัติ',
+      'เพราะ identity ถูก resolve ไว้ใน context.user โดย context factory แล้ว',
+      'เพราะ me เป็น field ในตัวของ GraphQL',
+      'เพราะ schema ถอดรหัส token ให้คุณ',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/auth-context" questions={quizAuthContext} />
+
+<ProgressTracker client:visible id="security-and-performance/auth-context" />

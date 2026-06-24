@@ -1,0 +1,184 @@
+---
+title: Authorization
+description: 'Field- and type-level permission checks in resolvers, directives, or middleware, and the deliberate choice between returning null and throwing a forbidden error.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The previous lesson answered *who is asking?* and parked the result on the context. This lesson answers the second question: **are they allowed?** That is **authorization** — deciding, for each field and type, whether the current identity may see this data. Authentication is a single yes/no at the edge; authorization is a thousand small decisions woven through the graph.
+
+## Authorization is per field, not per request
+
+A REST endpoint is usually all-or-nothing: you may call `GET /admin/users` or you may not. GraphQL is finer-grained. A single query can touch a public field, a field only the owner may read, and a field reserved for admins — all at once. So the natural place for authorization is wherever the data is produced: **the resolver**.
+
+```ts
+const resolvers = {
+  Query: {
+    // Public: anyone may read it.
+    publicProfile: (_p, { id }) => loadProfile(id),
+  },
+  User: {
+    // Owner-only: compare the requested record to the caller.
+    email: (user, _a, context) => {
+      if (context.user?.id !== user.id) return null; // hide, don't shout
+      return user.email;
+    },
+    // Admin-only: refuse loudly.
+    auditLog: (_user, _a, context) => {
+      if (context.user?.role !== 'admin') {
+        throw new GraphQLError('Forbidden', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+      return loadAuditLog();
+    },
+  },
+};
+```
+
+Notice the two fields handle a denial *differently*. That choice — `null` versus a thrown error — is the central design decision of authorization.
+
+## Return `null` or throw forbidden?
+
+When the caller is not allowed to see a field, you have two honest options:
+
+- **Return `null`.** The field must be nullable in the schema. The query still succeeds; the data simply isn't there. This is best when the *existence* of the value is itself sensitive, or when partial results are useful. The caller cannot tell "you may not see this" apart from "there is nothing here" — which is often exactly the privacy property you want.
+- **Throw a forbidden error.** The resolver throws a `GraphQLError` with an extension code like `FORBIDDEN`. GraphQL records the error under `errors`, sets that field to `null`, and — importantly — *keeps* the rest of the response. This is best when you want to tell an honest client clearly that it overstepped, e.g. an admin tool that should surface "access denied."
+
+A useful rule of thumb: **throw when the client did something wrong and should know; return `null` when revealing the denial would itself leak information.** Either way, never rely on the client to enforce permissions — the check lives on the server, in the resolver.
+
+<Mermaid title="Each field independently decides: allow, hide with null, or refuse with a forbidden error." code={authzFlow} />
+
+## Centralizing the checks: directives and middleware
+
+Scattering `if (context.user?.role !== 'admin')` across dozens of resolvers gets repetitive and easy to forget. Two patterns DRY it up:
+
+- **Schema directives** — annotate a field in the SDL, e.g. `auditLog: String @auth(requires: ADMIN)`, and a directive transformer wraps the resolver with the check. The permission becomes part of the contract, visible to anyone reading the schema.
+- **Resolver middleware** — a layer (such as `graphql-middleware` or a wrapper utility) runs before resolvers and applies rules by type and field name. The business logic stays clean; the policy lives in one place.
+
+Both compile down to the same thing — a check that runs around the resolver — so the runnable demo below shows the underlying mechanism directly.
+
+## A field that refuses an unauthorized user
+
+The example defines `me` (any logged-in user), `email` (owner-only, returns `null` when you are not the owner), and `auditLog` (admin-only, throws `FORBIDDEN`). It runs the *same query* as a regular user and then as an admin, so you can watch one field flip from a forbidden error to real data. Press **Run**.
+
+export const authzCode = `(async () => {
+  const { graphql, buildSchema, GraphQLError } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      me: String
+      email: String
+      auditLog: String
+    }
+  \`);
+
+  // The "record" being read; pretend it belongs to user u1.
+  const ownerId = 'u1';
+
+  const root = {
+    me: (_args, context) => (context.user ? context.user.name : null),
+
+    // Owner-only: hide silently with null when the caller is not the owner.
+    email: (_args, context) =>
+      context.user?.id === ownerId ? 'ada@example.com' : null,
+
+    // Admin-only: refuse loudly with a forbidden error.
+    auditLog: (_args, context) => {
+      if (context.user?.role !== 'admin') {
+        throw new GraphQLError('Forbidden: admin role required', {
+          extensions: { code: 'FORBIDDEN' },
+        });
+      }
+      return 'login@09:14, export@09:20';
+    },
+  };
+
+  const query = \`{ me email auditLog }\`;
+
+  const asUser = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: { id: 'u1', name: 'Ada', role: 'user' } },
+  });
+  console.log('As a regular user (the owner):');
+  console.log(JSON.stringify(asUser, null, 2));
+
+  const asAdmin = await graphql({
+    schema,
+    source: query,
+    rootValue: root,
+    contextValue: { user: { id: 'u9', name: 'Root', role: 'admin' } },
+  });
+  console.log('\\nAs an admin (not the owner):');
+  console.log(JSON.stringify(asAdmin, null, 2));
+})();`;
+
+<NodeRunner client:visible code={authzCode} />
+
+Read both outputs together. As the regular user (who *is* the owner), `email` returns the address but `auditLog` produces a `FORBIDDEN` error and its value is `null` — yet `me` and `email` still come back, because a thrown field error nulls only that field and preserves the rest. As the admin (who is *not* the owner), `auditLog` now returns data while `email` is silently `null`. The denial style was a deliberate per-field choice: silent `null` for the owner-private email, a loud error for the admin-only log.
+
+<Callout title="Authorize where the data is produced, and choose your denial on purpose">
+Authorization is not one gate at the door — it is a decision at every field. Put the check in the resolver (or factor it into a directive or middleware so it is declared once), and never trust the client to enforce it. When access is denied, pick the response deliberately: **return `null`** when even admitting the field exists would leak information, and **throw a `GraphQLError` with a `FORBIDDEN` code** when an honest client overstepped and deserves to be told. Both leave the rest of the response intact.
+</Callout>
+
+export const authzFlow = `flowchart TD
+  F["Resolver for a field"] --> Q{"Is the caller allowed?"}
+  Q -->|"Yes"| D["Return the real value"]
+  Q -->|"No, and existence is sensitive"| N["Return null (hide silently)"]
+  Q -->|"No, and client overstepped"| E["throw GraphQLError code: FORBIDDEN"]
+  E --> P["Field set to null, rest of response preserved"]`;
+
+export const quizAuthorization = [
+  {
+    q: 'Why is authorization in GraphQL usually done per field rather than once per request?',
+    options: [
+      'Because resolvers run in parallel and cannot share a request',
+      'Because a single query can touch public, owner-only, and admin-only fields at once',
+      'Because the context is unavailable until after resolvers run',
+      'Because GraphQL forbids request-level checks',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When is returning null preferable to throwing a forbidden error for a denied field?',
+    options: [
+      'Always — errors should never be returned',
+      'When even revealing that the field exists or was denied would leak information',
+      'Only for admin users',
+      'When the field is non-null in the schema',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the runnable demo, what happened to the rest of the response when auditLog threw a FORBIDDEN error?',
+    options: [
+      'The entire response was discarded',
+      'Only auditLog became null; me and email were still returned',
+      'The server returned a 500 with no data',
+      'All fields were set to null',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where should the actual permission check live?',
+    options: [
+      'In the client so the UI can hide buttons',
+      'On the server — in the resolver, or factored into a directive or middleware',
+      'In the network proxy only',
+      'In the GraphQL schema scalars',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/authorization" questions={quizAuthorization} />
+
+<ProgressTracker client:visible id="security-and-performance/authorization" />

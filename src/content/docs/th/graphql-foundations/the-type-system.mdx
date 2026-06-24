@@ -1,0 +1,191 @@
+---
+title: Type System
+description: 'object type, field, scalar, root type อย่าง Query, Mutation และ Subscription และ nullability ด้วยเครื่องหมายอัศเจรีย์'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+เราเรียก schema ว่า "สัญญา" มาหลายครั้งแล้ว ตอนนี้เราจะเปิดมันออกดู schema ถูกสร้างขึ้นจากชุดเล็ก ๆ ของ type kind ที่เขียนใน **Schema Definition Language (SDL)** เรียนรู้ building block เหล่านี้แล้วคุณจะอ่าน — และออกแบบ — GraphQL API ตัวใดก็ได้
+
+## object type และ field
+
+type kind ที่พบบ่อยที่สุดคือ **object type**: ชุดของ field ที่มีชื่อ แต่ละ field มีชื่อและ type และอาจรับ argument ได้ ด้านล่างคือ object type ที่อธิบาย track ในไลบรารีเพลง:
+
+```graphql
+type Track {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  explicit: Boolean
+  artist: Artist!
+}
+```
+
+`Track` มีห้า field type ของแต่ละ field บอก client ว่ามันจะได้อะไรกลับมา: `ID` หนึ่งตัว ค่า `String` และ `Int` บางตัว `Boolean` หนึ่งตัว และลิงก์ไปยัง object type อีกตัวคือ `Artist` field สุดท้ายนั้นคือสิ่งที่เปลี่ยน record แบนราบให้กลายเป็น **graph** — field สามารถชี้ไปยัง type อื่นได้ และ client สามารถเดินทางผ่านมันได้
+
+## scalar — ค่าที่เป็นใบไม้
+
+การเลือกทุกครั้งสุดท้ายจะลงเอยที่ **scalar**: ค่าเดี่ยวที่แบ่งย่อยไม่ได้ GraphQL มาพร้อม built-in scalar ห้าตัว:
+
+- `Int` — จำนวนเต็มแบบมีเครื่องหมายขนาด 32 บิต
+- `Float` — ค่าทศนิยมแบบ double-precision ที่มีเครื่องหมาย
+- `String` — ข้อความ UTF-8
+- `Boolean` — `true` หรือ `false`
+- `ID` — ตัวระบุที่ไม่ซ้ำ ทำ serialize เป็น string แต่ในเชิงความหมายเป็นแบบทึบ (คุณไม่ควรนำมันไปคำนวณ)
+
+คุณยังสามารถนิยาม **custom scalar** ได้ (เช่น `DateTime` หรือ `EmailAddress`) เพื่อแนบกฎการ validate และ serialize แต่ทั้งห้าตัวข้างต้นคือรากฐาน
+
+## root type
+
+object type สามตัวพิเศษเพราะมันเป็น **จุดเข้า** สู่ graph query ต้องเริ่มจากที่ไหนสักแห่ง และชื่อเหล่านี้คือจุดที่มันเริ่ม:
+
+- `Query` — จุดเข้าสำหรับการอ่าน การอ่านทุกครั้งเริ่มด้วยการเลือก field ที่นี่
+- `Mutation` — จุดเข้าสำหรับการเขียน field ที่นี่สร้าง อัปเดต หรือลบข้อมูล
+- `Subscription` — จุดเข้าสำหรับ real-time field ที่นี่ stream การอัปเดตตามเวลา
+
+มีเพียง `Query` เท่านั้นที่จำเป็น schema ที่มีการอ่านแต่ไม่มีการเขียนก็แค่ละ `Mutation` และ `Subscription` ออกไป
+
+<Mermaid title="root type คือประตูทางเข้า; object type และ scalar ประกอบกันเป็นส่วนที่เหลือของ graph" code={typeDiagram} />
+
+## nullability — เครื่องหมายอัศเจรีย์
+
+โดยค่าเริ่มต้น ทุก field ใน GraphQL เป็น **nullable**: มันอาจคืนค่าหรือคืน `null` ก็ได้ การเติม `!` ต่อท้ายทำให้ field เป็น **non-null** — server รับประกันว่าจะมีค่าจริง ไม่มีวันเป็น `null` ให้อ่าน `!` ว่า "รับประกัน":
+
+```graphql
+type Artist {
+  id: ID!          # always present
+  name: String!    # always present
+  bio: String      # may be null — biography is optional
+  tracks: [Track!]!  # a non-null list of non-null Tracks
+}
+```
+
+บรรทัดสุดท้ายนั้นคุ้มค่าที่จะถอดความ `[Track!]!` คือ **list type** ที่มีเครื่องหมายอัศเจรีย์สองตัวทำงานสองอย่างต่างกัน:
+
+- `Track!` ตัวในหมายความว่าทุก element ในลิสต์เป็น `Track` แบบ non-null
+- `!` ตัวนอกหมายความว่าตัวลิสต์เองไม่มีวันเป็น `null` (แต่มันยังว่างได้ คือ `[]`)
+
+ดังนั้น `tracks` คืนลิสต์เสมอ และลิสต์นั้นไม่มีวันมีรู `null` อยู่ข้างใน nullability เป็นส่วนหนึ่งของสัญญา: มันบอก client อย่างชัดเจนว่า field ใดที่ต้องระวังป้องกัน และ field ใดที่ไว้ใจได้
+
+## schema เล็ก ๆ ที่รันจริง
+
+ตัวอย่างด้านล่างนิยาม schema สอง type — `Artist` และ `Track` — ต่อ resolver และรัน query ที่ข้ามจาก type หนึ่งไปยังอีก type หนึ่ง กด **Run** เพื่อรันมันด้วย GraphQL engine จริง
+
+export const typeSystemCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two object types plus scalars, with nullability marked by "!".
+  const schema = buildSchema(\`
+    type Artist {
+      id: ID!
+      name: String!
+      bio: String
+    }
+
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+      explicit: Boolean
+      artist: Artist!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const artist = { id: 'a1', name: 'The Resolvers', bio: null };
+
+  const root = {
+    track: ({ id }) => ({
+      id,
+      title: 'Walking the Graph',
+      durationSeconds: 214,
+      explicit: false,
+      artist,
+    }),
+  };
+
+  // Cross from Track into the linked Artist type in one selection.
+  const query = \`
+    {
+      track(id: "t1") {
+        title
+        durationSeconds
+        explicit
+        artist {
+          name
+          bio
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={typeSystemCode} />
+
+ดูผลลัพธ์ให้ใกล้ ๆ `title` และ `durationSeconds` กลับมาเป็นค่าที่รับประกันได้เพราะมันเป็น non-null ใน schema ส่วน `artist` เป็น object ที่ซ้อนอยู่ — query ก้าวจาก `Track` เข้าไปใน `Artist` — และภายในนั้น `bio` กลับมาเป็น `null` ซึ่งได้รับอนุญาตเพราะ `bio` ถูกประกาศโดยไม่มี `!` type system ทำนายทุกรูปร่างเหล่านี้ได้ก่อนที่ resolver จะรันด้วยซ้ำ
+
+<Callout title="อ่าน schema ก่อนเป็นอันดับแรก">
+เมื่อคุณเจอ GraphQL API ตัวใหม่ schema คือเอกสารประกอบ ก่อนเขียน query สักตัว อ่าน type ก่อน: มี field อะไรบ้าง คืนค่าอะไร อะไรเป็น non-null และ object type เชื่อมโยงกันที่ไหน ซึมซับ `!` ว่า "server รับประกันสิ่งนี้" และ `[X!]!` ว่า "ลิสต์ non-null ของค่า non-null" แล้วคุณจะทำนายทุก response ที่ API ตัวนั้นผลิตได้
+</Callout>
+
+export const typeDiagram = `flowchart TD
+  Query["Query (read entry)"]
+  Mutation["Mutation (write entry)"]
+  Subscription["Subscription (stream entry)"]
+  Track["type Track"]
+  Artist["type Artist"]
+  Scalars["Scalars: ID, String, Int, Boolean, Float"]
+  Query --> Track
+  Mutation --> Track
+  Track -->|"artist field"| Artist
+  Track --> Scalars
+  Artist --> Scalars`;
+
+export const quizTypeSystem = [
+  {
+    q: 'เครื่องหมายอัศเจรีย์ที่ต่อท้าย อย่างใน String! ประกาศอะไรเกี่ยวกับ field?',
+    options: [
+      'field นั้นถูก deprecate',
+      'field นั้นเป็น non-null — server รับประกันว่าจะมีค่า ไม่มีวันเป็น null',
+      'field นั้นจำเป็นในฐานะ argument ของ query',
+      'field นั้นเป็น custom scalar',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ข้อใดต่อไปนี้ที่ไม่ใช่หนึ่งใน built-in scalar type ทั้งห้าของ GraphQL?',
+    options: ['Int', 'String', 'DateTime', 'Boolean'],
+    answer: 2,
+  },
+  {
+    q: 'root type ใดที่เป็นจุดเข้าสำหรับการอ่าน และเป็นตัวเดียวที่ schema ต้องนิยาม?',
+    options: ['Mutation', 'Subscription', 'Query', 'Schema'],
+    answer: 2,
+  },
+  {
+    q: 'type [Track!]! หมายความว่าอย่างไร?',
+    options: [
+      'ลิสต์แบบ nullable ที่อาจมี track ที่เป็น null',
+      'ลิสต์แบบ non-null ที่ทุก element เป็น Track แบบ non-null',
+      'Track หนึ่งตัวพอดี ไม่ใช่ลิสต์',
+      'ลิสต์ของ string ชื่อ Track',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/the-type-system" questions={quizTypeSystem} />
+
+<ProgressTracker client:visible id="graphql-foundations/the-type-system" />

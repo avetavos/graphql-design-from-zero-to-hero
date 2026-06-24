@@ -1,0 +1,125 @@
+---
+title: Errors & Validation
+description: 'ทำไม GraphQL response ถึงพก data และ errors มาพร้อมกัน errors เป็นส่วนหนึ่งของ contract อย่างไร และโมดูลนี้ครอบคลุมเรื่องอะไรบ้าง'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+API ส่วนใหญ่มองความล้มเหลวเป็นช่องทางแยกต่างหาก ไม่ว่าจะเป็น `404`, `500` หรือ body ที่คุณต้องแกะข้อมูลคนละแบบเมื่อมีอะไรผิดพลาด แต่ GraphQL เลือกจุดยืนที่ต่างออกไป response เดียวสามารถอธิบายได้**ทั้ง**สิ่งที่สำเร็จและสิ่งที่ล้มเหลว ในรูปร่างเดียว และในเวลาเดียวกัน รูปร่างนี้แหละคือหัวใจของโมดูลนี้
+
+GraphQL response คือ JSON object ที่มี top-level key ได้มากสุดสามตัว ได้แก่ `data`, `errors`, และ `extensions` ตัวแรกเก็บทุกอย่างที่ server resolve ได้สำเร็จ ตัวที่สองคือรายการของทุกสิ่งที่ผิดพลาด ทั้งสองตัวไม่ได้ตัดกันออก เพราะ response หนึ่งสามารถพก `data` tree ที่เต็มเปี่ยม *พร้อมกับ* `errors` array ที่ไม่ว่างเปล่าได้ในคราวเดียว
+
+## Errors เป็นส่วนหนึ่งของ contract
+
+ตลอดคอร์สนี้เราเรียก schema ว่าเป็น contract และ errors ก็ถูกเขียนเอาไว้ใน contract นั้นด้วย specification กำหนดรูปร่างของ error object ตายตัว กำหนดกฎว่า `null` จะปรากฏที่ไหนได้บ้างเมื่อ field หนึ่งล้มเหลว และรับประกันว่าความสำเร็จในระดับ transport (HTTP `200`) ยังสามารถห่อหุ้ม operation ที่ล้มเหลวเอาไว้ได้ client ถูกคาดหวังให้อ่าน `errors` ไม่ใช่แค่ `data`
+
+เมื่อคุณซึมซับแนวคิดนี้ได้ มันจะปลดปล่อยคุณ คุณจะเลิกถามว่า "request สำเร็จหรือไม่" แบบใช่หรือไม่ใช่ และเริ่มคิดว่า "ส่วนไหนสำเร็จ ส่วนไหนล้มเหลว และความล้มเหลวแต่ละอันบอกให้ client ทำอะไร" GraphQL API ที่ดีตอบทั้งสามคำถามนี้ได้ในการเดินทางไปกลับเพียงครั้งเดียว
+
+## รูปร่างของทุก response
+
+<Mermaid title="GraphQL response แยกออกเป็น data, errors และ extensions ที่เป็นทางเลือก" code={responseShape} />
+
+ไดอะแกรมแสดงสามกิ่ง `data` สะท้อนรูปร่างของ query `errors` เป็นรายการแบนๆ โดยแต่ละ entry ชี้กลับเข้าไปใน `data` ผ่าน `path` ส่วน `extensions` เป็นถุงอิสระที่ server อาจใช้แนบรายละเอียดที่เครื่องอ่านได้ ซึ่งเราจะใช้เวลาทั้งบทเรียนหนึ่งกับมัน
+
+## โมดูลนี้ครอบคลุมเรื่องอะไรบ้าง
+
+โมดูลนี้ว่าด้วยด้านความล้มเหลวของ contract ทั้งห้าบทเรียนได้แก่
+
+1. **Errors & Validation** (คุณอยู่ที่นี่) — รูปร่าง response แบบ `data`/`errors` และทำไม errors ถึงเป็นพลเมืองชั้นหนึ่ง
+2. **GraphQL Errors** — เจาะลึก `errors` array ทั้ง `message`, `locations`, `path` และความต่างระหว่าง request errors กับ field errors
+3. **Partial Results** — nullability ควบคุมการแพร่กระจายของ error อย่างไร ปล่อยให้ field พี่น้องยัง resolve ได้ขณะที่ field หนึ่งล้มเหลว
+4. **Error Extensions** — typed errors ด้วย `extensions` การ throw `GraphQLError` และการปกปิดเรื่องภายในใน production
+5. **Input Validation** — สิ่งที่ schema validate ให้ฟรีๆ เทียบกับ business rules ที่คุณต้องบังคับใช้เองใน resolvers
+
+## response ที่พก error มาด้วย
+
+ทฤษฎีพอแล้ว runner ด้านล่างนิยาม schema ที่มี field เดียวซึ่ง resolver ของมัน throw กด **Run** แล้วอ่านผลลัพธ์ สังเกตว่า `data` มีอยู่ (เป็น `null` สำหรับ field ที่ล้มเหลว) และ `errors` อธิบายสิ่งที่เกิดขึ้น
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      currentTrack: String
+    }
+  \`);
+
+  const root = {
+    currentTrack: () => {
+      // The data source is unreachable, so the resolver throws.
+      throw new Error('music service unavailable');
+    },
+  };
+
+  const query = \`
+    {
+      currentTrack
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+
+  // One response object carries BOTH keys at once.
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+อ่าน output เป็น object เดียว `data.currentTrack` กลับมาเป็น `null` เพราะ resolver ของมัน throw และ field นั้นเป็น nullable ข้างๆ กันนั้น `errors` เก็บ entry เดียวที่อธิบายความล้มเหลว ไม่มี key ไหนหักล้างกันเลย การอยู่ร่วมกันนี้แหละคือสิ่งที่ทำให้การจัดการ error ของ GraphQL ต่างจาก HTTP status code ธรรมดา
+
+<Callout title="สอง key หนึ่ง response">
+ฝึกตัวเองให้มองทั้ง `data` และ `errors` เสมอ response ที่มี `data` tree เต็มๆ อาจยังมี errors สำหรับ field ที่ล้มเหลวได้ และ response ที่มี errors ก็อาจยังส่งข้อมูลที่ใช้ได้สำหรับทุกอย่างที่สำเร็จมาให้คุณ ส่วน transport status ซึ่งเกือบจะเป็น `200` เสมอสำหรับการ execute ที่ทำงานไปแล้ว บอกอะไรคุณได้น้อยมากในตัวมันเอง
+</Callout>
+
+export const responseShape = `flowchart TD
+  Response["GraphQL response (JSON)"]
+  Data["data — what resolved"]
+  Errors["errors — list of failures"]
+  Extensions["extensions — optional metadata"]
+  Response --> Data
+  Response --> Errors
+  Response --> Extensions
+  Errors -->|"path"| Data`;
+
+export const quizErrorsIndex = [
+  {
+    q: 'top-level key ใดบ้างที่ GraphQL response เดียวสามารถมีได้?',
+    options: [
+      'มีได้แค่ data หรือแค่ errors เท่านั้น ไม่มีทางมีทั้งคู่',
+      'data, errors และ key extensions ที่เป็นทางเลือก',
+      'status และ body',
+      'result และ code',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'response หนึ่งสามารถพก data tree ที่มีข้อมูลพร้อมกับ errors array ที่ไม่ว่างเปล่าได้หรือไม่?',
+    options: [
+      'ไม่ได้ ทั้งสองตัวตัดกันออก',
+      'ได้ — ความสำเร็จบางส่วนคือผลลัพธ์ปกติของ GraphQL',
+      'เฉพาะกับ subscriptions เท่านั้น',
+      'เฉพาะเมื่อ HTTP status เป็น 500 เท่านั้น',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ใน contract นั้น errors อธิบายได้ดีที่สุดว่าเป็น:',
+    options: [
+      'รายละเอียดการ implement ที่ client ควรเพิกเฉย',
+      'ส่วนชั้นหนึ่งของรูปร่าง response ที่ถูกกำหนดไว้ใน spec',
+      'สิ่งที่ถูกส่งมาเป็น HTTP request แยกต่างหากเสมอ',
+      'มีอยู่เฉพาะเมื่อ data เป็น null ทั้งหมดเท่านั้น',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/index" questions={quizErrorsIndex} />
+
+<ProgressTracker client:visible id="errors-and-validation/index" />

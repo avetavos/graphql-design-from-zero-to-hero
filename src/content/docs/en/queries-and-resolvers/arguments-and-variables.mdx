@@ -1,0 +1,165 @@
+---
+title: Arguments & Variables
+description: 'Passing data into queries with field arguments, then making them reusable with typed query variables like $id.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+So far our queries have only *selected* fields. But a read usually needs input: *which* track, *how many* results, *what* search term. GraphQL carries that input in two layers — **field arguments** declared on the field, and **query variables** that feed values into those arguments from outside the query string. This lesson connects the two.
+
+## Field arguments
+
+A field can declare **arguments** in its schema definition, written in parentheses after the field name. Each argument has a name and a type, and may be non-null:
+
+```graphql
+type Query {
+  track(id: ID!): Track
+  search(term: String!, limit: Int): [Track!]!
+}
+```
+
+`track` takes a required `id`. `search` takes a required `term` and an optional `limit`. When a client selects the field, it supplies the arguments inline:
+
+```graphql
+{
+  track(id: "t1") {
+    title
+  }
+}
+```
+
+Inside the resolver, those arguments arrive as the `args` object you met in the previous lesson — here `args.id` would be `"t1"`. Arguments are how the client steers what a field returns.
+
+## Query variables
+
+Hardcoding `"t1"` into the query string works, but it is rigid: the query text changes every time the value changes, which defeats caching and invites string-building bugs. **Query variables** fix this by declaring named, typed placeholders on the operation and referencing them where an argument value would go.
+
+A variable name starts with `$`. You declare it in the operation signature with its type, then use it as the argument value:
+
+```graphql
+query GetTrack($id: ID!) {
+  track(id: $id) {
+    title
+  }
+}
+```
+
+The query no longer contains a literal id at all. The actual value travels separately, as a small JSON object the client sends alongside the query:
+
+```json
+{ "id": "t1" }
+```
+
+<Mermaid title="A variable is declared on the operation, referenced at the argument, and supplied as a separate JSON map." code={variableDiagram} />
+
+Read the flow: the operation declares `$id: ID!`, the field uses `$id` as the value for its `id` argument, and the variables map provides the concrete `"t1"`. The query text stays constant across every call; only the variables map changes.
+
+## Why variables matter
+
+Separating the value from the query is not just tidy — it is how production GraphQL is meant to work:
+
+- **Reuse and caching.** The same query string runs for every id, so clients and servers can cache and pre-compile it.
+- **Safety.** Values are passed as typed data, not spliced into a string, so there is no injection-style query rewriting.
+- **Validation.** Because each variable is typed (`$id: ID!`), the server rejects a missing or wrong-typed value before any resolver runs.
+
+The rule of thumb: literals are fine while you are exploring in a playground, but anything an app sends should pass dynamic values as variables.
+
+## Arguments and variables together
+
+The example below declares a variable `$id: ID!` on the operation, uses it as the `id` argument of the `track` field, and supplies the value through the `variableValues` map — exactly how a real client sends it. Press **Run**, then try changing the value in the variables map.
+
+export const variablesCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  // The resolver reads the argument off "args" — here destructured as { id }.
+  const catalogue = {
+    t1: { id: 't1', title: 'Variable Speed' },
+    t2: { id: 't2', title: 'Bound by Name' },
+  };
+  const root = {
+    track: ({ id }) => catalogue[id] || null,
+  };
+
+  // The query references $id; no literal id is baked into the string.
+  const query = \`
+    query GetTrack($id: ID!) {
+      track(id: $id) {
+        id
+        title
+      }
+    }
+  \`;
+
+  // The concrete value travels separately, as the variables map.
+  const variableValues = { id: 't2' };
+
+  const result = await graphql({ schema, source: query, rootValue: root, variableValues });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={variablesCode} />
+
+The query string mentions only `$id`; the value `"t2"` lives in `variableValues`. The resolver receives it through `args` and looks the track up. Change `variableValues` to `{ id: 't1' }` and run again — the same query text returns a different track, which is the entire point of variables.
+
+<Callout title="Declare arguments; pass variables">
+Field arguments are part of the schema — they say what input a field accepts. Query variables are part of the request — they carry the concrete values in, typed and separate from the query text. Keep literals in playgrounds and pass `$variables` from real apps, and your queries become reusable, cacheable, and safe by construction.
+</Callout>
+
+export const variableDiagram = `flowchart LR
+  Decl["Operation declares $id: ID!"] --> Use["Field uses track(id: $id)"]
+  Map["Variables map: { id: 't1' }"] -->|"supplies value"| Use
+  Use --> Server["Server validates type, then resolves"]`;
+
+export const quizArgumentsAndVariables = [
+  {
+    q: 'Where are a field’s accepted arguments defined?',
+    options: [
+      'In the variables map sent with the request',
+      'In the schema, in parentheses after the field name',
+      'Only inside the resolver function body',
+      'In the operation name',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does the "$" prefix denote in a query like query GetTrack($id: ID!)?',
+    options: [
+      'A comment',
+      'A typed query variable — a named placeholder fed from a separate values map',
+      'A deprecated field',
+      'A directive',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why prefer variables over hardcoding literal values into the query string?',
+    options: [
+      'Variables make the query run faster on the network layer only',
+      'The query text stays constant (cacheable), values are typed and validated, and there is no string splicing',
+      'Variables are required by the GraphQL spec for every field',
+      'Literals are not allowed anywhere in GraphQL',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/arguments-and-variables" questions={quizArgumentsAndVariables} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/arguments-and-variables" />

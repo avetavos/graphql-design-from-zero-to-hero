@@ -1,0 +1,204 @@
+---
+title: Types and Fields
+description: 'Object types and their fields, field arguments, descriptions, and how object types link to form a graph.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Object types are the workhorses of a GraphQL schema. Almost everything a client touches is an object type with fields, and the way you choose those fields — their names, their types, the arguments they accept — is most of what schema design *is*. This lesson goes deep on the object type and the four things you can do with its fields.
+
+## Object types and their fields
+
+An **object type** is a named bundle of fields. Each field has a name and a type. Here is a type modelling a recipe in a cooking app:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  servings: Int!
+  prepMinutes: Int
+}
+```
+
+`Recipe` has four fields. Three of them resolve to scalars — an `ID`, a `String`, and two `Int` values — and the field's type is a promise about what the client receives. A field name should read as a property of the thing: `title`, `servings`, `prepMinutes`. Prefer clear domain nouns over abbreviations; the schema is read far more often than it is written.
+
+## Field arguments
+
+A field can take **arguments**, just like a function parameter. Arguments let a single field serve many shapes of request. The classic use is a lookup field on the root `Query` type:
+
+```graphql
+type Query {
+  recipe(id: ID!): Recipe
+  recipes(first: Int, search: String): [Recipe!]!
+}
+```
+
+`recipe` takes a required `id` and returns one recipe (or `null` if none matches). `recipes` takes optional `first` and `search` arguments to page and filter a list. Arguments are not limited to root fields — any field can take them. A common pattern is letting a field reshape its own result:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  description(maxLength: Int): String
+}
+```
+
+Here the client can ask for a truncated `description` by passing `maxLength`, and the resolver does the trimming. The argument lives on the field that uses it.
+
+## Descriptions — documentation in the schema
+
+GraphQL has documentation built in. Any type, field, or argument can carry a **description** written as a string literal directly above it. These descriptions show up in tooling, in GraphiQL, and in generated docs:
+
+```graphql
+"""
+A single dish a user can cook, including timing and serving information.
+"""
+type Recipe {
+  "Stable unique identifier for the recipe."
+  id: ID!
+
+  "Human-readable name shown in listings and headers."
+  title: String!
+
+  "How many portions the recipe yields."
+  servings: Int!
+}
+```
+
+A triple-quoted block handles multi-line text; a single-quoted string suffices for one line. Descriptions are not decoration — they are part of the contract that humans read. Write them as if explaining the field to a developer who has never seen your domain.
+
+## Relationships — how types link into a graph
+
+The moment a field's type is *another object type*, your schema stops being a list of flat records and becomes a **graph**. A recipe has an author; an author has recipes:
+
+```graphql
+type Recipe {
+  id: ID!
+  title: String!
+  author: Author!
+}
+
+type Author {
+  id: ID!
+  name: String!
+  recipes: [Recipe!]!
+}
+```
+
+The `author` field on `Recipe` points at the `Author` type, and the `recipes` field on `Author` points back. A client can start at a recipe, step into its author, and walk to that author's other recipes — all in one query. These linking fields are the edges of your graph, and choosing them well is what makes an API feel cohesive.
+
+<Mermaid title="Object types linked by fields form the graph clients traverse." code={fieldsDiagram} />
+
+## Putting it together, run for real
+
+The example below defines `Recipe` and `Author`, gives the `recipe` field an argument, and runs a query that traverses the relationship between the two types. Press **Run**.
+
+export const typesFieldsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two linked object types; the lookup field takes an "id" argument.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      recipes: [Recipe!]!
+    }
+
+    type Recipe {
+      id: ID!
+      title: String!
+      servings: Int!
+      author: Author!
+    }
+
+    type Query {
+      recipe(id: ID!): Recipe
+    }
+  \`);
+
+  const author = { id: 'au1', name: 'Sam Saffron' };
+  const recipe = { id: 'r1', title: 'Slow Graph Stew', servings: 4, author };
+  author.recipes = [recipe];
+
+  const root = {
+    recipe: ({ id }) => (id === 'r1' ? recipe : null),
+  };
+
+  // Pass an argument, then traverse recipe -> author -> author's recipes.
+  const query = \`
+    {
+      recipe(id: "r1") {
+        title
+        servings
+        author {
+          name
+          recipes { title }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={typesFieldsCode} />
+
+The query supplied `id` as an argument, received a single `Recipe`, then stepped into `author` and back out to that author's recipe list. One round trip, several types — that is the graph at work.
+
+<Callout title="Fields are the unit of design">
+Every decision you make in a schema lands on a field: its name, its type, the arguments it accepts, and the description that explains it. Name fields after domain properties, give arguments to the fields that need them, document anything non-obvious, and let object-typed fields express the relationships clients will actually traverse. Get the fields right and the rest of the schema follows.
+</Callout>
+
+export const fieldsDiagram = `flowchart LR
+  Query["Query"]
+  Recipe["type Recipe"]
+  Author["type Author"]
+  Args["Field arg: recipe(id: ID!)"]
+  Query --> Args
+  Args --> Recipe
+  Recipe -->|"author"| Author
+  Author -->|"recipes"| Recipe`;
+
+export const quizTypesFields = [
+  {
+    q: 'What turns a flat collection of object types into a traversable graph?',
+    options: [
+      'Adding more scalar fields',
+      'A field whose type is another object type, linking the two',
+      'Writing descriptions on every field',
+      'Defining a Mutation type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where can a field argument be declared?',
+    options: [
+      'Only on fields of the Query type',
+      'Only on scalar fields',
+      'On any field that needs it, including nested object fields',
+      'Only inside input types',
+    ],
+    answer: 2,
+  },
+  {
+    q: 'In SDL, how do you attach documentation to a type or field?',
+    options: [
+      'With a // comment above it',
+      'With a string literal (single- or triple-quoted) directly above it',
+      'With an @doc directive',
+      'Descriptions are not supported in SDL',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/types-and-fields" questions={quizTypesFields} />
+
+<ProgressTracker client:visible id="schema-design/types-and-fields" />

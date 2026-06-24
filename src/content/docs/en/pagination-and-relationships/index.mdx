@@ -1,0 +1,157 @@
+---
+title: Pagination & Relationships
+description: 'How types link to each other to form a graph, and how to page through long lists — relationships, offset pagination, Relay connections, and the N+1 problem.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A GraphQL schema is not a flat list of records — it is a **graph**. The whole point of the type system is that a field on one type can return *another* type, so a single query can walk from a user to their posts to each post's comments without a second round trip. Two questions decide how good that graph feels to use: how do types **link** to one another, and how do you page through the **long lists** those links produce?
+
+This module answers both. We start with relationships — the edges of the graph — then look at the two dominant ways to paginate, and finish with the performance trap that catches almost everyone the first time they resolve a list of related data.
+
+## What this module covers
+
+By the end you will be able to model connections between types, choose a pagination style on purpose rather than by habit, and keep a relationship-heavy query fast. The five lessons are:
+
+1. **Pagination & Relationships** (you are here) — the big picture and a nested query.
+2. **Relationships** — one-to-many and many-to-many as fields that return types and lists.
+3. **Offset Pagination** — simple `limit`/`offset` paging, and where it breaks down.
+4. **Relay Connections** — the cursor connection spec: `edges`, `node`, `cursor`, `pageInfo`.
+5. **N+1 and DataLoader** — why a list resolver fires one query per item, and how batching fixes it.
+
+This builds directly on what you already know about [the type system](/graphql-design-from-zero-to-hero/en/graphql-foundations/the-type-system/) and resolvers — a relationship is just a field whose type is another object type, and pagination is just arguments on a list field.
+
+## The shape of a relationship
+
+<Mermaid title="A relationship is a field on one type whose value is another type." code={overviewDiagram} />
+
+Reading the diagram: an `Author` has a `posts` field that returns a list of `Post`, and each `Post` has an `author` field pointing back. The list is where pagination lives — `posts` rarely returns *every* post, so it takes arguments like `first` or `limit` to ask for a window. The single link (`author`) needs no pagination because it returns at most one value.
+
+## A nested query, run for real
+
+The example below defines `Author` and `Post` types, links them in both directions, and runs one query that crosses the relationship — fetching an author together with a window of their posts. Press **Run** to execute it with the real GraphQL engine.
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two types linked both ways. "posts" is a list and takes a "limit"
+  // argument; "author" is a single link and needs no pagination.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      posts(limit: Int): [Post!]!
+    }
+
+    type Post {
+      id: ID!
+      title: String!
+      author: Author!
+    }
+
+    type Query {
+      author(id: ID!): Author
+    }
+  \`);
+
+  const authors = {
+    a1: { id: 'a1', name: 'Ada Lin' },
+  };
+  const posts = [
+    { id: 'p1', title: 'Designing a graph', authorId: 'a1' },
+    { id: 'p2', title: 'Walking relationships', authorId: 'a1' },
+    { id: 'p3', title: 'Paging long lists', authorId: 'a1' },
+  ];
+
+  const root = {
+    author: ({ id }) => {
+      const a = authors[id];
+      if (!a) return null;
+      return {
+        ...a,
+        // The list resolver reads its own "limit" argument.
+        posts: ({ limit }) =>
+          posts
+            .filter((p) => p.authorId === a.id)
+            .slice(0, limit ?? posts.length)
+            .map((p) => ({
+              ...p,
+              // Cross back from Post to its Author.
+              author: () => authors[p.authorId],
+            })),
+      };
+    },
+  };
+
+  const query = \`
+    {
+      author(id: "a1") {
+        name
+        posts(limit: 2) {
+          title
+          author { name }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+Look at the output. We started at one `author`, stepped into a *windowed* list of `posts` (only two, because of `limit: 2`), and from each post stepped back into its `author`. One request, three hops across the graph. The rest of this module is about doing each of those hops well — modeling the links cleanly and paging the lists predictably.
+
+<Callout title="Two jobs, one query">
+Every relationship-heavy query does two distinct jobs: **traversing** links between types, and **paging** the lists those links produce. Keep them separate in your head. A single link (`author`) is just a field returning a type; a collection (`posts`) is a field returning a list — and a list almost always needs pagination arguments. Get the traversal right first, then decide how to page.
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  Author["type Author"]
+  Post["type Post"]
+  Author -->|"posts(first): [Post!]! — needs paging"| Post
+  Post -->|"author: Author! — single link"| Author`;
+
+export const quizIndex = [
+  {
+    q: 'In GraphQL, what is a relationship between two types, concretely?',
+    options: [
+      'A foreign-key constraint enforced by the database',
+      'A field on one type whose return value is another object type',
+      'A separate REST endpoint joining the two resources',
+      'A special directive named @relation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which of these fields most likely needs pagination arguments?',
+    options: [
+      'A field returning a single linked object, like author: Author!',
+      'A scalar field like title: String!',
+      'A list field like posts: [Post!]!',
+      'An ID field like id: ID!',
+    ],
+    answer: 2,
+  },
+  {
+    q: 'What does a single GraphQL query let a client do across relationships?',
+    options: [
+      'Walk from one type into linked types in one request, instead of many round trips',
+      'Only fetch one type per request, like REST',
+      'Bypass the schema and read the database directly',
+      'Replace all list fields with scalars',
+    ],
+    answer: 0,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/index" />

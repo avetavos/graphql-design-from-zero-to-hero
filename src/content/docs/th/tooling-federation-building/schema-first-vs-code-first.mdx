@@ -1,0 +1,199 @@
+---
+title: Schema-First vs Code-First
+description: 'สองวิธีในการสร้าง GraphQL server — SDL เป็น source of truth เทียบกับ schema ที่ generate มาจากโค้ด — ข้อแลกเปลี่ยนของแต่ละแบบ และเดโมที่ทั้งสองให้ schema เดียวกัน'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL server ทุกตัวมี schema และชุด resolvers คำถามที่บทเรียนนี้ตอบคือ: **คุณเขียนอันไหนก่อน และอันไหนเป็น source of truth?** มีสองคำตอบ และตัวเลือกนี้ระบายสีให้ codebase ของคุณทั้งหมด
+
+## Schema-first — SDL นำ
+
+ในการพัฒนาแบบ **schema-first** คุณเขียน schema ด้วย SDL — syntax `type`, `Query` และ `!` แบบเดียวกับที่คุณเรียนในโมดูลก่อนหน้า — แล้วถือว่าข้อความนั้นเป็น source of truth เดียว ส่วน resolvers ถูกเขียนแยกต่างหากและ *แนบ* เข้ากับ schema นั้นด้วยชื่อ ไฟล์ SDL คือ contract ส่วน resolvers คือ implementation ที่ทำให้ contract นั้นเป็นจริง
+
+```graphql
+type Query {
+  hello(name: String!): String!
+}
+```
+
+```ts
+const typeDefs = /* GraphQL */ `
+  type Query {
+    hello(name: String!): String!
+  }
+`;
+
+const resolvers = {
+  Query: {
+    hello: (_parent: unknown, args: { name: string }) => `Hello, ${args.name}!`,
+  },
+};
+```
+
+จุดแข็งคือ contract อยู่ **กลางเวทีและเด่นชัด** ใคร ๆ ก็ตาม — frontend, backend หรือคนที่ไม่ใช่วิศวกร — ก็อ่าน SDL แล้วรู้ได้ทันทีว่า API ให้บริการอะไรบ้าง ความเสี่ยงคือ **drift**: ไม่มีอะไรใน SDL ล้วน ๆ ที่บังคับให้ return type ของ resolver ตรงกับ type ที่ field ประกาศไว้ resolver อาจคืนค่าผิดรูปร่างได้อย่างเงียบ ๆ แล้วคุณจะพบก็ต่อเมื่อ runtime เท่านั้น ช่องว่างตรงนั้นคือสิ่งที่ code generation ในบทเรียนถัดไปเข้ามาปิด
+
+## Code-first — โค้ดนำ
+
+ในการพัฒนาแบบ **code-first** คุณสร้าง schema ด้วยภาษาโปรแกรมของคุณ คุณสร้าง type object ขึ้นในโค้ด แล้ว SDL จะถูก **generate** ออกมาจาก object เหล่านั้น โค้ดคือ source of truth ส่วน SDL เป็น artifact ที่คุณพิมพ์ออกมาดูได้
+
+```ts
+import {
+  GraphQLObjectType,
+  GraphQLSchema,
+  GraphQLString,
+  GraphQLNonNull,
+} from 'graphql';
+
+const QueryType = new GraphQLObjectType({
+  name: 'Query',
+  fields: {
+    hello: {
+      type: new GraphQLNonNull(GraphQLString),
+      args: { name: { type: new GraphQLNonNull(GraphQLString) } },
+      resolve: (_parent, args: { name: string }) => `Hello, ${args.name}!`,
+    },
+  },
+});
+
+const schema = new GraphQLSchema({ query: QueryType });
+```
+
+ตรงนี้ field, type ของมัน, arguments ของมัน และ resolver ของมันอยู่ **ด้วยกัน** ในหนึ่ง object compiler ตรวจสอบทั้งหมดนี้เป็นหน่วยเดียว ดังนั้นปัญหา drift จึงแทบหายไป — resolver ที่คืน type ผิดจะเป็น type error ก่อนที่คุณจะรันอะไรก็ตาม ต้นทุนคือความอ่านง่าย: ตอนนี้ contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็น SDL ที่สะอาด และมือใหม่ต้องอ่านโค้ด ไม่ใช่เอกสาร เพื่อทำความเข้าใจ API
+
+## ข้อแลกเปลี่ยน เทียบกันเคียงข้าง
+
+<Mermaid title="schema เดียวกันที่ไปถึงด้วยสองเส้นทาง — และ source of truth ไหลไปในทิศตรงข้ามกัน" code={approachFlow} />
+
+- **Source of truth.** Schema-first: SDL. Code-first: โค้ด
+- **ความอ่านง่ายของ contract.** Schema-first ชนะ — SDL เรียบและแชร์ได้ง่าย ส่วน code-first ซ่อนมันไว้หลัง constructor
+- **Type safety แบบไม่ต้องตั้งค่าเพิ่ม.** Code-first ชนะ — โค้ดและ type ถูกตรวจสอบไปด้วยกัน ส่วน schema-first ต้องใช้ code generation (บทเรียนถัดไป) เพื่อจับ resolver drift
+- **Tooling และการทำงานร่วมกัน.** ไฟล์ SDL ของ schema-first diff ได้สะอาดตอน review และแชร์กับคนที่ไม่ใช่วิศวกรหรือเครื่องมือออกแบบได้ ส่วนการเปลี่ยนแปลงแบบ code-first อ่านเหมือนการเปลี่ยนโค้ดทั่วไป
+
+ไม่มีแบบไหนถูกต้องเสมอไป stack TypeScript สมัยใหม่จำนวนมากลงตรงกลาง: เขียน SDL (schema-first) เพื่อให้ได้ contract ที่อ่านง่าย แล้ว **generate types** จากมันเพื่อให้ได้ safety แบบ code-first ด้วย แนวทางผสมนั้นคือสิ่งที่ส่วนที่เหลือของโมดูลนี้ต่อยอดขึ้นไป
+
+## schema เดียวกัน สองสไตล์ รันจริง
+
+เดโมด้านล่างสร้าง schema `hello(name)` ที่ *เหมือนกันเป๊ะ* สองครั้ง — ครั้งหนึ่งแบบ schema-first ด้วย `buildSchema` จาก SDL อีกครั้งแบบ code-first ด้วยการสร้าง type ขึ้นมา — แล้วพิมพ์ schema ทั้งสองเป็น SDL เพื่อให้คุณยืนยันได้ว่ามันเหมือนกัน จากนั้นรัน query เดียวกันผ่านแต่ละอัน กด **Run**
+
+export const sameSchemaCode = `(async () => {
+  const {
+    graphql,
+    buildSchema,
+    printSchema,
+    GraphQLObjectType,
+    GraphQLSchema,
+    GraphQLString,
+    GraphQLNonNull,
+  } = await import('https://esm.sh/graphql@16');
+
+  // ----- Schema-first: SDL is the source of truth -----
+  const schemaFirst = buildSchema(\`
+    type Query {
+      hello(name: String!): String!
+    }
+  \`);
+  const rootValue = {
+    hello: ({ name }) => \`Hello, \${name}!\`,
+  };
+
+  // ----- Code-first: the schema is built from code -----
+  const QueryType = new GraphQLObjectType({
+    name: 'Query',
+    fields: {
+      hello: {
+        type: new GraphQLNonNull(GraphQLString),
+        args: { name: { type: new GraphQLNonNull(GraphQLString) } },
+        resolve: (_parent, args) => \`Hello, \${args.name}!\`,
+      },
+    },
+  });
+  const codeFirst = new GraphQLSchema({ query: QueryType });
+
+  // Print both as SDL — they should be identical.
+  console.log('--- schema-first prints as ---');
+  console.log(printSchema(schemaFirst).trim());
+  console.log('--- code-first prints as ---');
+  console.log(printSchema(codeFirst).trim());
+
+  const query = \`{ hello(name: "Graph") }\`;
+
+  const r1 = await graphql({ schema: schemaFirst, source: query, rootValue });
+  const r2 = await graphql({ schema: codeFirst, source: query });
+
+  console.log('--- results ---');
+  console.log('schema-first:', JSON.stringify(r1.data));
+  console.log('code-first:  ', JSON.stringify(r2.data));
+})();`;
+
+<NodeRunner client:visible code={sameSchemaCode} />
+
+สังเกตว่า `printSchema` คืน SDL เดียวกันสำหรับทั้งสองแบบ และทั้งสอง query คืนข้อมูลเดียวกัน ปลายทาง — schema ที่มี type และรันได้ — เหมือนกันทุกประการ สิ่งที่ต่างกันมีเพียงว่าคุณเขียน artifact ไหนด้วยมือ และเครื่องสร้าง artifact ไหนให้ นั่นคือแก่นทั้งหมดของการตัดสินใจระหว่าง schema-first กับ code-first
+
+<Callout title="เลือกตามสิ่งที่คุณให้ความสำคัญ">
+เลือก **schema-first** เมื่อความอ่านง่ายและการแชร์ได้ของ contract สำคัญที่สุด — ไฟล์ SDL ที่สะอาดซึ่งทั้งองค์กรอ่านได้ — และวางแผนเพิ่ม code generation เพื่อความปลอดภัย เลือก **code-first** เมื่อ type safety แบบ end-to-end ที่ไม่ต้องเพิ่มขั้นตอน build สำคัญที่สุด และคุณยอมรับว่า contract อยู่ในโค้ด ไม่ว่าคุณจะเลือกแบบใด ให้ทำให้อันใดอันหนึ่งเป็น source of truth เดียว และอย่าแก้ไขอีกอันด้วยมือเด็ดขาด
+</Callout>
+
+export const approachFlow = `flowchart TD
+  SF["Schema-first: write SDL"]
+  SFR["Attach resolvers by name"]
+  CF["Code-first: build types in code"]
+  CFR["Generate SDL from types"]
+  Schema["Executable schema (identical)"]
+  SF --> SFR
+  SFR --> Schema
+  CF --> CFR
+  CFR --> Schema`;
+
+export const quizSchemaVsCode = [
+  {
+    q: 'ในการพัฒนาแบบ schema-first อะไรคือ source of truth เดียว?',
+    options: [
+      'ฟังก์ชัน resolver',
+      'SDL — schema ที่เขียนไว้',
+      'ตาราง database',
+      'TypeScript types ที่ถูก generate ออกมา',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'อะไรคือความเสี่ยงหลักของการพัฒนาแบบ schema-first ล้วน ๆ ที่ code generation เข้ามาแก้ในภายหลัง?',
+    options: [
+      'SDL ไม่สามารถแสดง field แบบ non-null ได้',
+      'Drift — ไม่มีอะไรบังคับให้ resolver คืน type ที่ field ประกาศไว้',
+      'มันไม่สามารถนิยาม type Query ได้',
+      'มันทำงานได้เฉพาะใน JavaScript เท่านั้น',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'อะไรคือข้อเสียหลักของการพัฒนาแบบ code-first?',
+    options: [
+      'มันไม่สามารถสร้าง schema ที่ถูกต้องได้',
+      'contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็นเอกสาร SDL ที่อ่านง่าย',
+      'มันไม่มี type safety',
+      'มันต้องใช้ federation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในเดโม printSchema แสดงอะไรเกี่ยวกับสองแนวทางนี้?',
+    options: [
+      'schema ทั้งสองต่างกัน',
+      'มันพิมพ์ออกมาเป็น SDL ที่เหมือนกัน — ปลายทางเหมือนกัน',
+      'พิมพ์ได้เฉพาะ schema แบบ code-first เท่านั้น',
+      'ทั้งสองไม่สามารถรัน query ได้',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/schema-first-vs-code-first" questions={quizSchemaVsCode} />
+
+<ProgressTracker client:visible id="tooling-federation-building/schema-first-vs-code-first" />

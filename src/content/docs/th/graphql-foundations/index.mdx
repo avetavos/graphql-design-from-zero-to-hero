@@ -1,5 +1,103 @@
 ---
-title: GraphQL Foundations
-description: What GraphQL is, the type system, and the request lifecycle.
+title: พื้นฐาน GraphQL
+description: 'GraphQL คืออะไร มีไว้เพื่ออะไร และ query จริงตัวแรกของคุณที่รันได้ในเบราว์เซอร์'
+sidebar:
+  order: 1
 ---
-Coming soon.
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL คือ **query language สำหรับ API** ที่มาคู่กับ **type system** ซึ่งอธิบายข้อมูลที่ API เหล่านั้นสามารถส่งกลับมาได้ แทนที่จะต้องเรียก URL คงที่หลาย ๆ ตัวแล้วหวังว่าแต่ละตัวจะคืนข้อมูลในรูปแบบที่ถูกต้อง client จะส่ง request เพียงครั้งเดียวไปยัง endpoint เดียว และขอ field ที่ต้องการ *อย่างแม่นยำ* ส่วน server ก็จะตอบกลับด้วย response ที่มีรูปร่างตรงกับ request ที่ขอมา ไม่มากไม่น้อยไปกว่านั้น
+
+แนวคิดเดียวนี้เปลี่ยนอะไรไปมากมาย ข้อมูลที่ API ของคุณให้บริการได้กลายเป็น **graph** ของ type ที่เชื่อมโยงกัน และ query ก็เป็นเพียงเส้นทางที่คุณลากผ่าน graph นั้น
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+นี่คือโมดูลพื้นฐานของคอร์ส เมื่อจบโมดูลนี้คุณจะสามารถอ่าน GraphQL ได้ อธิบายได้ว่าทำไมทีมต่าง ๆ ถึงเลือกใช้มัน และเข้าใจวิธีที่ server เปลี่ยน query ให้กลายเป็น response บทเรียนทั้งห้ามีดังนี้:
+
+1. **พื้นฐาน GraphQL** (คุณอยู่ที่นี่) — ภาพรวมกว้าง ๆ และ query จริงตัวแรกของคุณ
+2. **GraphQL คืออะไร** — endpoint เดียว schema ที่มี type กำกับ และ query ที่ client เป็นผู้กำหนด
+3. **GraphQL vs REST** — ข้อแลกเปลี่ยน และเมื่อไรที่แต่ละแนวทางเหมาะสม
+4. **Type System** — object type, scalar, root type และ nullability
+5. **Request Lifecycle** — วิธีที่ request ถูก parse, validate และ execute
+
+ทั้งคอร์สนี้สอนด้วย **TypeScript** ตัวอย่างโค้ดทุกชิ้นเป็นของจริง: ตัวรันในเบราว์เซอร์ด้านล่างนี้รัน GraphQL จริง ๆ โดยใช้ reference implementation และในบทเรียนถัด ๆ ไปเราจะปลุก server แบบเต็มตัวอย่าง [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) ที่คุณรันเองได้
+
+## รูปร่างของระบบ GraphQL
+
+<Mermaid title="client ขอ field ที่ต้องการอย่างแม่นยำจาก endpoint เดียว" code={overviewDiagram} />
+
+client สร้าง query ที่อธิบาย field ที่ต้องการ ส่วน server เก็บ schema (สัญญา) และชุดของ resolver function (ตรรกะ) เอาไว้ มันตรวจสอบ query เทียบกับ schema รัน resolver เพื่อรวบรวมข้อมูล แล้วคืน response ที่สะท้อนรูปร่างของ query
+
+## query จริงตัวแรกของคุณ
+
+ด้านล่างคือตัวอย่าง GraphQL ที่ใช้งานได้จริง มันนิยาม schema เล็ก ๆ ที่มี field เดียวคือ `greeting` ให้ function สำหรับ resolve มัน แล้วรัน query กด **Run** แล้วดู GraphQL engine จริง ๆ สร้างผลลัพธ์ JSON ในแผงผลลัพธ์
+
+export const helloCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // The schema is the contract: it says a Query has a "greeting" field
+  // that takes an optional "name" and returns a String.
+  const schema = buildSchema(\`
+    type Query {
+      greeting(name: String): String
+    }
+  \`);
+
+  // The root holds the logic that produces each field's value.
+  const root = {
+    greeting: ({ name }) => 'Hello, ' + (name || 'world') + '! Welcome to GraphQL.',
+  };
+
+  // Ask for exactly one field, passing an argument.
+  const query = '{ greeting(name: "learner") }';
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={helloCode} />
+
+สังเกตว่าผลลัพธ์ถูกห่อไว้ในคีย์ `data` และภายในนั้น field ชื่อ `greeting` แมปไปยังค่าที่ resolver คืนกลับมา response คาดเดาได้เพราะมันเป็นไปตาม query ลองเปลี่ยน argument name หรือเปลี่ยน field แล้วรันอีกครั้งดู
+
+<Callout title="แบบจำลองทางความคิดที่ควรพกติดตัวไป">
+GraphQL ไม่ใช่ฐานข้อมูล และไม่ใช่สิ่งที่มาแทน business logic ของคุณ มันคือสัญญาที่มี type กำกับซึ่งวางอยู่หน้าข้อมูลของคุณ ปล่อยให้ client อธิบายความต้องการได้อย่างแม่นยำ จดจำสามคำนี้ไว้ — **schema**, **query**, **resolver** — แล้วเนื้อหาที่เหลือของคอร์สนี้จะเข้าที่เข้าทางเอง
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  C["Client"] -->|"query: fields it needs"| E["Single GraphQL endpoint"]
+  E --> S["Schema (the contract)"]
+  E --> R["Resolvers (the logic)"]
+  R --> D["Data sources"]
+  E -->|"JSON shaped like the query"| C`;
+
+export const quizFoundations = [
+  {
+    q: 'อธิบายในประโยคเดียว GraphQL คืออะไร?',
+    options: [
+      'database engine ที่เก็บข้อมูลแบบ graph ลงบนดิสก์',
+      'query language และ type system ที่ให้ client ขอ field ที่ต้องการอย่างแม่นยำจาก endpoint เดียว',
+      'สิ่งที่มาแทน HTTP โดยใช้ binary frame',
+      'CSS framework สำหรับวาด node graph',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'โดยทั่วไป GraphQL API เปิด endpoint สำหรับข้อมูลกี่ตัว?',
+    options: ['หนึ่งตัวต่อหนึ่ง resource', 'หนึ่งตัวสำหรับทั้ง graph', 'สองตัว: อ่านและเขียน', 'หนึ่งตัวต่อหนึ่งแอป client'],
+    answer: 1,
+  },
+  {
+    q: 'response ของ GraphQL ที่สำเร็จจะวาง field ที่ขอไว้ภายใต้คีย์ระดับบนสุดตัวใด?',
+    options: ['result', 'payload', 'data', 'body'],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/index" questions={quizFoundations} />
+
+<ProgressTracker client:visible id="graphql-foundations/index" />

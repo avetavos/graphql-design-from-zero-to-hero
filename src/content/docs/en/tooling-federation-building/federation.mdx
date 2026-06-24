@@ -1,0 +1,146 @@
+---
+title: Federation
+description: 'Splitting a graph across services — subgraphs and a gateway, entities and references, and composing a single supergraph from many domains.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A single GraphQL service is the right answer for a long time. But as a company grows, one schema owned by one team becomes a bottleneck: every change funnels through one codebase, one deploy, one set of reviewers. **Federation** is the pattern that lets many teams each own a slice of the graph while clients still see one unified API.
+
+## One graph, many owners
+
+The idea is to split the graph into **subgraphs** — independent GraphQL services, each owning the types and fields for one **domain**. An `accounts` team owns `User`. A `catalog` team owns `Product`. A `reviews` team owns `Review`. Each subgraph is a normal GraphQL server you could run on its own.
+
+In front of them sits a **gateway** (or router). The gateway reads every subgraph's schema, **composes** them into one combined schema called the **supergraph**, and presents that single schema to clients. A client sends one query; the gateway figures out which subgraphs to call, in what order, and stitches the pieces back into one response.
+
+<Mermaid title="Each team owns a subgraph; the gateway composes them into one supergraph the client queries." code={fedFlow} />
+
+The win is **organisational**: the reviews team ships a change to `Review` without touching — or coordinating with — the accounts team. The graph scales with the org chart instead of fighting it.
+
+## Entities and references — how subgraphs connect
+
+The magic that lets `Review` link to `User` when they live in different services is the **entity**. An entity is a type that more than one subgraph can contribute to, identified by a key. You mark it with `@key` and the field(s) that uniquely identify it.
+
+The `accounts` subgraph *defines* the `User` entity:
+
+```graphql
+# accounts subgraph
+type User @key(fields: "id") {
+  id: ID!
+  name: String!
+}
+
+type Query {
+  me: User
+}
+```
+
+The `reviews` subgraph *references* `User` without owning its data. It declares the entity as `extend` with the same key and a placeholder for the field it needs, then adds its own `author` link:
+
+```graphql
+# reviews subgraph
+type Review {
+  id: ID!
+  body: String!
+  author: User!
+}
+
+extend type User @key(fields: "id") {
+  id: ID! @external
+}
+```
+
+When a client asks for `review { author { name } }`, the gateway calls the reviews subgraph for the review and its `author.id`, then asks the accounts subgraph to **resolve the reference** — "give me the `User` with this `id`". Each subgraph implements a reference resolver that turns a key into a full entity:
+
+```ts
+// accounts subgraph resolvers
+const resolvers = {
+  User: {
+    // The gateway hands over the key; the owning subgraph returns the entity.
+    __resolveReference(ref: { id: string }) {
+      return findUserById(ref.id);
+    },
+  },
+};
+```
+
+That `__resolveReference` is the seam of federation. The reviews subgraph never queries the accounts database; it just emits a `User` *reference* (an `id`), and the owning subgraph fills it in. Ownership stays clean even though one type is enriched by many services.
+
+## Composition rules keep the graph honest
+
+The gateway does not blindly merge schemas. It **validates composition**: two subgraphs cannot both define the same field on a type in conflicting ways, every referenced entity must be defined somewhere with a matching `@key`, and `@external` fields must actually exist on the owning subgraph. If composition fails, the supergraph does not publish — which means a broken change is caught before any client sees it. Composition is to federation what code generation was in the last lesson: a machine check that the combined contract is still coherent.
+
+## Federate by domain, not by layer
+
+The most common federation mistake is splitting by *technical layer* — a "database subgraph", a "validation subgraph". That recreates the bottleneck, because every feature still touches every layer. Split by **domain** instead: accounts, catalog, reviews, billing. Each subgraph then maps to a team that can own a whole vertical slice end to end, and the `@key`/reference seams fall on natural domain boundaries (a review *has an* author; a product *has* reviews).
+
+<Callout title="Federate by domain, and only when you need to">
+Reach for federation when one schema and one team has become the bottleneck — not before. A single service is simpler to build, test, and reason about, and most products never outgrow it. When you do split, split by **domain** so each subgraph maps to a team and a bounded slice of the business. Let entities and `@key` carry the cross-domain links, keep `__resolveReference` as the only seam, and trust composition validation to refuse any change that would break the unified graph.
+</Callout>
+
+export const fedFlow = `flowchart TD
+  Client["Client (one query)"]
+  Gateway["Gateway / Router"]
+  Super["Supergraph (composed schema)"]
+  Accounts["accounts subgraph (User)"]
+  Catalog["catalog subgraph (Product)"]
+  Reviews["reviews subgraph (Review)"]
+  Client --> Gateway
+  Gateway --> Super
+  Gateway --> Accounts
+  Gateway --> Catalog
+  Gateway --> Reviews
+  Reviews -->|"author: User via @key id"| Accounts`;
+
+export const quizFederation = [
+  {
+    q: 'What is a subgraph in a federated GraphQL architecture?',
+    options: [
+      'A subset of a single query',
+      'An independent GraphQL service owning the types and fields for one domain',
+      'A database table',
+      'A client-side cache',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does the gateway produce by combining the subgraph schemas?',
+    options: [
+      'A REST API',
+      'A single composed schema called the supergraph',
+      'A separate schema per client',
+      'A database migration',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does __resolveReference do?',
+    options: [
+      'It validates a query argument',
+      'It turns an entity key (like an id) from another subgraph into the full entity',
+      'It deletes a record',
+      'It composes the supergraph',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How should you split a graph into subgraphs?',
+    options: [
+      'By technical layer — a database subgraph, a validation subgraph',
+      'By domain — accounts, catalog, reviews — so each maps to a team',
+      'Alphabetically by type name',
+      'One subgraph per field',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/federation" questions={quizFederation} />
+
+<ProgressTracker client:visible id="tooling-federation-building/federation" />

@@ -1,0 +1,168 @@
+---
+title: Error Extensions
+description: 'Typed errors with the extensions map, throwing GraphQLError with a stable code, and masking internal failures in production.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A `message` is for a human reading a log. But a client cannot reliably branch on a sentence — strings get reworded, translated, and reformatted. To let clients react programmatically to a failure, GraphQL gives every error an `extensions` map: a free-form, server-defined object hanging off the error entry. This is where **typed errors** live.
+
+## The extensions map
+
+`extensions` is the one error key the specification leaves open for you to fill. The near-universal convention is to put a stable `code` string in it:
+
+```json
+{
+  "errors": [
+    {
+      "message": "No track exists with that id.",
+      "path": ["track"],
+      "extensions": { "code": "NOT_FOUND" }
+    }
+  ]
+}
+```
+
+The `message` may change over time, but `extensions.code` is a contract: `"NOT_FOUND"`, `"UNAUTHENTICATED"`, `"FORBIDDEN"`, `"BAD_USER_INPUT"`. A client switches on the code, not the prose. You can attach anything else you find useful too — a retry hint, a field name, a correlation id — as long as it is safe to expose.
+
+## Throwing a typed error
+
+The reference implementation exports a `GraphQLError` class. Throw an instance of it from a resolver and pass your `extensions` in its options, and the engine threads them straight into the response:
+
+```ts
+import { GraphQLError } from 'graphql';
+
+throw new GraphQLError('No track exists with that id.', {
+  extensions: { code: 'NOT_FOUND' },
+});
+```
+
+Compare that to throwing a plain `Error`. A plain `Error` still produces a valid error entry — you saw that in earlier lessons — but it has no `code`, so clients are left parsing the message. Reaching for `GraphQLError` is how you make a failure part of the typed contract instead of an accident of wording.
+
+## Masking internal errors
+
+There is a security angle. An unexpected exception — a failed database call, a null dereference deep in your code — often carries a stack trace or an internal message you must never ship to a client. The defensive pattern: let *expected* failures throw `GraphQLError` with a deliberate code, and **catch everything else**, replacing it with a generic masked error before it leaves the server.
+
+<Mermaid title="Expected failures keep their code; unexpected ones are masked." code={maskFlow} />
+
+In production you typically log the real exception server-side (with a correlation id) and return the client only a bland `{ message: "Internal server error", extensions: { code: "INTERNAL_SERVER_ERROR" } }`. The user gets enough to retry or report; an attacker learns nothing about your internals. Many GraphQL servers do this masking for you by default; the principle is the same whether the framework or your own `catch` block does it.
+
+## A typed error, run for real
+
+The runner below throws a `GraphQLError` with `extensions: { code: 'NOT_FOUND' }` when a track is missing. Press **Run** and inspect the error entry: it carries your code right alongside the message and path.
+
+export const extensionsCode = `(async () => {
+  const { graphql, buildSchema, GraphQLError } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const library = { 't1': { id: 't1', title: 'Walking the Graph' } };
+
+  const root = {
+    track: ({ id }) => {
+      const found = library[id];
+      if (!found) {
+        // A typed, expected failure — clients branch on the code.
+        throw new GraphQLError('No track exists with that id.', {
+          extensions: { code: 'NOT_FOUND', argument: 'id' },
+        });
+      }
+      return found;
+    },
+  };
+
+  const query = \`
+    {
+      track(id: "does-not-exist") {
+        title
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+
+  // Note errors[0].extensions.code === "NOT_FOUND".
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={extensionsCode} />
+
+In the output, `data.track` is `null` because the field is nullable, and the single error entry now carries `extensions.code === "NOT_FOUND"` plus the `argument` hint we attached. A client can read that code and render "track not found" without ever parsing the English message — exactly the programmatic contract a plain `Error` could not give us.
+
+<Callout title="Code for machines, message for humans">
+Treat `extensions.code` as a stable enum that clients depend on, and `message` as human-facing prose you are free to reword. Throw `GraphQLError` for the failures you anticipate — not found, unauthenticated, bad input — and give each a deliberate code. For everything unexpected, catch and mask: log the real cause server-side, return a generic `INTERNAL_SERVER_ERROR` to the client. Typed where it helps, opaque where it protects.
+</Callout>
+
+export const maskFlow = `flowchart TD
+  Throw["Resolver throws"]
+  Check{"Is it a deliberate GraphQLError?"}
+  Keep["Expected: keep message + code (NOT_FOUND, FORBIDDEN, ...)"]
+  Mask["Unexpected: log server-side, return generic INTERNAL_SERVER_ERROR"]
+  Client["Client reads extensions.code"]
+  Throw --> Check
+  Check -->|"yes"| Keep
+  Check -->|"no"| Mask
+  Keep --> Client
+  Mask --> Client`;
+
+export const quizErrorExtensions = [
+  {
+    q: 'What is the extensions map on an error entry used for?',
+    options: [
+      'To override the HTTP status code',
+      'To carry server-defined, machine-readable detail such as a stable code',
+      'To list the query variables',
+      'To replace the message field',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why should a client branch on extensions.code rather than on message?',
+    options: [
+      'message is encrypted',
+      'message is human-facing prose that can be reworded; code is a stable contract',
+      'code is shorter to type',
+      'message is never present in responses',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How do you attach a typed code to an error from a resolver?',
+    options: [
+      'Return a JSON string from the resolver',
+      'Throw a GraphQLError and pass extensions in its options',
+      'Set the HTTP status to 404',
+      'Add a comment to the schema',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the recommended treatment of an unexpected internal exception in production?',
+    options: [
+      'Return the full stack trace to the client',
+      'Log it server-side and return a generic masked error to the client',
+      'Silently drop it so the client sees no error',
+      'Convert it into a successful response',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/error-extensions" questions={quizErrorExtensions} />
+
+<ProgressTracker client:visible id="errors-and-validation/error-extensions" />

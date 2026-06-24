@@ -1,5 +1,103 @@
 ---
 title: GraphQL Foundations
-description: What GraphQL is, the type system, and the request lifecycle.
+description: 'What GraphQL is, why it exists, and your first real query running in the browser.'
+sidebar:
+  order: 1
 ---
-Coming soon.
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL is a **query language for APIs** paired with a **type system** that describes the data those APIs can return. Instead of calling many fixed URLs and hoping each one gives back the right shape, a client sends one request to a single endpoint and asks for *exactly* the fields it wants. The server replies with a response shaped to match the request — nothing more, nothing less.
+
+That single idea changes a lot. The data your API can serve becomes a connected **graph** of types, and a query is simply a path you trace through that graph.
+
+## What this module covers
+
+This is the foundations module of the course. By the end of it you will be able to read GraphQL, explain why teams reach for it, and reason about how a server turns a query into a response. The five lessons are:
+
+1. **GraphQL Foundations** (you are here) — the big picture and your first live query.
+2. **What is GraphQL** — single endpoint, typed schema, client-specified queries.
+3. **GraphQL vs REST** — the trade-offs, and when each approach fits.
+4. **The Type System** — object types, scalars, root types, and nullability.
+5. **Request Lifecycle** — how a request is parsed, validated, and executed.
+
+The whole course is taught with **TypeScript**. Every code sample is real: the in-browser runner below actually executes GraphQL using the reference implementation, and later lessons spin up a full [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) server you can run yourself.
+
+## The shape of a GraphQL system
+
+<Mermaid title="A client asks one endpoint for exactly the fields it needs." code={overviewDiagram} />
+
+A client builds a query describing the fields it needs. The server holds a schema (the contract) and a set of resolver functions (the logic). It checks the query against the schema, runs the resolvers to gather data, and returns a response that mirrors the query's shape.
+
+## Your first real query
+
+Below is a working GraphQL example. It defines a tiny schema with one field, `greeting`, provides a function to resolve it, and runs a query. Press **Run** and watch the actual GraphQL engine produce a JSON result in the output panel.
+
+export const helloCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // The schema is the contract: it says a Query has a "greeting" field
+  // that takes an optional "name" and returns a String.
+  const schema = buildSchema(\`
+    type Query {
+      greeting(name: String): String
+    }
+  \`);
+
+  // The root holds the logic that produces each field's value.
+  const root = {
+    greeting: ({ name }) => 'Hello, ' + (name || 'world') + '! Welcome to GraphQL.',
+  };
+
+  // Ask for exactly one field, passing an argument.
+  const query = '{ greeting(name: "learner") }';
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={helloCode} />
+
+Notice the result is wrapped in a `data` key, and inside it the field name `greeting` maps to the value the resolver returned. The response is predictable because it follows the query. Try changing the name argument, or the field, and run it again.
+
+<Callout title="The mental model to carry forward">
+GraphQL is not a database and not a replacement for your business logic. It is a typed contract sitting in front of your data, letting clients describe their needs precisely. Hold onto three words — **schema**, **query**, **resolver** — and the rest of this course will click into place.
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  C["Client"] -->|"query: fields it needs"| E["Single GraphQL endpoint"]
+  E --> S["Schema (the contract)"]
+  E --> R["Resolvers (the logic)"]
+  R --> D["Data sources"]
+  E -->|"JSON shaped like the query"| C`;
+
+export const quizFoundations = [
+  {
+    q: 'In one sentence, what is GraphQL?',
+    options: [
+      'A database engine that stores graph data on disk',
+      'A query language and type system that lets a client ask one endpoint for exactly the fields it needs',
+      'A replacement for HTTP that uses binary frames',
+      'A CSS framework for drawing node graphs',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How many endpoints does a typical GraphQL API expose for data?',
+    options: ['One per resource', 'One for the whole graph', 'Two: read and write', 'One per client app'],
+    answer: 1,
+  },
+  {
+    q: 'Under which top-level key does a successful GraphQL response place the requested fields?',
+    options: ['result', 'payload', 'data', 'body'],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/index" questions={quizFoundations} />
+
+<ProgressTracker client:visible id="graphql-foundations/index" />

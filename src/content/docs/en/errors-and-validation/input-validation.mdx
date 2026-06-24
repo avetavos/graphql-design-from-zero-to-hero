@@ -1,0 +1,198 @@
+---
+title: Input Validation
+description: 'What the schema validates for free, where business rules live in resolvers, and the choice between returning userErrors in a payload or throwing.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Validation in GraphQL happens in two distinct layers, and confusing them is a common source of bad APIs. The first layer is **structural**: the schema itself enforces types, required arguments, and enum membership before a resolver ever runs. The second is **semantic**: the business rules — "the email must be unique," "the rating is between 1 and 5" — that only your code knows. The schema handles the first for free. The second is your job.
+
+## What the schema validates for free
+
+Declare an input and the engine guards it for you. If an argument is non-null, omitting it is a request error. If it expects an `Int`, sending a string is a request error. If it is an enum, a value outside the enum is rejected. All of this is caught during the **validation phase**, before execution — so these failures come back as request errors with no `data`, exactly as we saw two lessons ago.
+
+```graphql
+input ReviewInput {
+  trackId: ID!
+  rating: Int!
+  comment: String
+}
+
+type Mutation {
+  addReview(input: ReviewInput!): Review
+}
+```
+
+Given this schema, you cannot call `addReview` without an `input`, cannot omit `trackId` or `rating`, and cannot send a `rating` that is not an integer. The type system rejects all of that without a line of resolver code. What it cannot know is that `rating` must be between 1 and 5, or that `comment` must be under 500 characters — those are business rules.
+
+## Two ways to report a business-rule failure
+
+When a business rule fails in your resolver, you have a design choice, and both approaches are legitimate.
+
+<Mermaid title="Business failures: throw a top-level error, or return userErrors in the payload." code={validationFlow} />
+
+**Throw.** Throw a `GraphQLError` with a code like `BAD_USER_INPUT`. The failure lands in the top-level `errors` array, `data` for that field is `null`. This is simple and uniform, but it mixes expected, recoverable input mistakes in with genuine system errors, and a client must dig through `errors` to find them.
+
+**Return userErrors in the payload.** Model the mutation's return type as a payload that contains *both* the result and a list of typed user errors. A failed validation is then ordinary `data` — not an exception — so the client reads `data.addReview.userErrors` like any other field. This is the pattern many large schemas adopt because recoverable form-style errors are first-class, strongly typed, and never tangled up with the `errors` channel.
+
+```graphql
+type UserError {
+  field: String
+  message: String!
+}
+
+type AddReviewPayload {
+  review: Review
+  userErrors: [UserError!]!
+}
+```
+
+Rule of thumb: throw for failures the user cannot fix (a malformed request, an internal fault), and return `userErrors` for the recoverable mistakes you expect a form to surface back to a person.
+
+## Validating input, run for real
+
+The runner below uses the payload pattern. The resolver validates `rating` against the 1–5 business rule and returns either the created review or a populated `userErrors` list — all as normal `data`, never an exception. Press **Run** with an out-of-range rating and watch the userError come back inside the payload.
+
+export const validationCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    input ReviewInput {
+      trackId: ID!
+      rating: Int!
+      comment: String
+    }
+
+    type Review {
+      trackId: ID!
+      rating: Int!
+    }
+
+    type UserError {
+      field: String
+      message: String!
+    }
+
+    type AddReviewPayload {
+      review: Review
+      userErrors: [UserError!]!
+    }
+
+    type Mutation {
+      addReview(input: ReviewInput!): AddReviewPayload!
+    }
+
+    type Query {
+      _empty: String
+    }
+  \`);
+
+  const root = {
+    addReview: ({ input }) => {
+      const userErrors = [];
+
+      // Business rule the schema cannot express: rating must be 1..5.
+      if (input.rating < 1 || input.rating > 5) {
+        userErrors.push({ field: 'rating', message: 'Rating must be between 1 and 5.' });
+      }
+
+      if (userErrors.length > 0) {
+        // Recoverable input mistake — returned as data, not thrown.
+        return { review: null, userErrors };
+      }
+
+      return {
+        review: { trackId: input.trackId, rating: input.rating },
+        userErrors: [],
+      };
+    },
+  };
+
+  const mutation = \`
+    mutation {
+      addReview(input: { trackId: "t1", rating: 9 }) {
+        review { rating }
+        userErrors { field message }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: mutation, rootValue: root });
+
+  // No top-level errors: the failure rides inside data.addReview.userErrors.
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={validationCode} />
+
+Notice what is *missing* from the output: there is no top-level `errors` array. The rating of `9` broke a business rule, but because we modeled it as a `userErrors` field, the failure arrives as ordinary `data` — `data.addReview.review` is `null` and `data.addReview.userErrors` holds a typed entry pointing at the `rating` field. The client treats it like any other selection. Try changing `rating` to `4` and rerunning: `review` fills in and `userErrors` comes back empty.
+
+<Callout title="Validate in two layers, report on purpose">
+Let the schema do the structural work — required arguments, scalar types, enums — and never re-check those in resolvers; they are caught as request errors before your code runs. Reserve resolver logic for business rules the type system cannot express. Then choose your channel deliberately: throw a `GraphQLError` for the unrecoverable, and return typed `userErrors` in a payload for the recoverable, form-style mistakes you want clients to handle gracefully.
+</Callout>
+
+export const validationFlow = `flowchart TD
+  Input["Incoming arguments"]
+  Schema["Schema validation: types, required, enums"]
+  ReqErr["Fails structure: request error, no data"]
+  Resolver["Resolver: business rules"]
+  Throw["Unrecoverable: throw GraphQLError -> top-level errors"]
+  Payload["Recoverable: return userErrors in payload -> normal data"]
+  Input --> Schema
+  Schema -->|"invalid shape"| ReqErr
+  Schema -->|"valid shape"| Resolver
+  Resolver -->|"system fault"| Throw
+  Resolver -->|"input mistake"| Payload`;
+
+export const quizInputValidation = [
+  {
+    q: 'Which kind of validation does the GraphQL schema enforce automatically, before resolvers run?',
+    options: [
+      'That an email address is unique in the database',
+      'Types, required (non-null) arguments, and enum membership',
+      'That a rating is between 1 and 5',
+      'That a comment is under 500 characters',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where do business rules like "rating must be 1–5" have to be enforced?',
+    options: [
+      'In the SDL type definitions',
+      'In resolver logic — the type system cannot express them',
+      'In the HTTP layer',
+      'They cannot be enforced in GraphQL at all',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the advantage of returning userErrors inside a mutation payload?',
+    options: [
+      'It makes recoverable input errors first-class, typed data instead of top-level errors',
+      'It removes the need for a schema',
+      'It converts errors into HTTP 500 responses',
+      'It hides all errors from the client',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'When is throwing a GraphQLError preferable to returning userErrors?',
+    options: [
+      'For everyday form validation messages',
+      'For unrecoverable failures the user cannot fix, such as a malformed request or system fault',
+      'Never — userErrors should always be used',
+      'Only for successful operations',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/input-validation" questions={quizInputValidation} />
+
+<ProgressTracker client:visible id="errors-and-validation/input-validation" />

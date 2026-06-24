@@ -1,0 +1,204 @@
+---
+title: Interfaces and Unions
+description: 'Interfaces for shared fields, unions for one-of alternatives, __typename, and selecting per-type with inline fragments.'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+So far every field has had exactly one object type. But real domains have **polymorphism**: a search result might be a user or a post; a notification might be a mention, a like, or a follow. GraphQL has two abstract types for this — **interfaces** and **unions** — and a way to select the right fields per concrete type using **inline fragments**. This lesson covers all three and, crucially, when to use which.
+
+## Interfaces — shared fields across related types
+
+An **interface** declares a set of fields that several object types all promise to provide. Any type that `implements` the interface must include those fields. Use an interface when several types are genuinely **variations of one concept** and share data:
+
+```graphql
+interface Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+}
+
+type Episode implements Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  seasonNumber: Int!
+}
+
+type Movie implements Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  rating: String
+}
+```
+
+Both `Episode` and `Movie` are `Media`: they share `id`, `title`, and `durationSeconds`, but each adds its own fields. A field can now return the interface — `media: [Media!]!` — and the value will be one of the implementing types at runtime.
+
+## Unions — one of several unrelated types
+
+A **union** says a value is exactly **one of** a listed set of object types, with **no required shared fields**. Use a union when the alternatives do not naturally share data — they just happen to appear in the same slot:
+
+```graphql
+union SearchResult = Episode | Movie | Person
+
+type Person {
+  id: ID!
+  name: String!
+}
+
+type Query {
+  search(term: String!): [SearchResult!]!
+}
+```
+
+A `SearchResult` is an `Episode`, a `Movie`, or a `Person`. There is no field every search result must have — a `Person` has nothing in common with a `Movie` beyond turning up in the same list. That is the signal for a union rather than an interface.
+
+<Mermaid title="An interface shares fields among related types; a union lists unrelated alternatives." code={polymorphismDiagram} />
+
+## __typename and inline fragments
+
+When a field can return more than one concrete type, the client needs a way to ask "which one is this, and give me its specific fields." GraphQL provides the built-in `__typename` field — it returns the concrete type's name as a string — and **inline fragments** to select fields conditionally per type:
+
+```graphql
+{
+  search(term: "graph") {
+    __typename
+    ... on Episode {
+      title
+      seasonNumber
+    }
+    ... on Movie {
+      title
+      rating
+    }
+    ... on Person {
+      name
+    }
+  }
+}
+```
+
+Read `... on Movie` as "if this result is a `Movie`, also select these fields." For an interface you can select the shared fields directly (no fragment needed) and use inline fragments only for the type-specific extras. `__typename` is almost always worth requesting on a polymorphic field — clients use it to decide which branch of their own code to run.
+
+## A union with fragments, run for real
+
+The example below defines a `Media` union of `Episode` and `Movie`, returns a mixed list, and uses `__typename` plus inline fragments to pull the right fields from each. Press **Run**.
+
+export const unionCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // A union: each result is exactly one of Episode | Movie.
+  const schema = buildSchema(\`
+    type Episode {
+      title: String!
+      seasonNumber: Int!
+    }
+
+    type Movie {
+      title: String!
+      rating: String
+    }
+
+    union Media = Episode | Movie
+
+    type Query {
+      library: [Media!]!
+    }
+  \`);
+
+  // The runtime must tell GraphQL which concrete type each value is.
+  const root = {
+    library: () => [
+      { __typename: 'Episode', title: 'Pilot', seasonNumber: 1 },
+      { __typename: 'Movie', title: 'The Resolver', rating: 'PG-13' },
+    ],
+  };
+
+  // __typename plus inline fragments pick per-type fields.
+  const query = \`
+    {
+      library {
+        __typename
+        ... on Episode { title seasonNumber }
+        ... on Movie { title rating }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={unionCode} />
+
+Each item in the list came back tagged with its `__typename`, and only the inline fragment matching that type contributed fields. The `Episode` carried `seasonNumber`; the `Movie` carried `rating`. One field, two shapes, fully type-safe.
+
+<Callout title="Interface = shared fields; union = unrelated alternatives">
+Reach for an **interface** when several types are variations of one concept and share fields you want to query together — the shared fields live on the interface and you select per-type extras with inline fragments. Reach for a **union** when the alternatives have nothing in common and merely occupy the same slot — there are no shared fields, so every selection happens inside a `... on Type` fragment. In both cases request `__typename` so clients know which concrete type they received.
+</Callout>
+
+export const polymorphismDiagram = `flowchart TD
+  Interface["interface Media (shared: id, title, durationSeconds)"]
+  Episode["type Episode"]
+  Movie["type Movie"]
+  Interface --> Episode
+  Interface --> Movie
+  Union["union SearchResult (no shared fields)"]
+  Person["type Person"]
+  Union --> Episode
+  Union --> Movie
+  Union --> Person`;
+
+export const quizInterfacesUnions = [
+  {
+    q: 'What is the defining difference between an interface and a union?',
+    options: [
+      'Interfaces are faster than unions',
+      'An interface declares shared fields its types must implement; a union lists alternatives with no shared fields',
+      'A union can only contain two types',
+      'Interfaces cannot be used on the Query type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does the built-in __typename field return?',
+    options: [
+      'The name of the concrete object type of the value',
+      'The id of the object',
+      'The interface the type implements',
+      'Always the string "Object"',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'How do you select fields that exist only on one specific type of a union?',
+    options: [
+      'With a normal field selection',
+      'With an inline fragment, written as ... on TypeName { ... }',
+      'By passing a typename argument',
+      'You cannot select type-specific fields on a union',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which scenario best fits a union rather than an interface?',
+    options: [
+      'Episode and Movie that both have id, title, and duration',
+      'A search result that may be a Movie, a Person, or an Episode with no common fields',
+      'A list of strings',
+      'A field that returns a single Boolean',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/interfaces-unions" questions={quizInterfacesUnions} />
+
+<ProgressTracker client:visible id="schema-design/interfaces-unions" />

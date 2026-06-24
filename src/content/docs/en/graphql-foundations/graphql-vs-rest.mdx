@@ -1,0 +1,171 @@
+---
+title: GraphQL vs REST
+description: 'Endpoints versus one graph, over- and under-fetching, versioning, and the caching trade-off — plus when each approach fits.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+REST has served the web well for two decades, and most teams adopting GraphQL are migrating from it. So the honest question is not "which is better" but "what does each one optimize for, and which trade-offs am I choosing?" This lesson lays the two side by side.
+
+## Many endpoints versus one graph
+
+A REST API models resources as URLs. To build a profile page you might call three:
+
+```
+GET /users/42
+GET /users/42/posts
+GET /posts/99/comments
+```
+
+The equivalent GraphQL request is one query to one endpoint, walking from the user to their posts to each post's comments in a single round trip:
+
+```graphql
+{
+  user(id: "42") {
+    name
+    posts {
+      title
+      comments {
+        body
+      }
+    }
+  }
+}
+```
+
+<Mermaid title="Three REST round trips collapse into one GraphQL query." code={vsDiagram} />
+
+## Over- and under-fetching
+
+This is where the difference is felt day to day.
+
+- With REST, `GET /users/42` returns a fixed payload. If you only need the name you still receive the whole record (**over-fetching**); if you need related posts you make another call (**under-fetching**).
+- With GraphQL, you list exactly the fields you want, across related types, and get them in one response. Neither problem arises by default.
+
+## A side-by-side comparison
+
+| Concern | REST | GraphQL |
+| --- | --- | --- |
+| Endpoints | Many, one per resource | One graph endpoint |
+| Response shape | Fixed by the server | Chosen by the client |
+| Over/under-fetching | Common | Avoided by design |
+| Versioning | Often `/v1`, `/v2` URLs | Evolve the schema; deprecate fields |
+| HTTP caching | Easy — URLs cache well | Harder — needs app-level or persisted-query caching |
+| Discoverability | OpenAPI/docs, by convention | Introspection built into the schema |
+| Learning curve | Familiar to most teams | Schema, resolvers, and N+1 to learn |
+
+## Versioning
+
+REST APIs commonly version through the URL — `/v1/users`, then `/v2/users`. GraphQL leans on **continuous evolution** instead: add new fields freely (they are opt-in, so old clients are unaffected), and mark old fields with `@deprecated` to guide clients off them over time. There is rarely a hard version bump.
+
+## The caching trade-off
+
+This is GraphQL's most real cost. REST's `GET /posts/99` is a stable URL that browsers, CDNs, and proxies cache for free. GraphQL queries usually arrive as `POST` requests with the query in the body, so that layer of HTTP caching does not apply out of the box. Teams recover it with techniques like **persisted queries** (sending a stable hash instead of the full query text) and normalized client caches (such as those in Apollo Client or urql). It is solvable, but it is not free.
+
+## See the round-trip difference
+
+The runner below executes a single GraphQL query that, in a REST world, would have needed three separate calls. Notice how one request returns a nested, ready-to-render structure.
+
+export const restCompareCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Comment { body: String }
+    type Post { title: String, comments: [Comment] }
+    type User { name: String, posts: [Post] }
+    type Query { user(id: ID!): User }
+  \`);
+
+  const root = {
+    user: ({ id }) => ({
+      name: 'User ' + id,
+      posts: [
+        { title: 'Leaving REST behind', comments: [{ body: 'Great read!' }] },
+        { title: 'One graph to rule them', comments: [{ body: 'Bookmarked.' }] },
+      ],
+    }),
+  };
+
+  // One request fetches user -> posts -> comments together.
+  const query = \`
+    {
+      user(id: "42") {
+        name
+        posts { title comments { body } }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={restCompareCode} />
+
+## When each one fits
+
+Reach for **REST** when your API is resource-shaped and cache-heavy (think public, read-mostly content served through a CDN), when consumers are simple, or when the team already ships REST well and the extra moving parts would not pay off.
+
+Reach for **GraphQL** when many different clients need different slices of the same data, when views aggregate several related resources, when product teams iterate fast and want to add fields without coordinating endpoint releases, or when strong typing and introspection across the API surface bring real leverage.
+
+<Callout title="GraphQL is not a silver bullet">
+Adopting GraphQL trades easy HTTP caching and a familiar mental model for client-driven queries and a typed graph. You also inherit new concerns — the N+1 query problem, query-cost limits, and authorization that must run per field. Choose it because its trade-offs match your problem, not because it is newer.
+</Callout>
+
+export const vsDiagram = `flowchart TB
+  subgraph REST["REST — three round trips"]
+    direction LR
+    R1["GET /users/42"] --> R2["GET /users/42/posts"] --> R3["GET /posts/99/comments"]
+  end
+  subgraph GQL["GraphQL — one round trip"]
+    direction LR
+    G1["POST /graphql"] --> G2["user -> posts -> comments"]
+  end`;
+
+export const quizVsRest = [
+  {
+    q: 'Which problem does GraphQL avoid by design that REST commonly hits?',
+    options: ['TLS handshakes', 'Over- and under-fetching', 'DNS resolution', 'JSON parsing'],
+    answer: 1,
+  },
+  {
+    q: 'What is the most commonly cited trade-off of GraphQL compared with REST?',
+    options: [
+      'It cannot return JSON',
+      'HTTP-level caching is harder because queries are usually POST requests',
+      'It does not support authentication',
+      'It requires a separate database',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How does GraphQL usually handle API evolution instead of URL versions like /v1 and /v2?',
+    options: [
+      'It forbids any changes after launch',
+      'It adds new fields and deprecates old ones on a single evolving schema',
+      'It ships a new endpoint per release',
+      'It versions through HTTP headers only',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which scenario fits REST better than GraphQL?',
+    options: [
+      'Many clients needing different slices of overlapping data',
+      'A public, read-mostly content API that benefits from CDN URL caching',
+      'A view aggregating five related resources at once',
+      'A product team adding fields weekly',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/graphql-vs-rest" questions={quizVsRest} />
+
+<ProgressTracker client:visible id="graphql-foundations/graphql-vs-rest" />

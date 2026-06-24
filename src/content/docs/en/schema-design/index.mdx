@@ -1,0 +1,163 @@
+---
+title: Schema Design
+description: 'The schema is the contract — designing types around your domain instead of your database, and the building blocks this module covers.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+You now know how to read a GraphQL schema. This module is about *writing* one well. A schema is not a side effect of your database — it is a **public contract** between your server and every client that will ever talk to it. Once a field ships, someone depends on it. Good schema design is the art of choosing types and fields that describe your **domain** so clearly that the contract stays honest as the product grows.
+
+## The schema is the contract
+
+When you design a REST endpoint, the URL and the JSON it returns are loosely coupled — you can quietly add a field and nobody notices. A GraphQL schema is the opposite: it is **explicit and strongly typed**. Every type, every field, every argument is written down and validated. Clients build queries against that written contract, tools generate code from it, and your server promises to honour it.
+
+That promise is the whole point. A well-designed schema lets a frontend team work against types they can see, lets tooling catch mistakes before runtime, and lets you reason about change. The cost is discipline: you have to decide, up front, what the world looks like.
+
+## Design around the domain, not the database
+
+The single biggest mistake new schema designers make is to mirror their database tables one-to-one. Tables are shaped for storage — foreign keys, join tables, snake_case columns, denormalized flags. Your schema should be shaped for the **questions clients ask**.
+
+Consider a simple library application. The database might store a `books` table, an `authors` table, and a `book_authors` join table. A client does not care about the join table. It cares about a `Book` that *has* `authors`, and an `Author` that *has* `books`. The schema expresses that relationship directly:
+
+```graphql
+type Book {
+  id: ID!
+  title: String!
+  authors: [Author!]!
+}
+
+type Author {
+  id: ID!
+  name: String!
+  books: [Book!]!
+}
+```
+
+The join table vanishes from the contract. The relationship that clients actually traverse — book to author and back — becomes a first-class field. Resolvers will later bridge the gap to storage, but the *schema* speaks the language of the domain.
+
+<Mermaid title="A schema is a graph of domain types and the relationships between them." code={schemaGraphDiagram} />
+
+## What this module covers
+
+This module walks through every building block you need to design a clean schema, lesson by lesson:
+
+1. **Schema Design** (you are here) — the contract mindset and designing around the domain.
+2. **Types and Fields** — object types, field arguments, descriptions, and how types link together.
+3. **Scalars and Enums** — built-in and custom scalars, and choosing an enum over a free-form string.
+4. **Interfaces and Unions** — modelling shared shapes and one-of alternatives, selected with fragments.
+5. **Inputs and Nullability** — input object types for arguments, the `!` non-null marker, lists, and defaults.
+
+By the end you will be able to take a fuzzy product idea and turn it into a schema that is precise, expressive, and pleasant to query.
+
+## A domain-shaped query, run for real
+
+The example below models the library above, wires up resolvers, and runs a query that crosses from a `Book` into its `Author` and back. Press **Run** to execute it with the real GraphQL engine.
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Types shaped around the domain — book and author — not around tables.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      books: [Book!]!
+    }
+
+    type Book {
+      id: ID!
+      title: String!
+      authors: [Author!]!
+    }
+
+    type Query {
+      book(id: ID!): Book
+    }
+  \`);
+
+  const author = { id: 'au1', name: 'Ada Quill' };
+  const book = { id: 'bk1', title: 'Designing the Graph', authors: [author] };
+  author.books = [book];
+
+  const root = {
+    book: ({ id }) => (id === 'bk1' ? book : null),
+  };
+
+  // Traverse the domain relationship: book -> authors -> their books.
+  const query = \`
+    {
+      book(id: "bk1") {
+        title
+        authors {
+          name
+          books { title }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+Notice how the query reads like a sentence about the domain: a book, its authors, and the books those authors wrote. No join tables, no foreign keys — just the relationships a human cares about. That readability is what good schema design buys you.
+
+<Callout title="Design the contract, not the storage">
+Before you write a single type, ask: *what does a client want to know, and how do those concepts relate?* Name your types after domain concepts, expose relationships as fields, and let resolvers — not the schema — worry about how the data is stored. A schema that mirrors your database leaks storage decisions into your public contract; a schema that mirrors your domain stays stable while the storage underneath changes freely.
+</Callout>
+
+export const schemaGraphDiagram = `flowchart LR
+  Query["Query (entry point)"]
+  Book["type Book"]
+  Author["type Author"]
+  Scalars["Scalars: ID, String"]
+  Query -->|"book(id)"| Book
+  Book -->|"authors"| Author
+  Author -->|"books"| Book
+  Book --> Scalars
+  Author --> Scalars`;
+
+export const quizSchemaDesign = [
+  {
+    q: 'Why is a GraphQL schema described as a contract?',
+    options: [
+      'It is a legal document signed by the API team',
+      'It is an explicit, strongly typed agreement that clients build against and the server promises to honour',
+      'It is stored in a database transaction',
+      'It guarantees the server never changes',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the most common schema-design mistake this lesson warns against?',
+    options: [
+      'Using too many scalar types',
+      'Mirroring database tables one-to-one instead of modelling the domain',
+      'Writing descriptions on every field',
+      'Defining a Query type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the library example, what happened to the book_authors join table in the schema?',
+    options: [
+      'It became a top-level type',
+      'It disappeared, replaced by direct authors and books relationship fields',
+      'It became a custom scalar',
+      'It was modelled as an enum',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/index" questions={quizSchemaDesign} />
+
+<ProgressTracker client:visible id="schema-design/index" />

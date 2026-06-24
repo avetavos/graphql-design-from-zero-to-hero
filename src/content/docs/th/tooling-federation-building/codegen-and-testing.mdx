@@ -1,0 +1,196 @@
+---
+title: Codegen and Testing
+description: 'GraphQL Code Generator สำหรับ resolvers และ operations ที่มี type พร้อม unit และ integration testing — และเดโม assertion สไตล์ test ที่รันในเบราว์เซอร์'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+บทเรียนที่แล้วทิ้งช่องว่างไว้: SDL แบบ schema-first ไม่ได้บังคับให้ resolvers ของคุณตรงกับมันด้วยตัวมันเอง บทเรียนนี้ปิดช่องว่างนั้นจากสองทิศทาง **Code generation** ทำให้ compiler บังคับใช้ contract ก่อนที่คุณจะรันอะไรก็ตาม ส่วน **testing** พิสูจน์ว่าเซอร์วิสทำงานถูกต้องเมื่อมันรันแล้ว
+
+## GraphQL Code Generator — types จาก schema
+
+**GraphQL Code Generator** อ่าน SDL ของคุณแล้วสร้าง TypeScript types ที่สะท้อนมันอย่างเป๊ะ ๆ บนฝั่ง server มันสร้าง type `Resolvers` เพื่อให้ทุก resolver ถูกตรวจสอบกับ field ที่มัน implement ส่วนบนฝั่ง client มันสร้าง type ของผลลัพธ์และตัวแปรที่มี type สำหรับแต่ละ operation ที่คุณเขียน คุณเขียน config สั้น ๆ แล้วรันคำสั่ง types จะถูก regenerate ทุกครั้งที่ schema เปลี่ยน
+
+```yaml
+# codegen.yml
+schema: ./schema.graphql
+generates:
+  ./src/generated/graphql.ts:
+    plugins:
+      - typescript
+      - typescript-resolvers
+```
+
+ด้วย config นั้น generator จะแปลง SDL นี้:
+
+```graphql
+type Track {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+}
+
+type Query {
+  track(id: ID!): Track
+}
+```
+
+ให้เป็น TypeScript ที่คุณ import แล้วนำไปใช้กับ resolver map ของคุณ:
+
+```ts
+import type { Resolvers } from './generated/graphql';
+
+// `Resolvers` is generated from the SDL. If `track` returned the wrong
+// shape — or forgot a non-null field — this would be a compile error.
+export const resolvers: Resolvers = {
+  Query: {
+    track: (_parent, args) => ({
+      id: args.id,
+      title: 'Walking the Graph',
+      durationSeconds: 214,
+    }),
+  },
+};
+```
+
+ตอนนี้ schema-first ได้ safety ที่ code-first ได้มาฟรี ๆ: SDL ยังคงเป็น contract ที่อ่านง่าย และ compiler ปฏิเสธที่จะ build หาก resolver drift ออกไปจากมัน ลองเปลี่ยน `durationSeconds` เป็น `String!` ใน SDL แล้ว resolver ด้านบนจะ compile ไม่ผ่านจนกว่าคุณจะแก้ นั่นคือจุดประสงค์ทั้งหมดของ codegen — ทำให้ drift หลุดไปขึ้น production ไม่ได้
+
+## Testing — สองชั้น
+
+การตรวจ type พิสูจน์ว่า *รูปร่าง* ถูกต้อง ส่วน test พิสูจน์ว่า *พฤติกรรม* ถูกต้อง มีสองชั้นที่ควรค่าแก่การเขียน
+
+- **Unit tests สำหรับ resolvers.** resolver เป็นเพียงฟังก์ชันของ `(parent, args, context, info)` เรียกมันโดยตรงด้วย input ปลอม ๆ แล้วตรวจสอบค่าที่คืนกลับมา test เหล่านี้เร็วและตรึงตรรกะของ resolver ตัวเดียวให้แน่น — ไม่มี schema ไม่มี network
+- **Integration tests สำหรับ operations.** สร้าง executable schema แล้วรัน GraphQL **operation** จริงกับมันด้วยฟังก์ชัน `graphql` จากนั้นตรวจสอบ `result.data` และ `result.errors` วิธีนี้ออกกำลังให้ทั้งการ parsing, validation, การที่ resolver ที่ถูกต้องทำงาน และเรื่อง nullability — contract แบบ end to end
+
+<Mermaid title="codegen คุ้มกันรูปร่างตอน compile time ส่วน unit และ integration tests คุ้มกันพฤติกรรมตอน run time" code={testFlow} />
+
+ชั้น integration คือชั้นที่คนมักข้ามแล้วมาเสียใจทีหลัง มันเป็น test เดียวที่พิสูจน์ว่า *query ที่ client จะส่งจริง ๆ* คืนสิ่งที่ schema สัญญาไว้ — รวมถึงว่า field แบบ non-null จะไม่กลับมาเป็น `null` และ arguments ส่งทะลุไปถึง resolver
+
+## assertion สไตล์ test รันจริง
+
+เดโมด้านล่างคือ integration test ฉบับย่อ มันสร้าง schema เล็ก ๆ รัน query จริงกับมัน แล้วรัน **assertions** ไม่กี่อัน — ตรงกับสิ่งที่ test framework อย่าง Vitest ทำเบื้องหลังด้วย `expect` ตัวช่วย `assert` เล็ก ๆ พิมพ์บรรทัด pass หรือ fail สำหรับการตรวจสอบแต่ละครั้ง กด **Run**
+
+export const testDemoCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Minimal assert helper — stands in for expect().toEqual() in a test runner.
+  let passed = 0;
+  let failed = 0;
+  function assert(label, actual, expected) {
+    const a = JSON.stringify(actual);
+    const e = JSON.stringify(expected);
+    if (a === e) {
+      passed++;
+      console.log('PASS  ' + label);
+    } else {
+      failed++;
+      console.log('FAIL  ' + label + '  expected ' + e + ' got ' + a);
+    }
+  }
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+      durationSeconds: Int!
+    }
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  const root = {
+    track: ({ id }) => ({ id, title: 'Walking the Graph', durationSeconds: 214 }),
+  };
+
+  // --- The operation under test ---
+  const result = await graphql({
+    schema,
+    source: \`{ track(id: "t1") { id title durationSeconds } }\`,
+    rootValue: root,
+  });
+
+  // --- Assertions ---
+  assert('no errors', result.errors, undefined);
+  assert('id threads through the argument', result.data.track.id, 't1');
+  assert('title resolves', result.data.track.title, 'Walking the Graph');
+  assert('duration is the right Int', result.data.track.durationSeconds, 214);
+
+  console.log('---');
+  console.log(passed + ' passed, ' + failed + ' failed');
+})();`;
+
+<NodeRunner client:visible code={testDemoCode} />
+
+อ่าน output เป็นรายงานผล test แต่ละบรรทัด `PASS` คือ `expect` หนึ่งอันที่เป็นจริง assertion ของ `id` เป็นอันที่น่าสนใจ: มันพิสูจน์ว่า argument `"t1"` ไปถึง resolver จริง ๆ และกลับมาในข้อมูล ลองสลับค่าที่คาดหวัง `214` เป็น `999` แล้วรันใหม่เพื่อดูบรรทัด `FAIL` ปรากฏขึ้น — บรรทัดสีแดงนั้นแหละคือสิ่งที่จับ regression ได้ก่อนที่มันจะหลุดขึ้น production
+
+<Callout title="generate types แล้ว test พฤติกรรม">
+codegen และ test ไม่ใช่คู่แข่งกัน — มันครอบคลุมความล้มเหลวคนละแบบ code generation จับ error เรื่อง **รูปร่าง** ตอน compile time เพื่อให้ resolver ไม่มีทางคืน type ผิดอย่างเงียบ ๆ ส่วน test จับ error เรื่อง **พฤติกรรม** ตอน run time — ตรรกะผิด, argument ที่พลาดไป, `null` ที่ไม่คาดคิด เขียนทั้งสองอย่าง: regenerate types ทุกครั้งที่ schema เปลี่ยน, unit-test resolver ที่ยุ่งยาก และเก็บ integration test อย่างน้อยหนึ่งอันที่รัน operation จริงที่ client จะส่งมา
+</Callout>
+
+export const testFlow = `flowchart TD
+  SDL["SDL schema"]
+  Codegen["GraphQL Code Generator"]
+  Types["Generated Resolvers + operation types"]
+  Unit["Unit tests: call resolver functions directly"]
+  Integration["Integration tests: execute operations with graphql()"]
+  Confidence["Trusted, shippable service"]
+  SDL --> Codegen
+  Codegen --> Types
+  Types --> Unit
+  Types --> Integration
+  Unit --> Confidence
+  Integration --> Confidence`;
+
+export const quizCodegen = [
+  {
+    q: 'plugin typescript-resolvers ของ GraphQL Code Generator สร้างอะไรขึ้นมา?',
+    options: [
+      'server ที่รันอยู่',
+      'type Resolvers เพื่อให้แต่ละ resolver ถูก compile-check กับ field ใน SDL ของมัน',
+      'database migration',
+      'REST client',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'code generation จับ error แบบใดที่ unit test จับไม่ได้?',
+    options: [
+      'ตรรกะทางธุรกิจที่ผิดตอน run time',
+      'error เรื่องรูปร่าง/type ตอน compile time — resolver ที่คืน type ผิด',
+      'network timeouts',
+      'query ที่ช้า',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'integration test ออกกำลังให้ schema อย่างไร?',
+    options: [
+      'ด้วยการอ่านไฟล์ SDL เป็นข้อความ',
+      'ด้วยการรัน operation จริงด้วยฟังก์ชัน graphql แล้วตรวจสอบ data และ errors',
+      'ด้วยการ ping ที่ port ของ server',
+      'ด้วยการ regenerate types',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในเดโม assertion ของ id พิสูจน์อะไรโดยเฉพาะ?',
+    options: [
+      'ว่า server เร็ว',
+      'ว่า argument "t1" ไปถึง resolver และกลับมาในข้อมูล',
+      'ว่า schema ไม่มี type Query',
+      'ว่า codegen รันสำเร็จ',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/codegen-and-testing" questions={quizCodegen} />
+
+<ProgressTracker client:visible id="tooling-federation-building/codegen-and-testing" />

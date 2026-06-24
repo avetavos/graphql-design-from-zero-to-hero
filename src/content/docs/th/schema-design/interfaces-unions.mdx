@@ -1,0 +1,204 @@
+---
+title: Interfaces และ Unions
+description: 'interface สำหรับ field ที่ใช้ร่วมกัน, union สำหรับทางเลือกแบบเลือกหนึ่ง, __typename และการเลือกฟิลด์ต่อ type ด้วย inline fragment'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+จนถึงตอนนี้ทุก field มี object type เพียงตัวเดียวเป๊ะ ๆ แต่ domain จริง ๆ มี **polymorphism**: ผลการค้นหาอาจเป็น user หรือ post; การแจ้งเตือนอาจเป็นการกล่าวถึง การกดไลก์ หรือการติดตาม GraphQL มี abstract type สองแบบสำหรับสิ่งนี้ — **interface** และ **union** — และวิธีเลือก field ที่ถูกต้องต่อ type รูปธรรมแต่ละตัวโดยใช้ **inline fragment** บทเรียนนี้ครอบคลุมทั้งสามอย่าง และที่สำคัญคือ เมื่อใดควรใช้อันไหน
+
+## Interfaces — field ที่ใช้ร่วมกันข้าม type ที่เกี่ยวข้อง
+
+**interface** ประกาศชุดของ field ที่ object type หลายตัวล้วนสัญญาว่าจะมีให้ type ใด ๆ ที่ `implements` interface ต้องรวม field เหล่านั้นไว้ ใช้ interface เมื่อหลาย type เป็น **รูปแบบที่แตกต่างของแนวคิดเดียวกัน** อย่างแท้จริงและใช้ข้อมูลร่วมกัน:
+
+```graphql
+interface Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+}
+
+type Episode implements Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  seasonNumber: Int!
+}
+
+type Movie implements Media {
+  id: ID!
+  title: String!
+  durationSeconds: Int!
+  rating: String
+}
+```
+
+ทั้ง `Episode` และ `Movie` ต่างเป็น `Media`: พวกมันใช้ `id`, `title` และ `durationSeconds` ร่วมกัน แต่แต่ละตัวเพิ่ม field ของตัวเอง ตอนนี้ field สามารถคืน interface ได้ — `media: [Media!]!` — และค่าจะเป็นหนึ่งใน type ที่ implement ไว้ ณ runtime
+
+## Unions — หนึ่งในหลาย type ที่ไม่เกี่ยวข้องกัน
+
+**union** บอกว่าค่าหนึ่งเป็น **หนึ่งใน** ชุดของ object type ที่ระบุไว้เป๊ะ ๆ โดย **ไม่มี field ที่ต้องใช้ร่วมกัน** ใช้ union เมื่อทางเลือกต่าง ๆ ไม่ได้ใช้ข้อมูลร่วมกันโดยธรรมชาติ — พวกมันแค่บังเอิญปรากฏในช่องเดียวกัน:
+
+```graphql
+union SearchResult = Episode | Movie | Person
+
+type Person {
+  id: ID!
+  name: String!
+}
+
+type Query {
+  search(term: String!): [SearchResult!]!
+}
+```
+
+`SearchResult` หนึ่ง ๆ เป็น `Episode`, `Movie` หรือ `Person` ไม่มี field ใดที่ผลการค้นหาทุกตัวต้องมี — `Person` ไม่มีอะไรเหมือนกับ `Movie` เลยนอกจากโผล่มาในรายการเดียวกัน นั่นคือสัญญาณของ union มากกว่า interface
+
+<Mermaid title="interface ใช้ field ร่วมกันในหมู่ type ที่เกี่ยวข้อง; union ลิสต์ทางเลือกที่ไม่เกี่ยวข้องกัน" code={polymorphismDiagram} />
+
+## __typename และ inline fragment
+
+เมื่อ field สามารถคืน type รูปธรรมได้มากกว่าหนึ่งตัว client ต้องมีวิธีถามว่า "นี่คือตัวไหน และขอ field เฉพาะของมันมาด้วย" GraphQL มี field `__typename` ในตัว — มันคืนชื่อของ type รูปธรรมในรูป string — และ **inline fragment** เพื่อเลือก field แบบมีเงื่อนไขต่อ type:
+
+```graphql
+{
+  search(term: "graph") {
+    __typename
+    ... on Episode {
+      title
+      seasonNumber
+    }
+    ... on Movie {
+      title
+      rating
+    }
+    ... on Person {
+      name
+    }
+  }
+}
+```
+
+อ่าน `... on Movie` ว่า "หากผลลัพธ์นี้เป็น `Movie` ให้เลือก field เหล่านี้ด้วย" สำหรับ interface คุณสามารถเลือก field ที่ใช้ร่วมกันได้โดยตรง (ไม่ต้องใช้ fragment) และใช้ inline fragment เฉพาะกับส่วนเสริมที่เฉพาะของแต่ละ type เท่านั้น `__typename` แทบจะคุ้มค่าเสมอที่จะขอบน field ที่เป็น polymorphic — client ใช้มันเพื่อตัดสินว่าจะรันโค้ดสาขาไหนของตัวเอง
+
+## union พร้อม fragment รันได้จริง
+
+ตัวอย่างด้านล่างนิยาม union `Media` ของ `Episode` และ `Movie` คืนรายการที่ปนกัน และใช้ `__typename` บวกกับ inline fragment เพื่อดึง field ที่ถูกต้องจากแต่ละตัว กดปุ่ม **Run**
+
+export const unionCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // A union: each result is exactly one of Episode | Movie.
+  const schema = buildSchema(\`
+    type Episode {
+      title: String!
+      seasonNumber: Int!
+    }
+
+    type Movie {
+      title: String!
+      rating: String
+    }
+
+    union Media = Episode | Movie
+
+    type Query {
+      library: [Media!]!
+    }
+  \`);
+
+  // The runtime must tell GraphQL which concrete type each value is.
+  const root = {
+    library: () => [
+      { __typename: 'Episode', title: 'Pilot', seasonNumber: 1 },
+      { __typename: 'Movie', title: 'The Resolver', rating: 'PG-13' },
+    ],
+  };
+
+  // __typename plus inline fragments pick per-type fields.
+  const query = \`
+    {
+      library {
+        __typename
+        ... on Episode { title seasonNumber }
+        ... on Movie { title rating }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={unionCode} />
+
+แต่ละรายการในลิสต์คืนกลับมาพร้อมป้ายกำกับ `__typename` ของมัน และมีเฉพาะ inline fragment ที่ตรงกับ type นั้นเท่านั้นที่มีส่วนร่วมในการให้ field ตัว `Episode` พกพา `seasonNumber` มา ส่วน `Movie` พกพา `rating` มา หนึ่ง field สองรูปร่าง ปลอดภัยด้าน type อย่างเต็มที่
+
+<Callout title="interface = field ที่ใช้ร่วมกัน; union = ทางเลือกที่ไม่เกี่ยวข้องกัน">
+หยิบ **interface** มาใช้เมื่อหลาย type เป็นรูปแบบที่แตกต่างของแนวคิดเดียวกันและใช้ field ที่คุณอยากจะ query ด้วยกันร่วมกัน — field ที่ใช้ร่วมกันอยู่บน interface และคุณเลือกส่วนเสริมเฉพาะของแต่ละ type ด้วย inline fragment หยิบ **union** มาใช้เมื่อทางเลือกต่าง ๆ ไม่มีอะไรเหมือนกันเลยและแค่ครอบครองช่องเดียวกัน — ไม่มี field ที่ใช้ร่วมกัน ดังนั้นทุกการเลือกเกิดขึ้นภายใน fragment `... on Type` ในทั้งสองกรณี ให้ขอ `__typename` เพื่อให้ client รู้ว่าได้รับ type รูปธรรมตัวไหนมา
+</Callout>
+
+export const polymorphismDiagram = `flowchart TD
+  Interface["interface Media (shared: id, title, durationSeconds)"]
+  Episode["type Episode"]
+  Movie["type Movie"]
+  Interface --> Episode
+  Interface --> Movie
+  Union["union SearchResult (no shared fields)"]
+  Person["type Person"]
+  Union --> Episode
+  Union --> Movie
+  Union --> Person`;
+
+export const quizInterfacesUnions = [
+  {
+    q: 'อะไรคือความแตกต่างที่นิยาม interface กับ union?',
+    options: [
+      'interface เร็วกว่า union',
+      'interface ประกาศ field ที่ใช้ร่วมกันซึ่ง type ของมันต้อง implement; union ลิสต์ทางเลือกที่ไม่มี field ที่ใช้ร่วมกัน',
+      'union สามารถมีได้แค่สอง type เท่านั้น',
+      'interface ไม่สามารถใช้กับ type Query ได้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'field __typename ในตัวคืนค่าอะไร?',
+    options: [
+      'ชื่อของ object type รูปธรรมของค่านั้น',
+      'id ของ object',
+      'interface ที่ type นั้น implement',
+      'เป็น string "Object" เสมอ',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'คุณเลือก field ที่มีอยู่เฉพาะบน type ใด type หนึ่งของ union ได้อย่างไร?',
+    options: [
+      'ด้วยการเลือก field แบบปกติ',
+      'ด้วย inline fragment เขียนเป็น ... on TypeName { ... }',
+      'โดยส่ง argument typename มา',
+      'คุณไม่สามารถเลือก field ที่เฉพาะกับ type บน union ได้',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'สถานการณ์ใดเหมาะกับ union มากกว่า interface?',
+    options: [
+      'Episode และ Movie ที่ทั้งคู่มี id, title และ duration',
+      'ผลการค้นหาที่อาจเป็น Movie, Person หรือ Episode โดยไม่มี field ที่เหมือนกัน',
+      'ลิสต์ของ string',
+      'field ที่คืน Boolean เดี่ยว ๆ',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/interfaces-unions" questions={quizInterfacesUnions} />
+
+<ProgressTracker client:visible id="schema-design/interfaces-unions" />

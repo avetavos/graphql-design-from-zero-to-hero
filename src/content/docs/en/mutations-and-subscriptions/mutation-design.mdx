@@ -1,0 +1,185 @@
+---
+title: Designing Mutations
+description: 'Name mutations by intent like createReview, keep one mutation per logical change, and return the affected data — with a runnable example.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A query field answers "what is the value of this?" A mutation field answers a very different question: "what should the server *do*?" That difference should be visible in the name. The most common mistake in mutation design is treating writes like database rows — a single `updateUser` that can change anything — instead of like *actions* a user actually takes. This lesson is about designing mutations around intent.
+
+## Name the verb, not the table
+
+A good mutation name reads like a command. It starts with a verb and names the thing it acts on:
+
+```graphql
+type Mutation {
+  createReview(trackId: ID!, rating: Int!, body: String): Review!
+  publishReview(reviewId: ID!): Review!
+  deleteReview(reviewId: ID!): ID!
+}
+```
+
+Compare that with a CRUD-shaped design that leans on one giant updater:
+
+```graphql
+type Mutation {
+  # Anti-pattern: one mutation that can change anything, meaning nothing.
+  updateReview(reviewId: ID!, rating: Int, body: String, published: Boolean): Review!
+}
+```
+
+The CRUD version *works*, but it loses information. When a client calls `updateReview` with `published: true`, the server cannot tell "the author edited the text" apart from "the author hit Publish." Those are different events with different rules, side effects, and audit meaning. **Naming by intent** — `publishReview` — restores that meaning, so the server can run exactly the logic that action requires.
+
+## One mutation per logical change
+
+A single mutation should represent one indivisible thing the user did. If the client has to call three mutations in a row to complete one action, the API is leaking workflow onto the client — and any failure in the middle leaves the data half-changed.
+
+<Mermaid title="Each user intent maps to exactly one mutation, which performs one logical change." code={intentDiagram} />
+
+The flip side is just as important: do not bundle unrelated changes into one mega-mutation just to save a round trip. "One logical change" is the unit. Posting a review and following the artist are two intents, so they are two mutations — even if your UI happens to fire them together.
+
+## Always return the affected data
+
+A write that returns nothing forces the client to immediately re-query to find out what happened. Instead, return the object the mutation affected, so the client can update its cache directly:
+
+```graphql
+type Mutation {
+  createReview(trackId: ID!, rating: Int!, body: String): Review!
+}
+```
+
+Returning `Review!` lets the caller select the new `id`, any server-defaulted fields, and even traverse into linked types — all in the same round trip that performed the write.
+
+## Designing a mutation, run for real
+
+The example defines three intent-named mutations over one mutable store. Press **Run**: we create a review, then publish it. Each mutation returns the affected `Review`, and the names make the two distinct intents unmistakable.
+
+export const designCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      rating: Int!
+      body: String
+      published: Boolean!
+    }
+
+    type Query {
+      review(id: ID!): Review
+    }
+
+    type Mutation {
+      createReview(rating: Int!, body: String): Review!
+      publishReview(reviewId: ID!): Review!
+    }
+  \`);
+
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const find = (id) => store.reviews.find((r) => r.id === id);
+
+  const root = {
+    review: ({ id }) => find(id),
+    createReview: ({ rating, body }) => {
+      const review = { id: String(nextId++), rating, body: body ?? null, published: false };
+      store.reviews.push(review);
+      return review;
+    },
+    publishReview: ({ reviewId }) => {
+      const review = find(reviewId);
+      review.published = true; // the one logical change this intent performs
+      return review;
+    },
+  };
+
+  // createReview: an action, named by its verb, returning the affected Review.
+  const created = await graphql({
+    schema,
+    source: \`
+      mutation {
+        createReview(rating: 5, body: "On repeat all week.") {
+          id
+          published
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('createReview:', JSON.stringify(created, null, 2));
+
+  // publishReview: a separate intent, not a generic "update".
+  const published = await graphql({
+    schema,
+    source: \`
+      mutation {
+        publishReview(reviewId: "1") {
+          id
+          published
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('publishReview:', JSON.stringify(published, null, 2));
+})();`;
+
+<NodeRunner client:visible code={designCode} />
+
+The output tells the story: `createReview` returns a brand-new review with `published: false`, and the separate `publishReview` flips that one field. Two intents, two mutations, each returning the affected object. A reader scanning the schema can guess exactly what each does — which is the whole point of naming by intent.
+
+<Callout title="Mutations are verbs, not rows">
+Design mutations around the actions your product exposes, not the tables underneath them. Start each name with a verb that states the intent (`createReview`, `publishReview`, `archiveTrack`), keep each mutation to one logical change so a partial failure can never leave data half-updated, and always return the affected object so the client can refresh without a second request. If you find yourself writing one `updateX` that can do five different things, you have five mutations hiding in one.
+</Callout>
+
+export const intentDiagram = `flowchart TD
+  U1["User posts a review"] --> M1["createReview"]
+  U2["User hits Publish"] --> M2["publishReview"]
+  U3["User removes a review"] --> M3["deleteReview"]
+  M1 --> C1["one write: insert review"]
+  M2 --> C2["one write: set published"]
+  M3 --> C3["one write: delete review"]`;
+
+export const quizDesign = [
+  {
+    q: 'Why is publishReview preferable to a generic updateReview(published: true)?',
+    options: [
+      'It is shorter to type',
+      'It captures the user’s intent, so the server can run exactly the right logic and audit the action',
+      'Generic update mutations are forbidden by the spec',
+      'It avoids returning any data',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What does "one mutation per logical change" guard against?',
+    options: [
+      'Returning the affected object',
+      'Leaving data half-updated when a multi-step workflow fails midway',
+      'Naming mutations with verbs',
+      'Using arguments on a mutation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why should a mutation return the object it affected?',
+    options: [
+      'So the client can update its view without issuing a separate read',
+      'Because mutations cannot take arguments otherwise',
+      'To force the operation to run in parallel',
+      'It is required for the mutation to compile',
+    ],
+    answer: 0,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/mutation-design" questions={quizDesign} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/mutation-design" />

@@ -1,0 +1,198 @@
+---
+title: Input Validation
+description: 'สิ่งที่ schema validate ให้ฟรีๆ business rules อาศัยอยู่ที่ไหนใน resolvers และทางเลือกระหว่างการ return userErrors ใน payload กับการ throw'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+Validation ใน GraphQL เกิดขึ้นในสองชั้นที่แตกต่างกันชัดเจน และการสับสนระหว่างสองชั้นนี้คือต้นเหตุของ API ที่ไม่ดีอยู่บ่อยครั้ง ชั้นแรกคือชั้น**โครงสร้าง** schema เองบังคับใช้ type, argument ที่จำเป็น และการเป็นสมาชิกของ enum ก่อนที่ resolver จะรันเสียอีก ชั้นที่สองคือชั้น**ความหมาย** ซึ่งคือ business rules เช่น "email ต้องไม่ซ้ำ" หรือ "rating อยู่ระหว่าง 1 ถึง 5" ที่มีแต่โค้ดของคุณเท่านั้นที่รู้ schema จัดการชั้นแรกให้ฟรีๆ ส่วนชั้นที่สองเป็นงานของคุณ
+
+## สิ่งที่ schema validate ให้ฟรีๆ
+
+ประกาศ input แล้ว engine จะเฝ้าระวังมันให้คุณ ถ้า argument เป็น non-null การละไว้คือ request error ถ้ามันคาดหวัง `Int` การส่งสตริงไปคือ request error ถ้ามันเป็น enum ค่าที่อยู่นอก enum จะถูกปฏิเสธ ทั้งหมดนี้ถูกดักไว้ระหว่าง **validation phase** ก่อนการ execute ดังนั้นความล้มเหลวเหล่านี้จึงกลับมาเป็น request errors ที่ไม่มี `data` ตรงตามที่เราเห็นเมื่อสองบทเรียนก่อน
+
+```graphql
+input ReviewInput {
+  trackId: ID!
+  rating: Int!
+  comment: String
+}
+
+type Mutation {
+  addReview(input: ReviewInput!): Review
+}
+```
+
+ด้วย schema นี้ คุณไม่สามารถเรียก `addReview` โดยไม่มี `input` ได้ ไม่สามารถละ `trackId` หรือ `rating` ได้ และไม่สามารถส่ง `rating` ที่ไม่ใช่จำนวนเต็มได้ type system ปฏิเสธทั้งหมดนั้นโดยไม่ต้องมีโค้ด resolver สักบรรทัด สิ่งที่มันไม่อาจรู้ได้คือ `rating` ต้องอยู่ระหว่าง 1 ถึง 5 หรือ `comment` ต้องสั้นกว่า 500 ตัวอักษร เพราะนั่นคือ business rules
+
+## สองวิธีในการรายงานความล้มเหลวของ business-rule
+
+เมื่อ business rule ล้มเหลวใน resolver ของคุณ คุณมีทางเลือกในการออกแบบ และทั้งสองแนวทางก็ถูกต้องชอบธรรม
+
+<Mermaid title="ความล้มเหลวของ business: throw error ระดับ top-level หรือ return userErrors ใน payload" code={validationFlow} />
+
+**Throw** throw `GraphQLError` พร้อม code อย่าง `BAD_USER_INPUT` ความล้มเหลวจะตกลงไปใน `errors` array ระดับ top-level และ `data` สำหรับ field นั้นจะเป็น `null` วิธีนี้เรียบง่ายและเป็นแบบแผนเดียวกัน แต่มันปนความผิดพลาดของ input ที่คาดไว้และกู้คืนได้เข้ากับ system error ที่แท้จริง และ client ต้องไปขุดหาใน `errors` เพื่อเจอมัน
+
+**Return userErrors ใน payload** ออกแบบ return type ของ mutation ให้เป็น payload ที่บรรจุ *ทั้ง* ผลลัพธ์และรายการ typed user errors ความล้มเหลวของ validation จึงกลายเป็น `data` ธรรมดา ไม่ใช่ exception ดังนั้น client จึงอ่าน `data.addReview.userErrors` เหมือน field อื่นๆ นี่คือรูปแบบที่ schema ขนาดใหญ่จำนวนมากนำมาใช้ เพราะ error แบบฟอร์มที่กู้คืนได้กลายเป็นพลเมืองชั้นหนึ่ง มี type ที่แข็งแรง และไม่เคยไปพันกับช่องทาง `errors`
+
+```graphql
+type UserError {
+  field: String
+  message: String!
+}
+
+type AddReviewPayload {
+  review: Review
+  userErrors: [UserError!]!
+}
+```
+
+หลักการง่ายๆ คือ throw สำหรับความล้มเหลวที่ผู้ใช้แก้ไม่ได้ (request ที่ผิดรูป หรือความผิดพลาดภายใน) และ return `userErrors` สำหรับความผิดพลาดที่กู้คืนได้ซึ่งคุณคาดว่าฟอร์มจะนำกลับไปแสดงให้คนเห็น
+
+## validate input ที่รันจริง
+
+runner ด้านล่างใช้รูปแบบ payload resolver validate `rating` กับ business rule 1–5 แล้ว return review ที่ถูกสร้างขึ้น หรือรายการ `userErrors` ที่มีข้อมูล โดยทั้งหมดเป็น `data` ปกติ ไม่ใช่ exception เลย กด **Run** ด้วย rating ที่อยู่นอกช่วง แล้วดู userError กลับมาภายใน payload
+
+export const validationCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    input ReviewInput {
+      trackId: ID!
+      rating: Int!
+      comment: String
+    }
+
+    type Review {
+      trackId: ID!
+      rating: Int!
+    }
+
+    type UserError {
+      field: String
+      message: String!
+    }
+
+    type AddReviewPayload {
+      review: Review
+      userErrors: [UserError!]!
+    }
+
+    type Mutation {
+      addReview(input: ReviewInput!): AddReviewPayload!
+    }
+
+    type Query {
+      _empty: String
+    }
+  \`);
+
+  const root = {
+    addReview: ({ input }) => {
+      const userErrors = [];
+
+      // Business rule the schema cannot express: rating must be 1..5.
+      if (input.rating < 1 || input.rating > 5) {
+        userErrors.push({ field: 'rating', message: 'Rating must be between 1 and 5.' });
+      }
+
+      if (userErrors.length > 0) {
+        // Recoverable input mistake — returned as data, not thrown.
+        return { review: null, userErrors };
+      }
+
+      return {
+        review: { trackId: input.trackId, rating: input.rating },
+        userErrors: [],
+      };
+    },
+  };
+
+  const mutation = \`
+    mutation {
+      addReview(input: { trackId: "t1", rating: 9 }) {
+        review { rating }
+        userErrors { field message }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: mutation, rootValue: root });
+
+  // No top-level errors: the failure rides inside data.addReview.userErrors.
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={validationCode} />
+
+สังเกตสิ่งที่ *หายไป* จาก output ไม่มี `errors` array ระดับ top-level เลย rating ที่เป็น `9` ละเมิด business rule แต่เพราะเราออกแบบมันให้เป็น field `userErrors` ความล้มเหลวจึงมาถึงในรูปของ `data` ธรรมดา `data.addReview.review` เป็น `null` และ `data.addReview.userErrors` เก็บ entry ที่มี type ซึ่งชี้ไปยัง field `rating` client จัดการมันเหมือน selection อื่นๆ ลองเปลี่ยน `rating` เป็น `4` แล้วรันใหม่ `review` จะถูกเติมเข้ามาและ `userErrors` จะกลับมาว่างเปล่า
+
+<Callout title="validate สองชั้น รายงานอย่างมีจุดประสงค์">
+ให้ schema ทำงานเชิงโครงสร้าง เช่น argument ที่จำเป็น scalar type และ enum และอย่าไปตรวจซ้ำใน resolvers เพราะมันถูกดักเป็น request errors ก่อนที่โค้ดของคุณจะรัน สงวนตรรกะใน resolver ไว้สำหรับ business rules ที่ type system แสดงออกไม่ได้ จากนั้นเลือกช่องทางของคุณอย่างจงใจ throw `GraphQLError` สำหรับสิ่งที่กู้คืนไม่ได้ และ return typed `userErrors` ใน payload สำหรับความผิดพลาดแบบฟอร์มที่กู้คืนได้ซึ่งคุณอยากให้ client จัดการได้อย่างนุ่มนวล
+</Callout>
+
+export const validationFlow = `flowchart TD
+  Input["Incoming arguments"]
+  Schema["Schema validation: types, required, enums"]
+  ReqErr["Fails structure: request error, no data"]
+  Resolver["Resolver: business rules"]
+  Throw["Unrecoverable: throw GraphQLError -> top-level errors"]
+  Payload["Recoverable: return userErrors in payload -> normal data"]
+  Input --> Schema
+  Schema -->|"invalid shape"| ReqErr
+  Schema -->|"valid shape"| Resolver
+  Resolver -->|"system fault"| Throw
+  Resolver -->|"input mistake"| Payload`;
+
+export const quizInputValidation = [
+  {
+    q: 'GraphQL schema บังคับใช้ validation ชนิดใดโดยอัตโนมัติ ก่อนที่ resolvers จะรัน?',
+    options: [
+      'ว่า email address ไม่ซ้ำใน database',
+      'type, argument ที่จำเป็น (non-null) และการเป็นสมาชิกของ enum',
+      'ว่า rating อยู่ระหว่าง 1 ถึง 5',
+      'ว่า comment สั้นกว่า 500 ตัวอักษร',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'business rules อย่าง "rating ต้องอยู่ระหว่าง 1–5" ต้องถูกบังคับใช้ที่ไหน?',
+    options: [
+      'ในนิยาม type ของ SDL',
+      'ในตรรกะของ resolver — type system แสดงออกถึงมันไม่ได้',
+      'ในชั้น HTTP',
+      'มันไม่สามารถถูกบังคับใช้ใน GraphQL ได้เลย',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ข้อได้เปรียบของการ return userErrors ภายใน mutation payload คืออะไร?',
+    options: [
+      'มันทำให้ input error ที่กู้คืนได้กลายเป็นข้อมูลพลเมืองชั้นหนึ่งที่มี type แทนที่จะเป็น errors ระดับ top-level',
+      'มันขจัดความจำเป็นในการมี schema',
+      'มันแปลง errors ให้เป็น HTTP 500 response',
+      'มันซ่อน error ทั้งหมดจาก client',
+    ],
+    answer: 0,
+  },
+  {
+    q: 'เมื่อใดที่การ throw GraphQLError ดีกว่าการ return userErrors?',
+    options: [
+      'สำหรับข้อความ validation ฟอร์มในชีวิตประจำวัน',
+      'สำหรับความล้มเหลวที่กู้คืนไม่ได้ซึ่งผู้ใช้แก้ไม่ได้ เช่น request ที่ผิดรูปหรือความผิดพลาดของระบบ',
+      'ไม่มีเลย — ควรใช้ userErrors เสมอ',
+      'เฉพาะสำหรับ operation ที่สำเร็จเท่านั้น',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/input-validation" questions={quizInputValidation} />
+
+<ProgressTracker client:visible id="errors-and-validation/input-validation" />

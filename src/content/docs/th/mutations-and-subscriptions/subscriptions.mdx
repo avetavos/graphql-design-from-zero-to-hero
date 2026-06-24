@@ -1,0 +1,217 @@
+---
+title: Subscriptions
+description: 'จำลองเรียลไทม์ให้เป็นสตรีมของ event ด้วย subscribe และ resolve เข้าใจ transport แบบ SSE และ WebSocket และเรียนรู้ว่าเมื่อไหร่ไม่ควรใช้ subscription'
+sidebar:
+  order: 4
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+query คืนค่าครั้งเดียว mutation คืนค่าครั้งเดียว ส่วน **subscription** ต่างออกไป client subscribe เพียงครั้งเดียว แล้วเซิร์ฟเวอร์จะ push payload ใหม่ต่อไปเรื่อย ๆ ตราบเท่าที่ connection ยังเปิดอยู่ มันคือ root type ตัวที่สาม และเป็นวิธีที่ GraphQL ใช้จำลองเรียลไทม์ เช่น รีวิวใหม่ปรากฏขึ้น เพลงประมวลผลเสร็จ มีคนเริ่มพิมพ์ โดยที่ client ไม่ต้อง poll ครั้งแล้วครั้งเล่า
+
+ตัวรันในเบราว์เซอร์ที่ใช้ในบทเรียนอื่น ๆ รัน operation หนึ่งครั้งแล้วหยุด มันจึงสาธิตสตรีมแบบสด ๆ ไม่ได้ เราจะศึกษา subscription ในรูปของโค้ดบวกกับ sequence diagram แล้วชี้ให้คุณไปยังเซิร์ฟเวอร์ Yoga ที่รันได้ ซึ่งคุณเปิดและดูมันสตรีมจริงได้
+
+## การประกาศ subscription
+
+field ของ subscription อยู่บน root type `Subscription` มันหน้าตาเหมือน field ของ query คือมีชื่อ มี argument มี type คืนค่า แต่ความหมายของมันคือ "push สิ่งนี้ให้ฉันหนึ่งครั้งทุกครั้งที่ event ที่ตรงกันเกิดขึ้น"
+
+```graphql
+type Subscription {
+  reviewAdded(trackId: ID!): Review!
+}
+```
+
+argument `trackId` จำกัดขอบเขตของสตรีม client ต้องการรีวิวสำหรับเพลงเดียวเท่านั้น ไม่ใช่ทั้งแคตตาล็อก ส่วน type คืนค่า `Review!` คือรูปร่างของแต่ละ payload ที่ถูก push
+
+## subscribe เทียบกับ resolve
+
+resolver ของ subscription ไม่ใช่ฟังก์ชันเดียว แต่เป็นสองฟังก์ชัน และการแยกแยะทั้งสองให้ชัดคือแนวคิดทั้งหมด
+
+- **`subscribe`** คืน *async iterator* ซึ่งเป็นแหล่งของ event ทุกครั้งที่มีบางสิ่งถูก push ลงไปบน iterator นั้น เซิร์ฟเวอร์จะตื่นขึ้นมาและผลิตผลลัพธ์หนึ่งตัวให้ client
+- **`resolve`** คือ field resolver ธรรมดาที่รัน *ต่อหนึ่ง event* มันรับค่าที่ iterator ส่งออกมา (yield) และแมปมันไปยัง payload ที่ client เลือกไว้
+
+ใน `graphql-yoga` และเซิร์ฟเวอร์ส่วนใหญ่ แหล่งของ event คือบัส **pub/sub** mutation publish event ออกไป และ iterator ของ `subscribe` ของทุก subscription ที่ตรงกันจะ yield มันออกมา
+
+```ts
+import { createPubSub } from 'graphql-yoga';
+
+const pubSub = createPubSub<{ reviewAdded: [trackId: string, review: Review] }>();
+
+export const resolvers = {
+  Mutation: {
+    addReview: (_parent, { input }) => {
+      const review = saveReview(input);
+      // Publish the event — every matching subscriber is woken up.
+      pubSub.publish('reviewAdded', input.trackId, review);
+      return { review, userErrors: [] };
+    },
+  },
+  Subscription: {
+    reviewAdded: {
+      // subscribe: the event source, scoped to one track.
+      subscribe: (_parent, { trackId }) => pubSub.subscribe('reviewAdded', trackId),
+      // resolve: map each published event to the payload.
+      resolve: (review: Review) => review,
+    },
+  },
+};
+```
+
+ลำดับการทำงานคือ mutation เขียนข้อมูลและ publish บัส pub/sub กระจาย event ออกไป iterator ของ `subscribe` ของแต่ละ subscriber yield มันออกมา `resolve` จัดรูปร่างมัน แล้ว client ก็รับ payload การเขียนตัวเดียวกันที่บทเรียนก่อน ๆ คืนกลับมาแบบ synchronous ตอนนี้ *ยัง* แจ้งทุกคนที่ฟังอยู่อีกด้วย
+
+<Mermaid title="การเรียก subscribe ครั้งเดียวเปิดสตรีม; แต่ละ mutation ที่ตามมา publish event ที่ถูก push ไปยัง client" code={subSequence} />
+
+## Transport: สตรีมไปถึง client ได้อย่างไร
+
+query และ mutation เดินทางบน HTTP request/response เดียว ส่วน subscription ต้องการช่องทางที่เปิดค้างไว้และ push ได้ มันจึงใช้ transport ที่ต่างออกไป
+
+- **Server-Sent Events (SSE)** — HTTP response ที่อยู่ยาวนานซึ่งสตรีม event แบบข้อความไปทางเดียว จากเซิร์ฟเวอร์ไปยัง client มันทำงานบน HTTP ธรรมดา ผ่าน proxy ส่วนใหญ่ได้ และเป็น default สมัยใหม่ใน `graphql-yoga` ผ่าน protocol `graphql-sse` มันเป็นแบบทางเดียว ซึ่งเป็นทั้งหมดที่ subscription ต้องการ
+- **WebSocket** — connection แบบ full-duplex ที่โดยดั้งเดิมใช้กับ protocol `graphql-ws` มันมีความสามารถมากกว่า (สองทาง) และ client รองรับกันแพร่หลาย แต่มันเป็น connection แยกต่างหากที่ต้องจัดการ และอาจ route ผ่าน infrastructure บางอย่างได้ยากกว่า
+
+ทั้งสองพา operation ของ subscription แบบ GraphQL อันเดียวกัน มันต่างกันแค่ที่ระบบท่อภายในเท่านั้น เริ่มด้วย SSE ก่อน เว้นแต่คุณจะมีเหตุผลที่เป็นรูปธรรมว่าต้องใช้ WebSocket
+
+## เมื่อไหร่ที่ไม่ควรใช้ subscription
+
+subscription คือ connection ที่มี state และอยู่ยาวนาน มันกินหน่วยความจำเซิร์ฟเวอร์และทำให้การสเกลซับซ้อนขึ้น หยิบมันมาใช้เฉพาะเมื่อข้อมูลเปลี่ยนแปลงตามตารางเวลาของ *เซิร์ฟเวอร์* จริง ๆ ให้เลือกทางเลือกอื่นเมื่อ
+
+- **ผลลัพธ์ของ mutation ก็เพียงพอแล้ว** ถ้าการเปลี่ยนแปลงเกิดจากการกระทำของ client เอง ให้คืนข้อมูลที่ได้รับผลกระทบจาก mutation อย่า subscribe การเขียนของตัวเอง
+- **ข้อมูลเปลี่ยนแปลงไม่บ่อยหรือ client poll ได้** dashboard ที่รีเฟรชทุก 30 วินาทีไม่จำเป็นต้องมี connection ถาวร query เป็นระยะ (หรือ refetch ตอน focus) ง่ายกว่าและถูกกว่า
+- **คุณต้องการผลลัพธ์แบบ async ครั้งเดียว** "สร้างรายงานนี้ แล้วบอกฉันตอนเสร็จ" คือการ poll สถานะงานหรือ webhook ไม่จำเป็นต้องเป็น subscription
+
+subscription คุ้มค่ากับความซับซ้อนของมันเมื่อ client หลายตัวต้องเห็น event เดียวกันในชั่วขณะที่มันเกิดขึ้น เช่น ฟีดสด ตัวบ่งชี้สถานะออนไลน์ หรือการกระดิกของราคา
+
+## เซิร์ฟเวอร์สตรีมมิงที่คุณรันได้
+
+schema ด้านล่างเป็นโปรเจกต์ Yoga ที่สมบูรณ์ มัน export `typeDefs` และ `resolvers` ที่มี mutation ซึ่ง publish และ subscription ซึ่งสตรีม ตัวรันในเบราว์เซอร์เปิดสตรีมค้างไว้ไม่ได้ ดังนั้นเปิดสิ่งนี้ใน StackBlitz ยิง `addReview` ใน GraphiQL แท็บหนึ่ง แล้วดู `reviewAdded` push payload ในอีกแท็บหนึ่ง
+
+export const subSchemaCode = `import { createPubSub } from 'graphql-yoga';
+
+type Review = { id: string; trackId: string; rating: number; body: string | null };
+
+export const typeDefs = /* GraphQL */ \`
+  type Review {
+    id: ID!
+    trackId: ID!
+    rating: Int!
+    body: String
+  }
+
+  input AddReviewInput {
+    trackId: ID!
+    rating: Int!
+    body: String
+  }
+
+  type AddReviewPayload {
+    review: Review
+  }
+
+  type Query {
+    reviews(trackId: ID!): [Review!]!
+  }
+
+  type Mutation {
+    addReview(input: AddReviewInput!): AddReviewPayload!
+  }
+
+  type Subscription {
+    reviewAdded(trackId: ID!): Review!
+  }
+\`;
+
+const store: Review[] = [];
+let nextId = 1;
+
+const pubSub = createPubSub<{ reviewAdded: [trackId: string, review: Review] }>();
+
+export const resolvers = {
+  Query: {
+    reviews: (_p: unknown, { trackId }: { trackId: string }) =>
+      store.filter((r) => r.trackId === trackId),
+  },
+  Mutation: {
+    addReview: (
+      _p: unknown,
+      { input }: { input: { trackId: string; rating: number; body?: string } },
+    ) => {
+      const review: Review = {
+        id: String(nextId++),
+        trackId: input.trackId,
+        rating: input.rating,
+        body: input.body ?? null,
+      };
+      store.push(review);
+      // Notify every subscriber listening on this track.
+      pubSub.publish('reviewAdded', input.trackId, review);
+      return { review };
+    },
+  },
+  Subscription: {
+    reviewAdded: {
+      subscribe: (_p: unknown, { trackId }: { trackId: string }) =>
+        pubSub.subscribe('reviewAdded', trackId),
+      resolve: (review: Review) => review,
+    },
+  },
+};`;
+
+<NodeRunner node client:visible code={subSchemaCode} />
+
+วิธีดูให้มันสตรีม คือเปิดโปรเจกต์ แล้วใน GraphiQL แท็บหนึ่งรัน `subscription { reviewAdded(trackId: "t1") { id rating } }` แล้วปล่อยให้มันรันค้างไว้ ในแท็บที่สองรัน mutation `addReview` สำหรับ `trackId: "t1"` แท็บ subscription จะอัปเดตในชั่วขณะที่ mutation publish ซึ่งนั่นคือคุณค่าทั้งหมดของสตรีม และไม่มีการ poll ใด ๆ ที่จะเทียบ latency ของมันได้
+
+<Callout title="subscription คือช่องทางที่เปิดอยู่ ไม่ใช่การอ่านเพิ่ม">
+subscription คือ connection ที่อยู่ยาวนานและมี state คือ `subscribe` ครั้งเดียว แต่มี payload ถูก push หลายครั้ง จนกว่า client จะตัด connection อิมพลีเมนต์มันเป็นสองครึ่ง คือ `subscribe` ผลิตสตรีมของ event (โดยปกติจากบัส pub/sub ที่ mutation publish ไปยังมัน) และ `resolve` จัดรูปร่างแต่ละ event ให้เป็น payload พามันไปบน SSE เป็นค่าเริ่มต้น หรือ WebSocket เมื่อคุณต้องการแบบสองทาง และจงต้านทานการล่อใจที่จะ subscribe ทุกอย่าง ถ้าการเปลี่ยนแปลงเกิดจาก mutation ของ client เอง ก็แค่คืนผลลัพธ์ เก็บ subscription ไว้สำหรับ event ที่มาถึงตามนาฬิกาของเซิร์ฟเวอร์ ไม่ใช่ของ client
+</Callout>
+
+export const subSequence = `sequenceDiagram
+  participant C as Client
+  participant S as GraphQL Server
+  participant B as Pub/Sub bus
+  participant W as Writer (another client)
+  C->>S: subscription reviewAdded(trackId: "t1")
+  S->>B: subscribe to "reviewAdded" for t1
+  Note over C,S: stream stays open
+  W->>S: mutation addReview(input)
+  S->>B: publish "reviewAdded" event
+  B-->>S: yield event to subscriber
+  S-->>C: push Review payload
+  W->>S: mutation addReview(input) again
+  S->>B: publish again
+  B-->>S: yield event
+  S-->>C: push next Review payload`;
+
+export const quizSubscriptions = [
+  {
+    q: 'ฟังก์ชัน subscribe ใน resolver ของ subscription มีบทบาทอะไร?',
+    options: [
+      'มันจัดรูปร่างแต่ละ event ให้เป็น payload ที่ client เลือกไว้',
+      'มันคืน async iterator ซึ่งเป็นแหล่งของ event',
+      'มันรัน mutation ที่เขียนข้อมูล',
+      'มันปิด connection หลังจากหนึ่ง event',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'transport ใดเป็น default สมัยใหม่สำหรับ subscription ของ GraphQL ใน graphql-yoga และสตรีมเพียงทางเดียว?',
+    options: ['WebSocket', 'Server-Sent Events (SSE)', 'Plain HTTP POST', 'gRPC'],
+    answer: 1,
+  },
+  {
+    q: 'เมื่อไหร่ที่ subscription เป็นเครื่องมือที่ผิด?',
+    options: [
+      'เมื่อ client หลายตัวต้องเห็น event เดียวกันในชั่วขณะที่มันเกิดขึ้น',
+      'เมื่อการเปลี่ยนแปลงเกิดจาก mutation ของ client เอง และผลลัพธ์คืนกลับมาได้ง่าย ๆ อยู่แล้ว',
+      'สำหรับฟีดสดของรายการใหม่ ๆ',
+      'สำหรับตัวบ่งชี้สถานะออนไลน์',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/subscriptions" questions={quizSubscriptions} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/subscriptions" />

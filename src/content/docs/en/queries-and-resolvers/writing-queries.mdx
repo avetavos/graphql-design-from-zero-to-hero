@@ -1,0 +1,182 @@
+---
+title: Writing Queries
+description: 'Query syntax from the ground up — fields, nested selection sets, and naming your operations.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+A GraphQL query is text, and the text has a shape. Once you can read that shape — and write it from scratch — you can talk to any GraphQL API. This lesson builds a query up one piece at a time: fields, then nested selection sets, then the operation name that wraps the whole thing.
+
+## Fields
+
+The smallest unit of a query is a **field**: a single name asking for a single piece of data. Fields are wrapped in curly braces, called a **selection set**. The selection set at the very top of a query selects from the `Query` root.
+
+```graphql
+{
+  currentUser
+}
+```
+
+This asks for one field, `currentUser`. If a field returns a scalar — a `String`, `Int`, and so on — naming it is enough; you have reached a leaf and the query stops there. You can ask for several fields side by side simply by listing them:
+
+```graphql
+{
+  serverTime
+  apiVersion
+}
+```
+
+## Nested selection sets
+
+When a field returns an **object type** rather than a scalar, naming it alone is not enough — GraphQL needs to know *which* of that object's fields you want. You answer by opening a nested selection set with its own braces:
+
+```graphql
+{
+  currentUser {
+    id
+    name
+    email
+  }
+}
+```
+
+`currentUser` returns a `User` object, so it must be followed by a selection set listing the `User` fields you care about. This nesting can go as deep as the graph allows. If `User` has an `address` field that returns an `Address` object, you nest again:
+
+```graphql
+{
+  currentUser {
+    name
+    address {
+      city
+      country
+    }
+  }
+}
+```
+
+Each level of braces steps one edge deeper into the graph. A query is therefore a **tree of fields** that mirrors the shape of the response you will get back.
+
+<Mermaid title="A nested query is a tree of fields that mirrors the response shape." code={treeDiagram} />
+
+A useful rule of thumb: a field that returns an object type *requires* a selection set, and a field that returns a scalar *forbids* one. Forget either rule and the server rejects the query during validation, before any resolver runs.
+
+## Operation names
+
+The bare `{ ... }` form is shorthand for a query. You can — and on real teams, should — write the long form, which begins with the keyword `query` followed by an **operation name** you choose:
+
+```graphql
+query GetCurrentUser {
+  currentUser {
+    id
+    name
+  }
+}
+```
+
+`GetCurrentUser` is the operation name. It does not change the result at all, but it earns its keep in three ways: it appears in server logs and tracing so you can tell requests apart, it is required once a document holds more than one operation, and it makes the query self-documenting. Naming operations is a habit worth forming early.
+
+## Run a nested query
+
+The example below selects nested fields: a `currentUser` that carries a `name` and a nested `favoriteTrack` object, which in turn carries a `title`. The query uses the long `query` form with an operation name. Press **Run** and compare the JSON to the tree of fields you wrote.
+
+export const nestedCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Track {
+      id: ID!
+      title: String!
+    }
+
+    type User {
+      id: ID!
+      name: String!
+      favoriteTrack: Track!
+    }
+
+    type Query {
+      currentUser: User
+    }
+  \`);
+
+  const root = {
+    currentUser: () => ({
+      id: 'u1',
+      name: 'Ada',
+      favoriteTrack: { id: 't9', title: 'Selection Set Serenade' },
+    }),
+  };
+
+  // Long form: the "query" keyword plus a chosen operation name.
+  const query = \`
+    query GetCurrentUser {
+      currentUser {
+        name
+        favoriteTrack {
+          title
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={nestedCode} />
+
+The response is a nested object: `currentUser` holds a `name` and a `favoriteTrack`, and `favoriteTrack` holds a `title`. Every brace you opened in the query produced one level of nesting in the result. Try removing the inner `title` line — the server will reject the query, because a field returning the `Track` object type must have a selection set.
+
+<Callout title="The query is the response shape">
+A GraphQL query and its response have the same structure. Scalars are leaves and end a branch; object types open a new selection set and continue it. When you write a query, you are drawing the exact tree the server will fill in. Name your operations, nest only into object types, and the response will never surprise you.
+</Callout>
+
+export const treeDiagram = `flowchart TD
+  Root["{ } selection set (Query root)"] --> CU["currentUser (User)"]
+  CU --> Name["name (scalar leaf)"]
+  CU --> Addr["address (Address)"]
+  Addr --> City["city (scalar leaf)"]
+  Addr --> Country["country (scalar leaf)"]`;
+
+export const quizWritingQueries = [
+  {
+    q: 'When does a field require its own nested selection set?',
+    options: [
+      'When it takes an argument',
+      'When it returns an object type rather than a scalar',
+      'Only inside the Mutation root',
+      'Never — selection sets are optional everywhere',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'What is the role of the operation name in "query GetCurrentUser { ... }"?',
+    options: [
+      'It changes which fields are returned',
+      'It labels the operation for logging and is required when a document has multiple operations',
+      'It is required for every single query',
+      'It tells the server which resolver to skip',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'How does the structure of a GraphQL response relate to the query?',
+    options: [
+      'The response is a flat list regardless of nesting',
+      'The response mirrors the query: it has the same tree of fields',
+      'The response is always alphabetized',
+      'The response reverses the nesting order of the query',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/writing-queries" questions={quizWritingQueries} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/writing-queries" />

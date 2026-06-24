@@ -1,0 +1,165 @@
+---
+title: Queries & Resolvers
+description: 'How a query reads data, how resolvers produce it, the Query root, and the resolver chain that turns a request into a response.'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+In the foundations module you learned that a schema is a contract and a query is a path traced through a graph of types. This module is about the two halves that make that path come alive: the **query** that asks for data, and the **resolvers** that produce it. A query is pure intent — it names fields and says nothing about where the values come from. Resolvers are the logic the server runs, field by field, to fill those names with real values.
+
+## Queries read; resolvers produce
+
+Keep these two roles separate in your mind and everything else follows:
+
+- A **query** is a read operation written by the client. It selects fields and may pass arguments, but it contains no logic. It is a shopping list.
+- A **resolver** is a server-side function attached to a single field. When execution reaches that field, the resolver runs and returns the value. It is the stock clerk who fetches each item on the list.
+
+The server never guesses. For every field in the query it calls the matching resolver, collects what comes back, and assembles a JSON response shaped exactly like the query.
+
+## The Query root
+
+Every read has to start somewhere, and that somewhere is the special root object type named `Query`. The fields directly under `Query` are the **entry points** of the API — the only places a read may begin. From there, fields can return object types whose own fields lead deeper into the graph.
+
+```graphql
+type Query {
+  currentUser: User
+  track(id: ID!): Track
+}
+
+type User {
+  id: ID!
+  name: String!
+}
+
+type Track {
+  id: ID!
+  title: String!
+}
+```
+
+A client may begin a read with `currentUser` or `track`, because those are fields of `Query`. It may not begin with `title`, because `title` lives on `Track`, deeper in the graph — you reach it only after stepping through a field that returns a `Track`.
+
+## The resolver chain
+
+Resolution is not one big function; it is a **chain** of small ones. Execution starts at the query's top-level fields (the `Query` root), runs their resolvers, then descends into each selected sub-field and runs *its* resolver, and so on until every selection bottoms out at a scalar. The value a parent resolver returns becomes the input to its children's resolvers — that is the thread that ties the chain together.
+
+<Mermaid title="Execution walks from the Query root down through each field's resolver." code={chainDiagram} />
+
+Read the diagram top to bottom: the `track` field resolver runs first and returns a track object; the engine then resolves each requested sub-field of that object — `title` directly, and `artist`, whose resolver returns an artist object that the engine resolves one level further into `name`. Each box is a resolver call, and each arrow is a parent value flowing into a child.
+
+## What this module covers
+
+By the end of these five lessons you will be able to write queries by hand and write the resolvers that answer them. The lessons are:
+
+1. **Queries & Resolvers** (you are here) — the read/produce split, the Query root, and the resolver chain.
+2. **Writing Queries** — fields, nested selection sets, and operation names.
+3. **Resolver Functions** — the four arguments every resolver receives and how default resolvers work.
+4. **Arguments & Variables** — field arguments and reusable query variables like `$id`.
+5. **Fragments & Aliases** — reusing selection sets and renaming fields in the response.
+
+## See the chain run
+
+The example below defines a `Query` with one entry point, `track`, whose resolver returns a track object. The engine then resolves the track's `artist` field, and the artist's `name`. Press **Run** and watch one query travel the whole chain.
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Query is the read entry point; track returns an object with its own fields.
+  const schema = buildSchema(\`
+    type Artist {
+      id: ID!
+      name: String!
+    }
+
+    type Track {
+      id: ID!
+      title: String!
+      artist: Artist!
+    }
+
+    type Query {
+      track(id: ID!): Track
+    }
+  \`);
+
+  // Each field has logic that produces its value — these are the resolvers.
+  const root = {
+    track: ({ id }) => ({
+      id,
+      title: 'First Resolution',
+      artist: { id: 'a1', name: 'The Chain Gang' },
+    }),
+  };
+
+  // The query is a pure read: it names fields and starts at the Query root.
+  const query = \`
+    {
+      track(id: "t1") {
+        title
+        artist {
+          name
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+The output mirrors the query: `track` holds a `title` and a nested `artist`, and `artist` holds a `name`. Nothing in the response is there by accident — each value was produced by a resolver the engine called as it walked the chain from the `Query` root down to the leaves.
+
+<Callout title="Hold these two words apart">
+A **query** is the client's intent, written as a tree of field names. A **resolver** is the server's logic, written as a function per field. The engine's whole job is to walk the query tree and, at each node, call the resolver that fills it in. Keep "ask" and "produce" mentally separate and the rest of this module is just detail.
+</Callout>
+
+export const chainDiagram = `flowchart TD
+  Q["Query root"] -->|"track(id) resolver"| T["Track object"]
+  T -->|"title resolver"| Title["title: String"]
+  T -->|"artist resolver"| A["Artist object"]
+  A -->|"name resolver"| Name["name: String"]`;
+
+export const quizIndex = [
+  {
+    q: 'What is the difference between a query and a resolver?',
+    options: [
+      'A query runs on the server; a resolver runs in the browser',
+      'A query is the client-written read that names fields; a resolver is the server function that produces a field’s value',
+      'They are two names for the same thing',
+      'A resolver selects fields; a query returns values',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Where must every read operation begin?',
+    options: [
+      'At any field in the schema',
+      'At a field of the special Query root type',
+      'At the Mutation root',
+      'At a scalar leaf field',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the resolver chain, what does a parent field’s resolver pass to its children’s resolvers?',
+    options: [
+      'Nothing — each resolver starts fresh',
+      'The value it returned, which becomes the parent input for the child resolvers',
+      'Only the query string',
+      'The final JSON response',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="queries-and-resolvers/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="queries-and-resolvers/index" />

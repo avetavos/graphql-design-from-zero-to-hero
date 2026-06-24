@@ -1,0 +1,173 @@
+---
+title: การเขียนข้อมูลและการทำงานแบบเรียลไทม์
+description: 'Mutation เขียนข้อมูลและคืนผลลัพธ์ ส่วน subscription สตรีมการเปลี่ยนแปลงตามเวลา ภาพรวมของโมดูลนี้ พร้อม mutation ที่คุณรันได้ในเบราว์เซอร์'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+จนถึงตอนนี้ graph ของเรายังเป็นแบบอ่านอย่างเดียว เราได้เลือก field ต่าง ๆ เดินตามลิงก์ และ resolve ค่าออกมา แต่ไม่เคยเปลี่ยนแปลงอะไรเลย API จริง ๆ ต้องเปิดให้ client *ทำ* สิ่งต่าง ๆ ได้ เช่น โพสต์รีวิว เก็บเพลงเข้าคลัง หรือกดติดตามศิลปิน และเมื่อข้อมูลเปลี่ยนแปลงได้ client มักอยากรู้ทันทีที่มันเปลี่ยน ความต้องการสองอย่างนี้แมปเข้ากับ root type อีกสองตัวที่เหลือพอดี คือ **`Mutation`** สำหรับการเขียน และ **`Subscription`** สำหรับสตรีมของการเปลี่ยนแปลงที่ตามมา
+
+## ประตูบานใหม่สองบาน
+
+คุณได้รู้จัก root type ทั้งสามตัวมาแล้วในโมดูล foundations ในบทนี้เราจะนำตัวที่สองและสามมาใช้งานจริง
+
+- **`Mutation`** — จุดเข้าสำหรับการเขียน field ในนี้แต่ละตัวแทนการเปลี่ยนแปลงที่ตั้งใจหนึ่งอย่าง เช่น สร้างบางสิ่ง อัปเดต หรือลบ มันรันการเปลี่ยนแปลงนั้น แล้วคืนข้อมูลที่อธิบายผลลัพธ์กลับมา
+- **`Subscription`** — จุดเข้าสำหรับเรียลไทม์ field ในนี้เปิดสตรีมที่อยู่ยาวนาน client subscribe เพียงครั้งเดียว แล้วเซิร์ฟเวอร์จะ push payload ใหม่ทุกครั้งที่ event ที่เกี่ยวข้องเกิดขึ้น
+
+แบบจำลองทางความคิดคือ request ที่ *ลงมือทำ* (mutation) เทียบกับ connection ที่ *เฝ้าฟัง* (subscription) mutation คือการเดินทางไปกลับหนึ่งรอบ ส่งการเปลี่ยนแปลงไป แล้วรับผลลัพธ์กลับมา ส่วน subscription คือช่องทางที่เปิดค้างไว้ ขอครั้งเดียว แต่ได้ผลลัพธ์หลายครั้งทยอยส่งมาตามเวลา
+
+<Mermaid title="Read คืนค่าครั้งเดียว; mutation เขียนแล้วคืนค่า; subscription push หลาย payload จากสตรีมของ event" code={overviewDiagram} />
+
+## หน้าตาของ mutation เป็นอย่างไร
+
+field ของ mutation จะถูกประกาศไว้บน type `Mutation` โดยปกติมันจะรับ argument ที่อธิบายการเปลี่ยนแปลง และคืน object ที่ได้รับผลกระทบกลับมา เพื่อให้ client อัปเดตมุมมองของตัวเองได้โดยไม่ต้องอ่านซ้ำอีกรอบ
+
+```graphql
+type Mutation {
+  addReview(trackId: ID!, rating: Int!, body: String): Review!
+}
+```
+
+การเรียกใช้มันดูคล้าย query เกือบทั้งหมด ต่างกันตรงที่มันเริ่มด้วย `mutation` แทน `{` (ซึ่งเป็น query โดยปริยาย) และเซิร์ฟเวอร์ได้รับอนุญาตให้เปลี่ยน state
+
+```graphql
+mutation {
+  addReview(trackId: "t1", rating: 5, body: "On repeat all week.") {
+    id
+    rating
+    body
+  }
+}
+```
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+ตลอดสี่บทเรียนถัดไป เราจะไต่ระดับจาก "มันใช้งานได้" ไปสู่ "มันสเกลได้"
+
+- **การออกแบบ mutation** — การตั้งชื่อการเขียนตาม intent การจำกัดให้หนึ่ง mutation ต่อหนึ่งการเปลี่ยนแปลงเชิงตรรกะ และการคืนข้อมูลที่ได้รับผลกระทบ
+- **รูปแบบ input / payload** — การห่อ argument ไว้ใน object `input` เดียว และคืน `payload` ที่มีโครงสร้าง เพื่อให้ mutation วิวัฒน์ได้และพก error ราย​ field ติดไปด้วย
+- **Subscription** — การจำลองเรียลไทม์ให้เป็นสตรีมของ event ด้วย `subscribe` และ `resolve` รวมถึง transport ที่นำมันส่งไป และเมื่อไหร่ที่ *ไม่ควร* หยิบมันมาใช้
+- **แนวปฏิบัติที่ดีของ mutation** — idempotency การ validate, user error เทียบกับ protocol error, ความ chatty และ optimistic UI
+
+## mutation ที่รันได้จริง
+
+ตัวอย่างด้านล่างสร้าง schema ขนาดเล็กที่มี type `Mutation` มี store รีวิวในหน่วยความจำที่เปลี่ยนค่าได้ และมี resolver ที่ append ลงไปในนั้น กด **Run** เพื่อเพิ่มรีวิวและดู store เติบโตขึ้น query ตัวที่สองจะอ่านสิ่งที่ mutation เขียนไว้กลับมาตรงเป๊ะ
+
+export const overviewMutationCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type Query {
+      reviews(trackId: ID!): [Review!]!
+    }
+
+    type Mutation {
+      addReview(trackId: ID!, rating: Int!, body: String): Review!
+    }
+  \`);
+
+  // A mutable in-memory store — this is the "database" the mutation writes to.
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const root = {
+    reviews: ({ trackId }) => store.reviews.filter((r) => r.trackId === trackId),
+    addReview: ({ trackId, rating, body }) => {
+      const review = { id: String(nextId++), trackId, rating, body: body ?? null };
+      store.reviews.push(review);
+      return review;
+    },
+  };
+
+  // 1) Write: run the mutation and read back the created review.
+  const writeResult = await graphql({
+    schema,
+    source: \`
+      mutation {
+        addReview(trackId: "t1", rating: 5, body: "On repeat all week.") {
+          id
+          rating
+          body
+        }
+      }
+    \`,
+    rootValue: root,
+  });
+  console.log('after mutation:', JSON.stringify(writeResult, null, 2));
+
+  // 2) Read: confirm the store actually changed.
+  const readResult = await graphql({
+    schema,
+    source: \`{ reviews(trackId: "t1") { id rating body } }\`,
+    rootValue: root,
+  });
+  console.log('store now holds:', JSON.stringify(readResult, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewMutationCode} />
+
+สังเกตรูปร่างของผลลัพธ์ mutation คืน `Review` ตัวเดียวที่มันสร้างขึ้น พร้อม `id` ที่เซิร์ฟเวอร์กำหนดให้ครบถ้วน ดังนั้น client ไม่ต้องเดาเลย การอ่านที่ตามมาเป็นการพิสูจน์ว่าการเขียนลงจริง store ที่เคยว่างเปล่าตอนนี้มีรีวิวอยู่หนึ่งรายการพอดี การเดินทางไปกลับแบบนั้น คือ *ลงมือทำ แล้วรับผลลัพธ์* คือจังหวะของทุก mutation ในโมดูลนี้
+
+<Callout title="การเขียนและการอ่านคือภาษาเดียวกัน">
+mutation ไม่ใช่ protocol อีกแบบที่ติดเพิ่มเข้าไปใน GraphQL มันคือภาษาการเลือก field แบบเดียวกัน เพียงแต่ชี้ไปยัง type ที่ได้รับอนุญาตให้เปลี่ยน state คุณส่ง selection ไป เซิร์ฟเวอร์รันมัน แล้วคุณได้ผลลัพธ์แบบมี type กลับมา กฎที่ต่างกันมีเพียง mutation เริ่มต้นด้วยคีย์เวิร์ด `mutation` และ field ระดับบนสุดของ mutation จะรันทีละตัวตามลำดับ ไม่เคยรันขนานกัน ดังนั้นการเขียนทีหลังสามารถพึ่งพาการเขียนก่อนหน้าได้
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  subgraph Read
+    Q["Query"] --> R1["one result"]
+  end
+  subgraph Write
+    M["Mutation"] --> S["mutable store"]
+    S --> R2["result of the change"]
+  end
+  subgraph RealTime
+    Sub["Subscription"] --> Ev["event stream"]
+    Ev --> P1["payload"]
+    Ev --> P2["payload"]
+    Ev --> P3["payload …"]
+  end`;
+
+export const quizOverview = [
+  {
+    q: 'root type ตัวใดเป็นจุดเข้าสำหรับการเขียนใน GraphQL schema?',
+    options: ['Query', 'Mutation', 'Subscription', 'Schema'],
+    answer: 1,
+  },
+  {
+    q: 'subscription ต่างจาก query อย่างไรในแง่ของผลลัพธ์?',
+    options: [
+      'subscription คืนผลลัพธ์เพียงหนึ่งเดียว เหมือน query',
+      'subscription เปิดสตรีมที่อยู่ยาวนาน และอาจ push หลาย payload ตามเวลา',
+      'subscription ไม่สามารถคืนข้อมูลใด ๆ ได้',
+      'ต้องเรียก subscription ก่อนทุก query',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'หลังจาก mutation สร้างเรกคอร์ดแล้ว ทำไมโดยทั่วไปจึงคืน object ที่ได้รับผลกระทบกลับมา?',
+    options: [
+      'สเปกห้ามคืนสิ่งอื่นใด',
+      'เพื่อให้ client อัปเดตมุมมองของตัวเองได้โดยไม่ต้องส่งคำขออ่านแยกต่างหาก',
+      'เพราะ mutation รับ argument ไม่ได้',
+      'เพื่อให้ request รันแบบขนาน',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/index" questions={quizOverview} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/index" />

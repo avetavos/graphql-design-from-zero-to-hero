@@ -1,0 +1,200 @@
+---
+title: The Input / Payload Pattern
+description: 'Wrap arguments in a single input object and return a payload type carrying the entity plus userErrors — the pattern that lets mutations evolve safely.'
+sidebar:
+  order: 3
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+The mutations in the last lesson took loose arguments and returned a bare object. That is fine for two fields. But real mutations grow: you add an optional field, then another, then a validation rule that can fail for three different reasons. Two conventions keep that growth under control — a single **`input`** argument going in, and a structured **`payload`** type coming out. Together they are the most widely adopted shape in production GraphQL.
+
+## The single input argument
+
+Instead of spreading every field across the argument list, define one **input object type** and accept it as a single argument named `input`:
+
+```graphql
+input CreateReviewInput {
+  trackId: ID!
+  rating: Int!
+  body: String
+}
+
+type Mutation {
+  createReview(input: CreateReviewInput!): CreateReviewPayload!
+}
+```
+
+An `input` type looks like an object type but uses the `input` keyword, and its fields may only be scalars, enums, or other input types — never object types. The payoff is evolution: adding an optional field to `CreateReviewInput` does not change the mutation's signature, so existing clients keep working untouched. It also gives the whole set of inputs a name you can reference, document, and reuse.
+
+## The payload return type
+
+A bare `Review!` return type has no room for anything except the review. But mutations need to report two things: the entity that was created or changed, *and* whether anything went wrong in a way the client can act on. The **payload** type carries both:
+
+```graphql
+type UserError {
+  message: String!
+  field: [String!]
+}
+
+type CreateReviewPayload {
+  review: Review
+  userErrors: [UserError!]!
+}
+```
+
+Two design choices matter here. `review` is **nullable** — on failure there is nothing to return, so it comes back `null`. And `userErrors` is a **non-null list of non-null errors** — always present, just empty (`[]`) when everything succeeded. The client's logic becomes uniform: check `userErrors` first; if it is empty, trust `review`.
+
+<Mermaid title="One input flows in; the payload carries either the entity or the user errors back out." code={payloadDiagram} />
+
+## Why this scales
+
+These `userErrors` are *expected, recoverable* problems — a rating out of range, a missing title — the kind a user can fix and retry. They live in the payload, as data, so the client can render them next to the offending form field. That is different from protocol-level errors (a malformed query, an auth failure), which belong in the top-level `errors` array. The next lesson on best practices draws that line in detail; for now the rule is: **business validation goes in the payload.**
+
+## The pattern, run for real
+
+The example implements `createReview(input: CreateReviewInput!): CreateReviewPayload!` with real validation. Press **Run**: the first call sends an invalid rating and gets back a populated `userErrors` with a `null` review; the second sends valid data and gets the review with an empty `userErrors`.
+
+export const payloadCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Review {
+      id: ID!
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type UserError {
+      message: String!
+      field: [String!]
+    }
+
+    type CreateReviewPayload {
+      review: Review
+      userErrors: [UserError!]!
+    }
+
+    input CreateReviewInput {
+      trackId: ID!
+      rating: Int!
+      body: String
+    }
+
+    type Mutation {
+      createReview(input: CreateReviewInput!): CreateReviewPayload!
+    }
+
+    type Query {
+      _empty: String
+    }
+  \`);
+
+  const store = { reviews: [] };
+  let nextId = 1;
+
+  const root = {
+    createReview: ({ input }) => {
+      const errors = [];
+      if (input.rating < 1 || input.rating > 5) {
+        errors.push({ message: 'Rating must be between 1 and 5.', field: ['rating'] });
+      }
+      if (errors.length > 0) {
+        // Validation failed: no entity, populated userErrors.
+        return { review: null, userErrors: errors };
+      }
+      const review = {
+        id: String(nextId++),
+        trackId: input.trackId,
+        rating: input.rating,
+        body: input.body ?? null,
+      };
+      store.reviews.push(review);
+      // Success: the entity, and an empty (but non-null) userErrors list.
+      return { review, userErrors: [] };
+    },
+  };
+
+  const op = \`
+    mutation Create(\$input: CreateReviewInput!) {
+      createReview(input: \$input) {
+        review { id rating }
+        userErrors { message field }
+      }
+    }
+  \`;
+
+  // 1) Invalid input — expect userErrors and a null review.
+  const bad = await graphql({
+    schema,
+    source: op,
+    rootValue: root,
+    variableValues: { input: { trackId: 't1', rating: 9 } },
+  });
+  console.log('invalid:', JSON.stringify(bad, null, 2));
+
+  // 2) Valid input — expect a review and an empty userErrors list.
+  const good = await graphql({
+    schema,
+    source: op,
+    rootValue: root,
+    variableValues: { input: { trackId: 't1', rating: 5, body: 'On repeat.' } },
+  });
+  console.log('valid:', JSON.stringify(good, null, 2));
+})();`;
+
+<NodeRunner client:visible code={payloadCode} />
+
+Read both results side by side. The invalid call returns `review: null` and a `userErrors` entry pointing at the `rating` field — and crucially, the top-level `errors` array is absent, because nothing went *wrong* with the request; the user simply sent bad data. The valid call returns the review and an empty `userErrors: []`. A client can branch on a single rule — "is `userErrors` empty?" — regardless of which mutation it called.
+
+<Callout title="Input in, payload out">
+Give every non-trivial mutation a single `input: SomeInput!` argument and a `SomePayload!` return type. The input lets you add optional fields later without breaking the signature. The payload, with a nullable entity and a non-null `userErrors` list, gives the client one consistent shape to handle every mutation: check `userErrors`, and if it is empty, use the entity. This is the convention nearly every large GraphQL API converges on — adopt it before you need it.
+</Callout>
+
+export const payloadDiagram = `flowchart LR
+  In["CreateReviewInput!"] --> Mut["createReview"]
+  Mut --> Valid{"valid?"}
+  Valid -->|"yes"| OK["payload: review set, userErrors []"]
+  Valid -->|"no"| Err["payload: review null, userErrors [...]"]`;
+
+export const quizPayload = [
+  {
+    q: 'What is the main advantage of accepting a single input object instead of many separate arguments?',
+    options: [
+      'It makes the mutation run faster',
+      'You can add optional fields later without changing the mutation signature, so old clients keep working',
+      'Input types can contain object types',
+      'It removes the need for a return type',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the payload pattern, why is the entity field (e.g. review) nullable while userErrors is a non-null list?',
+    options: [
+      'It is an arbitrary style choice with no meaning',
+      'On failure there is no entity to return (null), but userErrors is always present — just empty on success',
+      'Both should always be non-null',
+      'Lists cannot be non-null in GraphQL',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Which kind of problem belongs in the payload’s userErrors rather than the top-level errors array?',
+    options: [
+      'A malformed query that fails to parse',
+      'An authentication failure',
+      'Expected, recoverable business validation such as a rating out of range',
+      'A network timeout',
+    ],
+    answer: 2,
+  },
+];
+
+<Quiz client:visible id="mutations-and-subscriptions/input-payload-pattern" questions={quizPayload} />
+
+<ProgressTracker client:visible id="mutations-and-subscriptions/input-payload-pattern" />

@@ -1,0 +1,91 @@
+---
+title: เครื่องมือ, Federation และการสร้างเซอร์วิส
+description: 'จาก schema ที่ออกแบบไว้ ไปสู่ GraphQL service ที่มีเอกสาร ผ่านการ test รันได้จริง และประกอบเข้าด้วยกัน — workflow และเครื่องมือที่โมดูลนี้ครอบคลุม'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ทุกโมดูลก่อนหน้านี้สอนคุณให้ *ออกแบบ* schema ทั้ง types, resolvers, mutations, pagination, errors และ security โมดูลนี้พูดถึงทุกสิ่งที่เปลี่ยนการออกแบบที่ดีให้กลายเป็นเซอร์วิสที่ทีมงานจริงนำไปใช้งานได้ schema ที่อยู่ลำพังเป็นเพียงเอกสารหนึ่งฉบับ แต่ **service** คือเอกสารฉบับนั้นที่ถูกทำให้รันได้ มี type มีการ test และเมื่อทีมเดียวกับกระบวนการเดียวไม่เพียงพออีกต่อไป ก็ถูกแยกออกไปหลายระบบและประกอบกลับเป็นกราฟเดียว
+
+## จากแบบร่างสู่เซอร์วิส
+
+schema ที่ออกแบบไว้เปรียบเหมือนแบบร่างของสถาปนิก มันแม่นยำและเป็น contract แต่ไม่มีใครอาศัยอยู่ในแบบร่างได้ มีสี่สิ่งที่ขวางอยู่ระหว่างแบบร่างกับอาคารที่คนใช้งานได้จริง
+
+- **Implement** — เลือกว่า SDL กับโค้ด resolver จะสัมพันธ์กันอย่างไร SDL เป็น source of truth (schema-first) หรือถูก generate มาจากโค้ดของคุณ (code-first)? ตัวเลือกนี้กำหนดรูปร่างของ codebase ทั้งหมด
+- **Type & document** — เชื่อม schema เข้ากับ type system ของภาษาที่ใช้ เพื่อให้ compiler จับ resolver ที่ผิดได้ก่อนที่ client จะเจอ GraphQL Code Generator แปลง schema ให้เป็น TypeScript types ทั้งฝั่ง server และ client
+- **Test** — พิสูจน์ว่าเซอร์วิสทำงานถูกต้อง ทำ unit-test กับ resolver แต่ละตัว และ integration-test ด้วยการรัน operation จริงกับ schema แล้วตรวจสอบผลลัพธ์
+- **Federate** — เมื่อกราฟใหญ่เกินกว่าเซอร์วิสเดียวจะรับไหว ก็แยกออกเป็น **subgraphs** ที่ทีมต่าง ๆ เป็นเจ้าของ แล้วประกอบกลับเป็น **supergraph** เดียวหลัง gateway
+
+## โครงร่างของโมดูลนี้
+
+<Mermaid title="เส้นทางที่โมดูลนี้เดิน: การออกแบบป้อนให้การ implement ซึ่งถูก test และเมื่อขยายตัว ก็ถูก federate เป็นกราฟเดียว" code={moduleFlow} />
+
+อ่าน flow นั้นเป็น pipeline ที่คุณเริ่มไปแล้ว **Design** อยู่ข้างหลังคุณแล้ว ตอนนี้คุณตัดสินใจว่าจะ implement *อย่างไร* คุณทำให้ implementation นั้นมี **type** และผ่านการ **test** และเมื่อเซอร์วิสเดียวเริ่มแบกหลายทีมไม่ไหวเท่านั้น คุณจึงหันไปหา **federation** บทเรียนสุดท้ายดึงทุกอย่างมารวมกันใน TypeScript server ที่ทำงานได้จริง
+
+## แต่ละบทเรียนให้อะไรกับคุณ
+
+- **Schema-first vs code-first** — สองวิธีในการสร้าง GraphQL server, ข้อแลกเปลี่ยนของแต่ละแบบ และเดโมที่ทั้งสองสไตล์ให้ schema เดียวกันเป๊ะ
+- **Codegen and testing** — การ generate resolvers และ operations ที่มี type พร้อมกลยุทธ์ unit และ integration testing ที่คุณนำไปใช้ได้วันนี้
+- **Federation** — การแยกกราฟตาม domain ออกเป็น subgraphs, entities และ references และการประกอบ supergraph หลัง gateway
+- **Building with Yoga** — การ implement ด้วย TypeScript ที่ครบถ้วนและรันได้จริงด้วย GraphQL Yoga ซึ่งผูก typeDefs, resolvers และ context เข้าด้วยกัน
+
+เมื่อจบ คุณจะสามารถนำ schema ใด ๆ ที่คุณออกแบบไว้ในโมดูลก่อนหน้า มาตั้งขึ้นเป็น GraphQL service ที่มีเอกสาร มี type ผ่านการ test และหากจำเป็น ก็ federate ได้
+
+<Callout title="การออกแบบจำเป็น แต่ยังไม่เพียงพอ">
+schema ที่สวยงามแต่ไม่มีใครรันได้ ไม่มี compiler ตรวจสอบ และไม่มี test คอยป้องกัน ก็ยังเป็นเพียงแบบร่าง งานในโมดูลนี้คือสิ่งที่ทำให้ contract *น่าเชื่อถือ*: type เพื่อให้ compiler บังคับใช้ได้, test เพื่อให้จับ regression ได้ และการประกอบ (composition) เพื่อให้ contract ยังคงอยู่แม้หลายทีมจะสร้างอยู่เบื้องหลัง
+</Callout>
+
+export const moduleFlow = `flowchart LR
+  Design["Design (earlier modules)"]
+  Implement["Implement (schema-first / code-first)"]
+  Test["Type & Test (codegen + tests)"]
+  Federate["Federate (subgraphs + gateway)"]
+  Service["Running GraphQL service"]
+  Design --> Implement
+  Implement --> Test
+  Test --> Federate
+  Federate --> Service
+  Test --> Service`;
+
+export const quizIndex = [
+  {
+    q: 'ตามโมดูลนี้ อะไรคือสิ่งที่ขวางอยู่ระหว่าง schema ที่ออกแบบไว้กับเซอร์วิสที่รันอยู่?',
+    options: [
+      'แค่การเลือก hosting provider เท่านั้น',
+      'การ implement, การใส่ type/เอกสาร, การ test และ (เมื่อขยายตัว) การ federate',
+      'การเขียน schema ใหม่เป็น JSON',
+      'ไม่มีอะไรเลย — schema เป็นเซอร์วิสอยู่แล้ว',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ตามบทเรียนนี้ ทีมควรหันไปหา federation เมื่อใด?',
+    options: [
+      'ตลอดเวลา ตั้งแต่ resolver ตัวแรกเลย',
+      'เฉพาะเมื่อเซอร์วิสเดียวเริ่มแบกหลายทีมและหลาย domain ไม่ไหวเท่านั้น',
+      'ไม่มีวันเลย — federation ถูกเลิกใช้แล้ว',
+      'ก่อนออกแบบ type ใด ๆ',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'อะไรคือตัวเลือกหลักที่ขั้น "implement" บังคับให้คุณต้องตัดสินใจ?',
+    options: [
+      'จะใช้ database ตัวไหน',
+      'SDL เป็น source of truth (schema-first) หรือถูก generate มาจากโค้ด (code-first)',
+      'จะ listen ที่ port ไหน',
+      'จะรองรับ subscriptions หรือไม่',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="tooling-federation-building/index" />

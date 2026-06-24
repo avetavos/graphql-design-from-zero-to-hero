@@ -1,0 +1,187 @@
+---
+title: Building with Yoga
+description: 'A cohesive TypeScript GraphQL service with GraphQL Yoga — typeDefs, resolvers, and context wired into a runnable server that ties the whole course together.'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+This is where everything lands. You have designed schemas, written resolvers, added mutations, handled pagination and errors, secured the graph, and learned how to type, test, and federate it. This lesson assembles those ideas into one small, cohesive TypeScript service using **GraphQL Yoga** — a batteries-included GraphQL server that runs anywhere Node does — and gives you a runnable project to take with you.
+
+## The three pieces of a Yoga service
+
+A Yoga server is built from the same three pieces every GraphQL server has, now wired together explicitly:
+
+- **typeDefs** — the schema in SDL. This is your contract, written schema-first (the [Schema-First vs Code-First](/graphql-design-from-zero-to-hero/en/tooling-federation-building/schema-first-vs-code-first/) lesson). It holds a `Query` for reads and a `Mutation` for writes.
+- **resolvers** — the functions that fulfil each field. You met these in [Queries & Resolvers](/graphql-design-from-zero-to-hero/en/queries-and-resolvers/) and extended them with writes in the mutations module.
+- **context** — a per-request object Yoga builds once and threads into every resolver as the third argument. It is where request-scoped things live: the current user, a database handle, a request id. It is the clean place to put what [Security & Performance](/graphql-design-from-zero-to-hero/en/security-and-performance/) cares about.
+
+Yoga takes those three and turns them into an HTTP server with a built-in GraphiQL playground, sensible error handling, and subscriptions support — no boilerplate of your own.
+
+<Mermaid title="typeDefs and resolvers form the schema; Yoga adds context per request and serves it over HTTP." code={yogaFlow} />
+
+## How context threads through
+
+Context is the piece newcomers under-use. You define a `createContext` function that runs per request — read a header, look up the caller — and return an object. Yoga passes that object to every resolver as the third argument, so any resolver can read who is asking without re-parsing the request:
+
+```ts
+function createContext() {
+  // Runs once per request; the return value is the resolver context.
+  return { greetingPrefix: 'Hello' };
+}
+
+const resolvers = {
+  Query: {
+    // The third argument is the context object above.
+    hello: (_parent: unknown, args: { name: string }, ctx: { greetingPrefix: string }) =>
+      `${ctx.greetingPrefix}, ${args.name}!`,
+  },
+};
+```
+
+That keeps resolvers pure of request plumbing: they ask `ctx` for what they need, and the wiring lives in one place.
+
+## A runnable Yoga server — query, mutation, and context
+
+The project below is a complete `schema.ts`: it exports `typeDefs` (a small schema with one query and one mutation) and `resolvers` (with an in-memory store and a context-aware greeting). Press **Open in StackBlitz** to spin up the real GraphQL Yoga server in your browser, then open the GraphiQL playground it prints and try the operations.
+
+export const schemaCode = `// schema.ts — exports typeDefs (SDL) + resolvers for a GraphQL Yoga server.
+// The fixed index.ts wraps these with createSchema + createYoga over node http.
+
+export const typeDefs = /* GraphQL */ \`
+  type Message {
+    id: ID!
+    text: String!
+  }
+
+  type Query {
+    # A read that uses request context (see createContext below).
+    greeting(name: String!): String!
+    messages: [Message!]!
+  }
+
+  type Mutation {
+    # A write that mutates the in-memory store and returns the new node.
+    postMessage(text: String!): Message!
+  }
+\`;
+
+// In-memory store — stands in for a database in this demo.
+let nextId = 1;
+const messages: Array<{ id: string; text: string }> = [
+  { id: String(nextId++), text: 'Welcome to the graph' },
+];
+
+// Context is built once per request and threaded into every resolver as
+// the third argument. Here it carries a greeting prefix; in a real server
+// it would carry the authenticated user, a db handle, a request id, etc.
+export function createContext() {
+  return { greetingPrefix: 'Hello' };
+}
+
+export const resolvers = {
+  Query: {
+    greeting: (
+      _parent: unknown,
+      args: { name: string },
+      ctx: { greetingPrefix: string },
+    ) => \`\${ctx.greetingPrefix}, \${args.name}!\`,
+    messages: () => messages,
+  },
+  Mutation: {
+    postMessage: (_parent: unknown, args: { text: string }) => {
+      const message = { id: String(nextId++), text: args.text };
+      messages.push(message);
+      return message;
+    },
+  },
+};`;
+
+<NodeRunner node client:visible code={schemaCode} />
+
+Once it is running, try the read first:
+
+```graphql
+{ greeting(name: "Graph") messages { id text } }
+```
+
+`greeting` proves context flowed in — the `"Hello"` prefix came from `createContext`, not the resolver. Then run the write and read again:
+
+```graphql
+mutation { postMessage(text: "Built it end to end") { id text } }
+```
+
+Query `messages` once more and your new message is there. In a few lines you exercised a query, a mutation, request context, and an in-memory store — the same shape every production Yoga service has, just smaller.
+
+## Where this fits in the whole course
+
+This service is a microcosm of the entire book. The `typeDefs` are schema design. The resolvers are the queries-and-resolvers and mutations work. `context` is where security and performance hook in. Add codegen and tests from earlier in this module and you have a typed, tested service; split it by domain and put a gateway in front and you have the federation lesson. One small file, every idea.
+
+<Callout title="You can build a GraphQL service end to end">
+A GraphQL service is just three things wired together: **typeDefs** for the contract, **resolvers** to fulfil it, and **context** to thread per-request state. GraphQL Yoga turns those into a real HTTP server with a playground and no boilerplate. Everything else in this course — design, codegen, testing, federation, security — hangs off this skeleton. You started at zero with a single type; you can now stand up a documented, typed, testable, composable GraphQL service. That is the hero part.
+</Callout>
+
+export const yogaFlow = `flowchart TD
+  TypeDefs["typeDefs (SDL contract)"]
+  Resolvers["resolvers (fulfil each field)"]
+  Schema["Executable schema (createSchema)"]
+  Context["createContext (per request)"]
+  Yoga["createYoga"]
+  Http["HTTP server + GraphiQL"]
+  TypeDefs --> Schema
+  Resolvers --> Schema
+  Schema --> Yoga
+  Context --> Yoga
+  Yoga --> Http`;
+
+export const quizYoga = [
+  {
+    q: 'What three pieces make up the GraphQL Yoga service in this lesson?',
+    options: [
+      'A database, a cache, and a CDN',
+      'typeDefs, resolvers, and context',
+      'A gateway, a subgraph, and a supergraph',
+      'A query, a fragment, and a directive',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'When does Yoga run createContext, and how do resolvers receive its return value?',
+    options: [
+      'Once at startup; resolvers read it from a global',
+      'Once per request; resolvers receive it as the third argument',
+      'Once per field; resolvers receive it as the first argument',
+      'Never — context is optional and unused',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'In the demo, what does the greeting field demonstrate?',
+    options: [
+      'That mutations are disabled',
+      'That request context flowed into the resolver — the prefix came from createContext',
+      'That the schema has no Query type',
+      'That federation is required',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'Why is this small Yoga service called a microcosm of the whole course?',
+    options: [
+      'It uses every npm package available',
+      'Its typeDefs are design, resolvers are queries/mutations, and context is where security and performance hook in',
+      'It cannot be tested or federated',
+      'It only works with REST',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="tooling-federation-building/building-with-yoga" questions={quizYoga} />
+
+<ProgressTracker client:visible id="tooling-federation-building/building-with-yoga" />

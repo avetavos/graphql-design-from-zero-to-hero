@@ -1,0 +1,163 @@
+---
+title: การออกแบบ Schema
+description: 'Schema คือสัญญา — การออกแบบ type รอบ ๆ domain ของคุณแทนที่จะอิงกับฐานข้อมูล และส่วนประกอบพื้นฐานที่โมดูลนี้จะพาไปเรียนรู้'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ตอนนี้คุณรู้วิธีอ่าน GraphQL schema แล้ว โมดูลนี้พูดถึงการ *เขียน* schema ให้ดี Schema ไม่ใช่ผลพลอยได้จากฐานข้อมูลของคุณ — มันคือ **สัญญาสาธารณะ (public contract)** ระหว่างเซิร์ฟเวอร์ของคุณกับ client ทุกตัวที่จะเข้ามาคุยกับมัน เมื่อ field ใดถูกปล่อยออกไปแล้ว ย่อมมีคนพึ่งพามัน การออกแบบ schema ที่ดีคือศิลปะของการเลือก type และ field ที่อธิบาย **domain** ของคุณได้ชัดเจนจนสัญญายังคงซื่อสัตย์อยู่ได้แม้ผลิตภัณฑ์จะเติบโตขึ้น
+
+## Schema คือสัญญา
+
+เมื่อคุณออกแบบ REST endpoint ตัว URL และ JSON ที่มันคืนกลับมานั้นเชื่อมโยงกันอย่างหลวม ๆ — คุณสามารถแอบเพิ่ม field เข้าไปเงียบ ๆ โดยไม่มีใครสังเกตได้ แต่ GraphQL schema ตรงกันข้าม: มัน **ชัดเจนและมี type ที่เข้มงวด (strongly typed)** ทุก type ทุก field ทุก argument ถูกเขียนไว้และถูกตรวจสอบ Client สร้างคำสั่ง query โดยอิงกับสัญญาที่เขียนไว้นั้น เครื่องมือต่าง ๆ สร้างโค้ดจากมัน และเซิร์ฟเวอร์ของคุณก็สัญญาว่าจะรักษามันไว้
+
+คำสัญญานั้นคือหัวใจสำคัญทั้งหมด Schema ที่ออกแบบมาดีช่วยให้ทีม frontend ทำงานกับ type ที่พวกเขามองเห็นได้ ช่วยให้เครื่องมือดักจับข้อผิดพลาดได้ก่อน runtime และช่วยให้คุณคิดวิเคราะห์เรื่องการเปลี่ยนแปลงได้ ต้นทุนคือวินัย: คุณต้องตัดสินใจตั้งแต่ต้นว่าโลกนี้มีหน้าตาอย่างไร
+
+## ออกแบบรอบ ๆ domain ไม่ใช่รอบ ๆ ฐานข้อมูล
+
+ความผิดพลาดที่ใหญ่ที่สุดเพียงข้อเดียวที่นักออกแบบ schema มือใหม่มักทำคือการสะท้อนตาราง (table) ในฐานข้อมูลแบบหนึ่งต่อหนึ่ง ตารางถูกออกแบบมาเพื่อการจัดเก็บ — foreign key, ตาราง join, คอลัมน์แบบ snake_case, แฟล็กที่ denormalize แล้ว Schema ของคุณควรถูกออกแบบมาเพื่อ **คำถามที่ client ถาม**
+
+ลองนึกถึงแอปพลิเคชันห้องสมุดง่าย ๆ ฐานข้อมูลอาจเก็บตาราง `books` ตาราง `authors` และตาราง join `book_authors` Client ไม่สนใจตาราง join มันสนใจ `Book` ที่ *มี* `authors` และ `Author` ที่ *มี* `books` Schema แสดงความสัมพันธ์นั้นออกมาโดยตรง:
+
+```graphql
+type Book {
+  id: ID!
+  title: String!
+  authors: [Author!]!
+}
+
+type Author {
+  id: ID!
+  name: String!
+  books: [Book!]!
+}
+```
+
+ตาราง join หายไปจากสัญญา ความสัมพันธ์ที่ client เดินผ่านจริง ๆ — จากหนังสือไปยังผู้แต่งและกลับมา — กลายเป็น field ชั้นหนึ่ง (first-class) ในภายหลัง resolver จะเชื่อมช่องว่างไปยังที่จัดเก็บข้อมูล แต่ตัว *schema* พูดด้วยภาษาของ domain
+
+<Mermaid title="Schema คือกราฟของ type ใน domain และความสัมพันธ์ระหว่างกัน" code={schemaGraphDiagram} />
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+โมดูลนี้จะพาไปดูส่วนประกอบพื้นฐานทุกอย่างที่คุณต้องใช้ในการออกแบบ schema ที่สะอาด ทีละบทเรียน:
+
+1. **การออกแบบ Schema** (คุณอยู่ตรงนี้) — แนวคิดเรื่องสัญญาและการออกแบบรอบ ๆ domain
+2. **Types และ Fields** — object type, argument ของ field, description และการที่ type เชื่อมโยงกัน
+3. **Scalars และ Enums** — scalar แบบ built-in และแบบ custom และการเลือก enum แทน string แบบอิสระ
+4. **Interfaces และ Unions** — การจำลองรูปร่างที่ใช้ร่วมกันและทางเลือกแบบเลือกหนึ่ง โดยเลือกด้วย fragment
+5. **Inputs และ Nullability** — input object type สำหรับ argument, เครื่องหมาย non-null `!`, list และค่า default
+
+เมื่อจบแล้ว คุณจะสามารถนำไอเดียผลิตภัณฑ์ที่ยังคลุมเครือมาแปลงเป็น schema ที่แม่นยำ สื่อความหมายได้ดี และ query ได้อย่างน่าใช้
+
+## query ที่ออกแบบตาม domain รันได้จริง
+
+ตัวอย่างด้านล่างจำลองห้องสมุดข้างต้น ต่อสาย resolver และรัน query ที่ข้ามจาก `Book` ไปยัง `Author` ของมันและกลับมา กดปุ่ม **Run** เพื่อรันด้วยเอนจิน GraphQL จริง
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Types shaped around the domain — book and author — not around tables.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      books: [Book!]!
+    }
+
+    type Book {
+      id: ID!
+      title: String!
+      authors: [Author!]!
+    }
+
+    type Query {
+      book(id: ID!): Book
+    }
+  \`);
+
+  const author = { id: 'au1', name: 'Ada Quill' };
+  const book = { id: 'bk1', title: 'Designing the Graph', authors: [author] };
+  author.books = [book];
+
+  const root = {
+    book: ({ id }) => (id === 'bk1' ? book : null),
+  };
+
+  // Traverse the domain relationship: book -> authors -> their books.
+  const query = \`
+    {
+      book(id: "bk1") {
+        title
+        authors {
+          name
+          books { title }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+สังเกตว่า query อ่านได้เหมือนประโยคที่พูดถึง domain: หนังสือ ผู้แต่งของมัน และหนังสือที่ผู้แต่งเหล่านั้นเขียน ไม่มีตาราง join ไม่มี foreign key — มีแต่ความสัมพันธ์ที่มนุษย์สนใจ ความอ่านง่ายนั้นคือสิ่งที่การออกแบบ schema ที่ดีมอบให้คุณ
+
+<Callout title="ออกแบบสัญญา ไม่ใช่การจัดเก็บ">
+ก่อนที่คุณจะเขียน type สักตัว ให้ถามว่า: *client อยากรู้อะไร และแนวคิดเหล่านั้นสัมพันธ์กันอย่างไร?* ตั้งชื่อ type ของคุณตามแนวคิดใน domain เปิดเผยความสัมพันธ์ในรูปของ field และปล่อยให้ resolver — ไม่ใช่ schema — กังวลเรื่องวิธีจัดเก็บข้อมูล Schema ที่สะท้อนฐานข้อมูลของคุณจะปล่อยให้การตัดสินใจเรื่องการจัดเก็บรั่วไหลเข้าไปในสัญญาสาธารณะ ส่วน schema ที่สะท้อน domain จะคงเสถียรในขณะที่การจัดเก็บข้อมูลข้างใต้เปลี่ยนแปลงได้อย่างอิสระ
+</Callout>
+
+export const schemaGraphDiagram = `flowchart LR
+  Query["Query (entry point)"]
+  Book["type Book"]
+  Author["type Author"]
+  Scalars["Scalars: ID, String"]
+  Query -->|"book(id)"| Book
+  Book -->|"authors"| Author
+  Author -->|"books"| Book
+  Book --> Scalars
+  Author --> Scalars`;
+
+export const quizSchemaDesign = [
+  {
+    q: 'ทำไม GraphQL schema จึงถูกอธิบายว่าเป็นสัญญา?',
+    options: [
+      'มันคือเอกสารทางกฎหมายที่ทีม API ลงนาม',
+      'มันคือข้อตกลงที่ชัดเจนและมี type เข้มงวด ซึ่ง client สร้างขึ้นโดยอิงกับมัน และเซิร์ฟเวอร์สัญญาว่าจะรักษามันไว้',
+      'มันถูกเก็บไว้ใน transaction ของฐานข้อมูล',
+      'มันรับประกันว่าเซิร์ฟเวอร์จะไม่เปลี่ยนแปลงเลย',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ความผิดพลาดในการออกแบบ schema ที่พบบ่อยที่สุดซึ่งบทเรียนนี้เตือนถึงคืออะไร?',
+    options: [
+      'ใช้ scalar type มากเกินไป',
+      'สะท้อนตารางในฐานข้อมูลแบบหนึ่งต่อหนึ่ง แทนที่จะจำลอง domain',
+      'เขียน description บนทุก field',
+      'นิยาม type Query',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ในตัวอย่างห้องสมุด เกิดอะไรขึ้นกับตาราง join book_authors ใน schema?',
+    options: [
+      'มันกลายเป็น type ระดับบนสุด',
+      'มันหายไป ถูกแทนที่ด้วย field ความสัมพันธ์ authors และ books โดยตรง',
+      'มันกลายเป็น custom scalar',
+      'มันถูกจำลองเป็น enum',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="schema-design/index" questions={quizSchemaDesign} />
+
+<ProgressTracker client:visible id="schema-design/index" />

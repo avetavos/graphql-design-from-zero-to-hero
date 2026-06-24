@@ -1,0 +1,145 @@
+---
+title: GraphQL คืออะไร
+description: 'แนวคิดหลัก — endpoint เดียว schema ที่มี type กำกับในฐานะสัญญา query ที่ client เป็นผู้กำหนด และไม่มีการ over- หรือ under-fetching'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+ใน[บทเรียนก่อนหน้า](/graphql-design-from-zero-to-hero/th/graphql-foundations/) เราได้ร่างภาพ GraphQL ไว้ในประโยคเดียว ตอนนี้มาช้าลงสักหน่อยแล้วเรียกชื่อสี่แนวคิดที่ทำให้มันทำงานได้ ทำสี่ข้อนี้ให้กระจ่าง แล้วทุกอย่างที่เหลือในคอร์สนี้ก็เป็นเพียงการต่อยอดจากมัน
+
+## แนวคิดที่ 1 — endpoint เดียว
+
+REST API มักจะขยายตัวเป็นหนึ่ง URL ต่อหนึ่ง resource: เส้นทางหนึ่งสำหรับ users อีกเส้นทางสำหรับ posts ของพวกเขา และอีกเส้นทางสำหรับ comments ส่วน GraphQL API โดยทั่วไปจะเปิด **endpoint เดียว** (ตามธรรมเนียมคือ `/graphql`) สำหรับการอ่านและเขียนทั้งหมด คุณไม่ได้เดินทางระหว่าง URL แต่เดินทางระหว่าง **field** ของ graph ที่มี type กำกับ endpoint นั้นคงที่ สิ่งที่เปลี่ยนไปในแต่ละ request คือ query ที่คุณส่งไปยังมัน
+
+## แนวคิดที่ 2 — schema ที่มี type กำกับคือสัญญา
+
+GraphQL API ทุกตัวถูกนิยามด้วย **schema** ที่เขียนใน Schema Definition Language (SDL) schema จะระบุ type, field บนแต่ละ type และว่าแต่ละ field คืนค่าอะไร มันคือแหล่งความจริงเพียงหนึ่งเดียวที่ทั้ง client และ server ตกลงร่วมกัน:
+
+```graphql
+type Author {
+  name: String
+  country: String
+}
+
+type Book {
+  title: String
+  year: Int
+  author: Author
+}
+
+type Query {
+  featuredBook: Book
+}
+```
+
+เพราะ schema มี type กำกับและเครื่องอ่านได้ เครื่องมือต่าง ๆ จึงสามารถ validate query ก่อนที่มันจะรันด้วยซ้ำ เติม field ให้อัตโนมัติขณะที่คุณพิมพ์ และสร้าง type ของ TypeScript ให้โดยอัตโนมัติ สัญญานี้ถูกบังคับใช้จริง ไม่ใช่แค่เอกสารประกอบ
+
+## แนวคิดที่ 3 — client เป็นผู้กำหนด query
+
+query คือการเลือก field ที่สะท้อนรูปร่างของ schema client ตัดสินใจว่าต้องการ field ใดและจะลงลึกแค่ไหน ส่วน server สัญญาว่า response จะมีรูปร่างเดียวกับ request
+
+<Mermaid title="response สะท้อน query — field เดียวกัน การซ้อนชั้นเดียวกัน" code={shapeDiagram} />
+
+## แนวคิดที่ 4 — ไม่ over-fetching ไม่ under-fetching
+
+โหมดความล้มเหลวสองแบบนี้เป็นแรงขับเคลื่อนการออกแบบของ GraphQL เป็นอย่างมาก:
+
+- **Over-fetching** — endpoint คืนข้อมูลมากกว่าที่หน้าจอต้องการ เปลือง bandwidth และบังคับให้ client ละเลย field
+- **Under-fetching** — endpoint คืนข้อมูลน้อยเกินไป ทำให้ client ต้องส่ง request ตามมาอีกหลายครั้งเพื่อประกอบเป็นมุมมองเดียว
+
+เพราะ GraphQL client ระบุ field ที่ต้องการอย่างแม่นยำ — ครอบคลุม type ที่เกี่ยวข้อง ในการเดินทางไปกลับครั้งเดียว — มันจึงเลี่ยงปัญหาทั้งสองได้ คุณขอ title, year และ name ของ author แล้วนั่นคือสิ่งที่ได้กลับมาเป๊ะ ๆ
+
+## ดูมันเลือก field เฉพาะ
+
+รันตัวอย่างด้านล่าง schema มี `featuredBook` ที่มี field ให้เลือกมากมาย แต่ query จงใจขอเพียงไม่กี่ตัว ดูว่า response มี *เฉพาะ* สิ่งที่ขอไป
+
+export const selectCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Author {
+      name: String
+      country: String
+    }
+    type Book {
+      title: String
+      year: Int
+      pages: Int
+      author: Author
+    }
+    type Query {
+      featuredBook: Book
+    }
+  \`);
+
+  const root = {
+    featuredBook: () => ({
+      title: 'The Typed Graph',
+      year: 2024,
+      pages: 312,
+      author: { name: 'A. Resolver', country: 'Thailand' },
+    }),
+  };
+
+  // We could ask for title, year, pages, author { name, country }.
+  // Instead we ask only for what this view needs.
+  const query = \`
+    {
+      featuredBook {
+        title
+        author {
+          name
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={selectCode} />
+
+resolver คืน object ที่มีข้อมูลมากมายทั้ง `year`, `pages` และ `country` ของ author แต่ไม่มีตัวใดเลยปรากฏในผลลัพธ์ query ขอเพียง `title` และ `name` ของ `author` ที่ซ้อนอยู่ ดังนั้นเฉพาะแค่นั้น — และเฉพาะแค่นั้น — ที่ได้กลับมา ลองเพิ่ม `year` เข้าไปในการเลือกแล้วรันอีกครั้ง เพื่อดู response ขยายตามให้ตรงกัน
+
+<Callout title="ทำไมเรื่องนี้ถึงสำคัญ">
+schema คือคำสัญญาเกี่ยวกับ *สิ่งที่เป็นไปได้* ส่วน query คือคำขอสำหรับ *สิ่งที่ต้องการ ณ ตอนนี้* การแยกความกังวลสองเรื่องนี้ออกจากกันคือหัวใจของ GraphQL API ตัวเดียวกันสามารถให้บริการทั้ง desktop dashboard ที่หิวข้อมูลและหน้าจอ mobile ที่ประหยัด โดยไม่มีฝ่ายใดต้องประนีประนอมเพื่ออีกฝ่าย
+</Callout>
+
+export const shapeDiagram = `flowchart LR
+  Q["Query selection: featuredBook -> title, author -> name"] --> SRV["GraphQL server"]
+  SRV --> RES["Response: featuredBook -> title, author -> name"]
+  RES -.->|"same shape"| Q`;
+
+export const quizWhatIs = [
+  {
+    q: 'อะไรทำหน้าที่เป็นสัญญาระหว่าง client และ server ของ GraphQL?',
+    options: ['HTTP status code', 'schema ที่มี type กำกับซึ่งเขียนใน SDL', 'ไฟล์ database migration', 'CDN cache header'],
+    answer: 1,
+  },
+  {
+    q: 'หน้าจอ mobile ต้องการแค่ title แต่ endpoint บังคับให้มันต้องดาวน์โหลด record ทั้งหมด อาการแบบนี้เรียกว่าอะไร?',
+    options: ['Under-fetching', 'Over-fetching', 'Caching', 'Batching'],
+    answer: 1,
+  },
+  {
+    q: 'ใน GraphQL ใครเป็นผู้ตัดสินว่า field ใดจะปรากฏใน response?',
+    options: ['server โดยอิงจาก URL', 'client โดยการระบุ field ใน query', 'load balancer', 'database query planner'],
+    answer: 1,
+  },
+  {
+    q: 'โดยทั่วไป GraphQL API ใช้ endpoint กี่ตัวในการให้บริการข้อมูลทั้งหมด?',
+    options: ['หนึ่งตัวต่อหนึ่ง type', 'หนึ่งตัวสำหรับทั้ง graph', 'หนึ่งตัวต่อหนึ่ง HTTP verb', 'หนึ่งตัวต่อหนึ่งผู้ใช้ที่ล็อกอิน'],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="graphql-foundations/what-is-graphql" questions={quizWhatIs} />
+
+<ProgressTracker client:visible id="graphql-foundations/what-is-graphql" />

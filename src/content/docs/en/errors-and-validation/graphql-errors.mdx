@@ -1,0 +1,141 @@
+---
+title: GraphQL Errors
+description: 'The top-level errors array — message, locations, and path — and the difference between request errors and field execution errors.'
+sidebar:
+  order: 2
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+In the [previous lesson](/graphql-design-from-zero-to-hero/en/errors-and-validation/) we saw that a response can carry an `errors` array. Now we open that array up. Every entry in it is a structured object with a fixed set of keys, and learning to read those keys turns a vague "something broke" into a precise "this field, at this position in your query, failed for this reason."
+
+## Anatomy of an error entry
+
+Each element of `errors` has one required key and several optional ones the specification defines:
+
+- `message` — a human-readable string describing what went wrong. This is the only mandatory key.
+- `locations` — a list of `{ line, column }` positions pointing at the exact place in the **query text** that triggered the error.
+- `path` — a list of field names and list indices tracing from the root of the response down to the field that failed, for example `["currentTrack", "title"]`.
+- `extensions` — a map for machine-readable detail; we devote the whole next-but-one lesson to it.
+
+`message` is for humans; `locations` and `path` are for tools and clients that need to react programmatically. Together they let a client highlight the offending part of the query and route the failure to the right place in its UI.
+
+## Two families of error
+
+Not all errors arrive at the same stage. The specification distinguishes two families, and the distinction matters because it decides whether you get any `data` back at all.
+
+<Mermaid title="Request errors stop before execution; field errors happen during it." code={errorFamilies} />
+
+**Request errors** happen *before* execution begins. The query failed to parse, or it parsed but did not validate against the schema — an unknown field, a wrong argument type, a malformed selection. Because execution never started, the response has **no `data` key at all** (not even `null`); it carries only `errors`.
+
+**Field errors** (also called execution errors) happen *during* execution, when a resolver throws or returns an invalid value. By the time one of these fires, the server is already building `data`, so the response includes `data` with the failed field nulled out, alongside an `errors` entry for it. This is the partial-success case we will study in depth next lesson.
+
+## Watching a request error vs a field error
+
+The runner below runs two operations against the same schema. The first asks for a field that does not exist — a **validation failure**, so it is a request error with no `data`. The second runs a valid query whose resolver throws — a **field error**, so `data` comes back with the failed field as `null`. Compare the two outputs.
+
+export const errorsCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  const schema = buildSchema(\`
+    type Query {
+      nowPlaying: String
+    }
+  \`);
+
+  const root = {
+    nowPlaying: () => {
+      throw new Error('player offline');
+    },
+  };
+
+  // 1) Request error: "ghostField" is not on Query, so validation fails
+  //    BEFORE execution. Expect errors only, and NO data key.
+  const invalid = \`
+    {
+      ghostField
+    }
+  \`;
+  const requestError = await graphql({ schema, source: invalid, rootValue: root });
+
+  // 2) Field error: the query is valid, but the resolver throws DURING
+  //    execution. Expect data present with the field nulled, plus errors.
+  const valid = \`
+    {
+      nowPlaying
+    }
+  \`;
+  const fieldError = await graphql({ schema, source: valid, rootValue: root });
+
+  console.log('--- request error (no data key) ---');
+  console.log(JSON.stringify(requestError, null, 2));
+  console.log('--- field error (data present, field null) ---');
+  console.log(JSON.stringify(fieldError, null, 2));
+})();`;
+
+<NodeRunner client:visible code={errorsCode} />
+
+Look at the first block: there is no `data` key, only `errors`, and the entry carries `locations` pointing at where `ghostField` appeared in the query. Now the second block: `data` is present with `nowPlaying` set to `null`, and the matching error carries a `path` of `["nowPlaying"]` so a client knows exactly which field went missing. Same `errors` array, two very different situations — and you can tell them apart by whether `data` exists.
+
+<Callout title="A 200 can still carry errors">
+The HTTP status of a GraphQL response is mostly about the transport, not the operation. An operation that parsed, validated, and executed will typically return HTTP `200` even when half its fields threw. Never treat `200` as "everything worked." The truth lives in the `errors` array and in whether `data` is present — read those, not the status line.
+</Callout>
+
+export const errorFamilies = `flowchart TD
+  Query["Incoming query"]
+  Parse["Parse + validate"]
+  Exec["Execute resolvers"]
+  ReqErr["Request error: errors only, NO data key"]
+  FieldErr["Field error: data present (field null) + errors"]
+  OK["Success: data only"]
+  Query --> Parse
+  Parse -->|"fails"| ReqErr
+  Parse -->|"passes"| Exec
+  Exec -->|"resolver throws"| FieldErr
+  Exec -->|"all resolve"| OK`;
+
+export const quizGraphqlErrors = [
+  {
+    q: 'Which key is the only required key on a GraphQL error entry?',
+    options: ['path', 'locations', 'message', 'extensions'],
+    answer: 2,
+  },
+  {
+    q: 'What does the path key on an error entry describe?',
+    options: [
+      'The URL the request was sent to',
+      'The list of field names and indices from the response root to the failed field',
+      'The file path of the resolver on the server',
+      'The line and column in the query text',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'A query references a field that does not exist on the type. What does the response look like?',
+    options: [
+      'data is present with the field set to null, plus an error',
+      'errors only, with no data key, because validation fails before execution',
+      'An empty response body',
+      'data only, with the unknown field omitted',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'A valid query runs but one resolver throws. The response will:',
+    options: [
+      'Have no data key at all',
+      'Include data with the failed field nulled, plus an errors entry whose path points at it',
+      'Return HTTP 500 with no body',
+      'Drop the errors array entirely',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="errors-and-validation/graphql-errors" questions={quizGraphqlErrors} />
+
+<ProgressTracker client:visible id="errors-and-validation/graphql-errors" />

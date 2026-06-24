@@ -1,0 +1,157 @@
+---
+title: Pagination & Relationships
+description: 'วิธีที่ type ต่าง ๆ เชื่อมโยงกันจนกลายเป็นกราฟ และวิธีเปิดดูทีละหน้าของรายการยาว ๆ — relationship, offset pagination, Relay connection และปัญหา N+1'
+sidebar:
+  order: 1
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+GraphQL schema ไม่ใช่รายการ record แบน ๆ — แต่มันคือ **กราฟ** จุดมุ่งหมายทั้งหมดของระบบ type ก็คือ field บน type หนึ่งสามารถคืนค่าเป็น type *อื่น* ได้ ดังนั้น query เดียวจึงเดินจาก user ไปยัง post ของเขา แล้วไปยัง comment ของแต่ละ post ได้โดยไม่ต้องวิ่งไปกลับรอบที่สอง คำถามสองข้อจะตัดสินว่ากราฟนั้นใช้งานได้ดีแค่ไหน คือ type ต่าง ๆ **เชื่อมโยง** กันอย่างไร และคุณจะเปิดดูทีละหน้าของ **รายการยาว ๆ** ที่การเชื่อมโยงเหล่านั้นสร้างขึ้นมาได้อย่างไร
+
+โมดูลนี้จะตอบทั้งสองข้อ เราเริ่มจาก relationship — ซึ่งก็คือเส้นเชื่อม (edge) ของกราฟ — จากนั้นดูสองวิธีหลักในการทำ pagination และปิดท้ายด้วยกับดักด้านประสิทธิภาพที่ดักเกือบทุกคนในครั้งแรกที่ resolve รายการของข้อมูลที่เกี่ยวข้องกัน
+
+## โมดูลนี้ครอบคลุมอะไรบ้าง
+
+เมื่อจบโมดูลนี้คุณจะสามารถสร้างโมเดลการเชื่อมต่อระหว่าง type ต่าง ๆ เลือกสไตล์ pagination อย่างตั้งใจแทนที่จะเลือกตามความเคยชิน และรักษาให้ query ที่มี relationship เยอะ ๆ ยังคงเร็วอยู่ ทั้งห้าบทเรียนคือ
+
+1. **Pagination & Relationships** (คุณอยู่ที่นี่) — ภาพรวมและ query ที่ซ้อนกัน
+2. **Relationships** — one-to-many และ many-to-many ในรูปของ field ที่คืนค่าเป็น type และ list
+3. **Offset Pagination** — การเปิดทีละหน้าแบบ `limit`/`offset` อย่างง่าย และจุดที่มันพังลง
+4. **Relay Connections** — สเปก cursor connection ได้แก่ `edges`, `node`, `cursor`, `pageInfo`
+5. **N+1 and DataLoader** — ทำไม resolver ของ list จึงยิง query หนึ่งครั้งต่อหนึ่ง item และ batching แก้ปัญหานี้อย่างไร
+
+เนื้อหานี้ต่อยอดโดยตรงจากสิ่งที่คุณรู้อยู่แล้วเกี่ยวกับ[ระบบ type](/graphql-design-from-zero-to-hero/th/graphql-foundations/the-type-system/)และ resolver — relationship ก็เป็นเพียง field ที่มี type เป็น object type อีกตัวหนึ่ง และ pagination ก็เป็นเพียง argument บน field ที่เป็น list เท่านั้นเอง
+
+## รูปร่างของ relationship
+
+<Mermaid title="relationship คือ field บน type หนึ่งที่มีค่าเป็น type อีกตัวหนึ่ง" code={overviewDiagram} />
+
+อ่านไดอะแกรม: `Author` มี field `posts` ที่คืนค่าเป็น list ของ `Post` และแต่ละ `Post` ก็มี field `author` ที่ชี้กลับมา list คือที่ที่ pagination อาศัยอยู่ — `posts` แทบจะไม่เคยคืน post *ทุกอัน* ออกมา จึงรับ argument อย่าง `first` หรือ `limit` เพื่อขอดูเป็นช่วง ๆ ส่วนการเชื่อมแบบเดี่ยว (`author`) ไม่ต้องการ pagination เพราะมันคืนค่าได้มากที่สุดเพียงค่าเดียว
+
+## query แบบซ้อน รันจริง
+
+ตัวอย่างด้านล่างนิยาม type `Author` และ `Post` เชื่อมทั้งสองทิศทาง และรัน query หนึ่งที่ข้าม relationship — ดึงข้อมูล author พร้อมกับ post ของเขาเป็นช่วง ๆ กดปุ่ม **Run** เพื่อรันด้วย GraphQL engine ตัวจริง
+
+export const overviewCode = `(async () => {
+  const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
+
+  // Two types linked both ways. "posts" is a list and takes a "limit"
+  // argument; "author" is a single link and needs no pagination.
+  const schema = buildSchema(\`
+    type Author {
+      id: ID!
+      name: String!
+      posts(limit: Int): [Post!]!
+    }
+
+    type Post {
+      id: ID!
+      title: String!
+      author: Author!
+    }
+
+    type Query {
+      author(id: ID!): Author
+    }
+  \`);
+
+  const authors = {
+    a1: { id: 'a1', name: 'Ada Lin' },
+  };
+  const posts = [
+    { id: 'p1', title: 'Designing a graph', authorId: 'a1' },
+    { id: 'p2', title: 'Walking relationships', authorId: 'a1' },
+    { id: 'p3', title: 'Paging long lists', authorId: 'a1' },
+  ];
+
+  const root = {
+    author: ({ id }) => {
+      const a = authors[id];
+      if (!a) return null;
+      return {
+        ...a,
+        // The list resolver reads its own "limit" argument.
+        posts: ({ limit }) =>
+          posts
+            .filter((p) => p.authorId === a.id)
+            .slice(0, limit ?? posts.length)
+            .map((p) => ({
+              ...p,
+              // Cross back from Post to its Author.
+              author: () => authors[p.authorId],
+            })),
+      };
+    },
+  };
+
+  const query = \`
+    {
+      author(id: "a1") {
+        name
+        posts(limit: 2) {
+          title
+          author { name }
+        }
+      }
+    }
+  \`;
+
+  const result = await graphql({ schema, source: query, rootValue: root });
+  console.log(JSON.stringify(result, null, 2));
+})();`;
+
+<NodeRunner client:visible code={overviewCode} />
+
+ดูที่ผลลัพธ์ เราเริ่มที่ `author` หนึ่งคน ก้าวเข้าไปใน list ของ `posts` แบบ *เป็นช่วง* (มีแค่สองอัน เพราะ `limit: 2`) และจากแต่ละ post ก้าวกลับเข้าไปใน `author` ของมัน หนึ่ง request สามก้าวข้ามกราฟ ส่วนที่เหลือของโมดูลนี้ว่าด้วยการทำแต่ละก้าวเหล่านั้นให้ดี — สร้างโมเดลการเชื่อมโยงให้สะอาด และเปิดดู list ทีละหน้าอย่างคาดเดาได้
+
+<Callout title="สองงาน หนึ่ง query">
+ทุก query ที่มี relationship เยอะ ๆ ทำงานสองอย่างที่แตกต่างกัน คือ **traverse** การเชื่อมโยงระหว่าง type และ **paging** list ที่การเชื่อมโยงเหล่านั้นสร้างขึ้น แยกสองอย่างนี้ออกจากกันในหัวของคุณ การเชื่อมแบบเดี่ยว (`author`) ก็แค่ field ที่คืนค่าเป็น type ส่วน collection (`posts`) คือ field ที่คืนค่าเป็น list — และ list แทบจะต้องมี argument สำหรับ pagination เสมอ จัดการ traversal ให้ถูกต้องก่อน แล้วค่อยตัดสินใจว่าจะ paging อย่างไร
+</Callout>
+
+export const overviewDiagram = `flowchart LR
+  Author["type Author"]
+  Post["type Post"]
+  Author -->|"posts(first): [Post!]! — needs paging"| Post
+  Post -->|"author: Author! — single link"| Author`;
+
+export const quizIndex = [
+  {
+    q: 'ใน GraphQL relationship ระหว่างสอง type คืออะไรอย่างเป็นรูปธรรม?',
+    options: [
+      'ข้อจำกัด foreign-key ที่บังคับใช้โดยฐานข้อมูล',
+      'field บน type หนึ่งที่มีค่าที่คืนกลับเป็น object type อีกตัวหนึ่ง',
+      'REST endpoint แยกต่างหากที่ join ทรัพยากรทั้งสองเข้าด้วยกัน',
+      'directive พิเศษชื่อ @relation',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'field ใดต่อไปนี้น่าจะต้องการ argument สำหรับ pagination มากที่สุด?',
+    options: [
+      'field ที่คืน object ที่เชื่อมโยงเดี่ยว ๆ เช่น author: Author!',
+      'field ที่เป็น scalar เช่น title: String!',
+      'field ที่เป็น list เช่น posts: [Post!]!',
+      'field ที่เป็น ID เช่น id: ID!',
+    ],
+    answer: 2,
+  },
+  {
+    q: 'query เดียวของ GraphQL ทำให้ client ทำอะไรได้ข้าม relationship?',
+    options: [
+      'เดินจาก type หนึ่งเข้าไปยัง type ที่เชื่อมโยงกันใน request เดียว แทนที่จะวิ่งไปกลับหลายรอบ',
+      'ดึงได้แค่ type เดียวต่อ request เหมือน REST',
+      'ข้าม schema แล้วอ่านฐานข้อมูลโดยตรง',
+      'แทนที่ field ที่เป็น list ทั้งหมดด้วย scalar',
+    ],
+    answer: 0,
+  },
+];
+
+<Quiz client:visible id="pagination-and-relationships/index" questions={quizIndex} />
+
+<ProgressTracker client:visible id="pagination-and-relationships/index" />

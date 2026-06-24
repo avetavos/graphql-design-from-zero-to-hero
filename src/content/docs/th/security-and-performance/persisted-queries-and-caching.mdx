@@ -1,0 +1,153 @@
+---
+title: Persisted Queries & Caching
+description: 'การทำ allowlist ของ operation ด้วย persisted และ automatic persisted queries, response และ per-field caching, และ rate limiting — เปลี่ยน endpoint ที่ยืดหยุ่นให้เป็น endpoint ที่เร็วและคาดเดาได้'
+sidebar:
+  order: 5
+---
+
+import NodeRunner from '../../../../components/NodeRunner.tsx';
+import Mermaid from '../../../../components/Mermaid.astro';
+import Callout from '../../../../components/Callout.astro';
+import Quiz from '../../../../components/Quiz.tsx';
+import ProgressTracker from '../../../../components/ProgressTracker.tsx';
+
+คำถามสุดท้ายในสี่ข้อของเราคือ **เราเคยเห็นสิ่งนี้มาก่อนไหม?** GraphQL endpoint ที่ทำงานเดิมซ้ำสำหรับทุกคำขอนั้นทั้งช้าและเปิดเผยต่อความเสี่ยง เทคนิคในบทเรียนนี้ — persisted queries, caching, และ rate limiting — เปลี่ยนงานที่ทำซ้ำให้กลายเป็นงานที่ถูกและคาดเดาได้ และเป็นโบนัสที่หดพื้นผิวการโจมตีจากบทเรียนก่อนหน้าลงจนแทบไม่เหลือ
+
+## Persisted queries: ลงทะเบียนก่อน ส่ง ID ทีหลัง
+
+ใน GraphQL ปกติ client ส่ง query string เต็ม ๆ ในทุกคำขอ **persisted query** พลิกเรื่องนั้น: ตัว operation text ถูกลงทะเบียนกับ server ล่วงหน้าและได้รับ identifier สั้น ๆ (มักเป็น SHA-256 hash) ตอน runtime client ส่งแค่ ID เท่านั้น ได้ประโยชน์ใหญ่สองข้อตามมา:
+
+- **Security (allowlisting)** ถ้า server รับ *เฉพาะ* ID ที่มันลงทะเบียนไว้ ผู้โจมตีก็ไม่อาจคิดค้น query ที่ลึก, ใช้ alias, และแพงของบทเรียนก่อนได้อีกต่อไป ชุดของ operation ที่ execute ได้ถูกแช่แข็งให้เหลือพอดีกับสิ่งที่แอปของคุณเองส่งมา สิ่งนี้มักเรียกว่า **operation allowlist** หรือ **trusted documents**
+- **Performance** hash เล็ก ๆ เดินทางผ่านสายแทน query หลายกิโลไบต์ และ server สามารถข้ามการ parse text ที่มันเคยเห็นมาแล้วได้
+
+```ts
+// Build time: hash every operation your client ships and store the map.
+const persisted = {
+  // sha256(query) -> the trusted operation text
+  'b1946ac9...': 'query Me { me { id name } }',
+};
+
+// Runtime: the client sends only { id }. Reject anything unknown.
+function resolveOperation(id: string): string {
+  const query = persisted[id];
+  if (!query) {
+    throw new Error('PersistedQueryNotFound'); // not on the allowlist
+  }
+  return query;
+}
+```
+
+**Automatic Persisted Queries (APQ)** เป็นรูปแบบที่ได้รับความนิยม client ส่งแค่ hash ไปก่อนแบบมองโลกในแง่ดี; ถ้า server ไม่เคยเห็นมัน มันจะตอบ `PersistedQueryNotFound` แล้ว client ลองใหม่หนึ่งครั้งด้วย query เต็ม *พร้อม* hash เพื่อให้ server ลงทะเบียนมันได้ หลังจาก miss ครั้งแรกนั้น ทุก client ก็ใช้ hash สั้น ๆ APQ ยอดเยี่ยมสำหรับการหดขนาดคำขอ แต่พึงสังเกตว่ามัน *ไม่ใช่* allowlist ในตัวมันเอง — มันจะลงทะเบียนอะไรก็ตามที่ client ส่งมา สำหรับ security คุณต้องการ allowlist ที่ *ลงทะเบียนล่วงหน้า*; สำหรับ bandwidth ใช้ APQ
+
+<Mermaid title="Automatic Persisted Queries: การ miss ครั้งเดียวลงทะเบียน operation แล้วจากนั้นมีแต่ hash ที่เดินทาง" code={apqSequence} />
+
+## Caching ที่สองระดับ
+
+เพราะ persisted (หรือ allowlisted) operation เป็นชุดที่รู้จักและมีจำกัด มันจึง cache ได้อย่างสวยงาม
+
+- **Response caching** cache ทั้ง response สำหรับ operation + variables + viewer หนึ่ง ๆ เป็นเวลา TTL สั้น ๆ คำขอที่เหมือนกันภายในช่วงเวลานั้นถูกเสิร์ฟจาก memory หรือ shared store (เช่น Redis) โดยไม่ต้องรัน resolver แม้แต่ตัวเดียว ระวังให้ key ด้วย *ใครเป็นคนถาม* เพื่อให้คุณไม่เคยเสิร์ฟข้อมูลส่วนตัวของ user หนึ่งให้อีกคน — authentication context จากบทที่ 2 คือ key material ที่คุณต้องการพอดี
+- **Per-field (entity) caching** ละเอียดกว่า: cache แต่ละ object ตาม ID ด้วย TTL ของมันเอง เพื่อให้ `product(id: 5)` ที่แพงถูกนำกลับมาใช้ใหม่ข้าม query ต่าง ๆ มากมายที่บังเอิญพูดถึง product 5 เครื่องมืออย่าง `@cacheControl` directive ของ Apollo Server และ response-cache plugin ปล่อยให้ field ประกาศ `maxAge` และ scope เป็น `PUBLIC` หรือ `PRIVATE` ได้
+
+```graphql
+type Product {
+  id: ID!
+  # This field is cacheable for 60s and identical for everyone.
+  name: String! @cacheControl(maxAge: 60, scope: PUBLIC)
+  # Per-viewer data: cache privately, never share across users.
+  recommendation: String @cacheControl(maxAge: 30, scope: PRIVATE)
+}
+```
+
+schema ยังประกาศความเป็นไปได้ของ *static GET* ด้วย: เพราะ persisted query เป็นเพียง ID บวก variables มันจึงถูกส่งเป็น HTTP `GET` ได้ ซึ่งทำให้ CDN cache มันเหมือน URL อื่น ๆ ได้ — สิ่งที่คำขอ GraphQL แบบ `POST`-พร้อม-body ปกติทำไม่ได้
+
+## Rate limiting
+
+Caching ลด cost ที่ *ทำซ้ำ*; rate limiting จำกัด cost *รวม* ต่อ client แทนที่จะนับ raw HTTP request ตัว rate limiting ของ GraphQL ที่มีประสิทธิภาพที่สุดใช้จ่าย **complexity score** จากบทเรียนก่อน: ผู้เรียกแต่ละคนได้งบประมาณ (เช่น 2000 cost unit ต่อนาที) และทุก query หักตาม cost ที่คำนวณได้ของมัน client อาจทำ query ที่ถูกหลายตัวหรือ query ที่แพงไม่กี่ตัว แต่ไม่ใช่ query ที่แพงไม่จำกัด
+
+```ts
+// Token-bucket style budget keyed by the authenticated user.
+function charge(context, queryCost: number) {
+  const bucket = buckets.get(context.user?.id ?? context.ip);
+  if (bucket.remaining < queryCost) {
+    throw new GraphQLError('Rate limit exceeded', {
+      extensions: { code: 'RATE_LIMITED' },
+    });
+  }
+  bucket.remaining -= queryCost; // refilled on a schedule
+}
+```
+
+<Mermaid title="แนวป้องกันประกอบกัน: operation ที่อยู่ใน allowlist ถูกตรวจ cost, rate-limit, และเสิร์ฟจาก cache เมื่อเป็นไปได้" code={defenseStack} />
+
+เมื่อนำมาซ้อนกับบทเรียนก่อนหน้า ภาพรวมทั้งหมดน่าอุ่นใจ Authentication ระบุชื่อผู้เรียก, authorization คุม gate แต่ละ field, depth และ complexity analysis ปฏิเสธรูปทรงที่ใช้ในทางที่ผิด, persisted queries แช่แข็งชุด operation ที่อนุญาต, caching ขจัดงานที่ทำซ้ำ, และ rate limiting จำกัดสิ่งที่เหลือ แต่ละชั้นเรียบง่าย; เมื่อรวมกันมันทำให้ endpoint เดียวที่ยืดหยุ่นปลอดภัยและเร็วได้อย่างแท้จริง
+
+<Callout title="แช่แข็งสิ่งที่รัน, cache สิ่งที่ทำซ้ำ, จำกัดสิ่งที่เหลือ">
+ความยืดหยุ่นของ endpoint นั้นวิเศษในการพัฒนาและอันตรายใน production จงทำให้มันเชื่องด้วยสามนิสัย **Allowlist operation** ด้วย persisted (trusted) query เพื่อให้เฉพาะ operation ที่แอปของคุณเองส่งมาเท่านั้นที่ execute ได้ — และจำไว้ว่า APQ เพียงอย่างเดียวหด bandwidth แต่ไม่ทำ allowlist **Cache** ที่ระดับ response (key ด้วย viewer) และระดับ per-field (ด้วย `@cacheControl` TTL) และเสิร์ฟ persisted query ผ่าน `GET` เพื่อให้ CDN ช่วยได้ **Rate limit** ด้วยการใช้จ่าย complexity budget ไม่ใช่จำนวน raw request ทำทั้งสามอย่างแล้วคุณจะรักษาความสะดวกของ GraphQL ไว้ในขณะที่ขจัด footgun ด้าน security และ performance ส่วนใหญ่ออกไป
+</Callout>
+
+export const apqSequence = `sequenceDiagram
+  participant C as Client
+  participant S as Server
+  C->>S: send hash only
+  S-->>C: PersistedQueryNotFound (first time)
+  C->>S: retry with full query + hash
+  S->>S: register hash -> query
+  S-->>C: result
+  Note over C,S: Subsequent requests send only the hash`;
+
+export const defenseStack = `flowchart TD
+  Q["Incoming operation"] --> A["Allowlist check (persisted query ID)"]
+  A -->|"unknown id"| Rej["Reject: PersistedQueryNotFound"]
+  A -->|"known"| Cost["Complexity check"]
+  Cost --> RL["Rate limit: debit cost budget"]
+  RL -->|"over budget"| RLrej["Reject: RATE_LIMITED"]
+  RL --> Cache{"Cached response?"}
+  Cache -->|"hit"| Hit["Serve from cache (no resolvers)"]
+  Cache -->|"miss"| Exec["Execute, then cache by viewer + TTL"]`;
+
+export const quizPersisted = [
+  {
+    q: 'persisted-query allowlist ที่ลงทะเบียนล่วงหน้าช่วยปรับปรุง security อย่างไร?',
+    options: [
+      'มัน encrypt ทุก response',
+      'server execute เฉพาะ operation ที่มันลงทะเบียนไว้ล่วงหน้า ดังนั้นผู้โจมตีจึงคิดค้น query ใหม่ที่แพงไม่ได้',
+      'มันลบความจำเป็นในการ authentication',
+      'มันทำให้ทุก field เป็น non-null',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'ทำไม Automatic Persisted Queries (APQ) จึงไม่ใช่ allowlist ในตัวมันเอง?',
+    options: [
+      'เพราะมันทำงานได้แค่ผ่าน WebSockets เท่านั้น',
+      'เพราะมันจะลงทะเบียนและรัน query อะไรก็ตามที่ client ส่งมาตอน miss ครั้งแรก',
+      'เพราะมันปิดการ caching',
+      'เพราะมันต้องใช้สิทธิ admin',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'เมื่อทำ response caching ข้อมูลส่วนตัว cache key ต้องมีอะไรอยู่ด้วย?',
+    options: [
+      'เฉพาะชื่อ operation เท่านั้น',
+      'ใครเป็นคนถาม (viewer/context) เพื่อให้ข้อมูลของ user หนึ่งไม่เคยถูกเสิร์ฟให้อีกคน',
+      'hostname ของ server',
+      'timestamp ปัจจุบันถึงระดับมิลลิวินาที',
+    ],
+    answer: 1,
+  },
+  {
+    q: 'หน่วยที่มีประสิทธิภาพที่สุดในการ rate-limit GraphQL API คืออะไร?',
+    options: [
+      'จำนวน raw HTTP request',
+      'complexity (cost) ที่คำนวณได้ของแต่ละ query หักจากงบประมาณต่อ client',
+      'ขนาด byte ของ response เท่านั้น',
+      'จำนวน field ใน schema',
+    ],
+    answer: 1,
+  },
+];
+
+<Quiz client:visible id="security-and-performance/persisted-queries-and-caching" questions={quizPersisted} />
+
+<ProgressTracker client:visible id="security-and-performance/persisted-queries-and-caching" />
