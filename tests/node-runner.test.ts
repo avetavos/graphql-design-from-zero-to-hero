@@ -14,10 +14,18 @@ describe('buildJsSrcdoc', () => {
 });
 
 describe('buildNodeProject', () => {
-  it('puts the snippet at index.js with a node template', () => {
-    const p = buildNodeProject("console.log(1)");
-    expect(p.files['index.js']).toBe('console.log(1)');
+  it('puts the lesson code at schema.ts with a node template', () => {
+    const code = "export const typeDefs = `type Query { hello: String }`;";
+    const p = buildNodeProject(code);
+    expect(p.files['schema.ts']).toBe(code);
     expect(p.template).toBe('node');
     expect(p.files['package.json']).toContain('"type": "module"');
+  });
+  it('generates a GraphQL Yoga server entry that imports the schema', () => {
+    const p = buildNodeProject('');
+    expect(p.files['package.json']).toContain('graphql-yoga');
+    expect(p.files['index.ts']).toContain('createYoga');
+    expect(p.files['index.ts']).toContain("from './schema'");
+    expect(p.files['README.md']).toBeTruthy();
   });
 });
