@@ -1,6 +1,8 @@
-# Node.js Deep Dive
+# GraphQL Design — From Zero to Hero
 
-A bilingual (EN/TH), interactive, standalone course that teaches the **Node.js runtime and server-side JavaScript** in depth — from JavaScript essentials and the event loop to streams, core APIs, modules/npm, and tooling. It is language-core focused (the runtime and the language), not a framework tutorial.
+A bilingual (EN/TH), standalone, beginner→advanced course on **designing GraphQL APIs**, taught with **TypeScript**. From the type system & SDL through schema design, resolvers, mutations & subscriptions, Relay cursor pagination, the N+1 problem & DataLoader, errors, security & performance, and tooling/federation + a working GraphQL Yoga implementation. **GraphQL runs in the browser** (the reference `graphql` package executes queries against in-memory schemas), with full Yoga servers in StackBlitz. Diagrams are **Mermaid**, and there's a **read-mode** toggle.
+
+All content is original.
 
 ## Tech Stack
 
@@ -8,9 +10,10 @@ A bilingual (EN/TH), interactive, standalone course that teaches the **Node.js r
 | ----- | ---------- |
 | Site framework | [Astro 6](https://astro.build) + [Starlight 0.40](https://starlight.astro.build) |
 | UI islands | [Preact](https://preactjs.com) (via `@astrojs/preact`) |
-| Runnable code | **Hybrid `<NodeRunner>`** — pure-JS snippets run live in a sandboxed iframe (editable; `console.*` output captured); Node-API snippets show an "Open in StackBlitz" button that opens a real Node project (WebContainer) via the StackBlitz SDK |
+| Hands-on | **`<NodeRunner>`** runs JS in a sandboxed iframe with console capture; GraphQL executes for real via a dynamic `import('https://esm.sh/graphql@16')` (async IIFE). `node` mode opens a runnable **GraphQL Yoga** TS server in StackBlitz (`node-runner.ts` builds the project; lesson `code` is `schema.ts` exporting `typeDefs` + `resolvers`). |
+| Diagrams | Client-side, theme-aware **Mermaid** (`<Mermaid>` + `public/enhance.js`) |
+| Reading | **Read-mode** toggle (hides sidebar/TOC, widens content) via `public/enhance.js` |
 | Unit tests | [Vitest](https://vitest.dev) + `@testing-library/preact` |
-| Styling | Starlight default + custom CSS (`src/styles/custom.css`) |
 | i18n | Starlight built-in, `defaultLocale: 'en'`, locales: `en` + `th` |
 
 ## Commands
@@ -23,58 +26,41 @@ npm run preview    # Preview the production build locally
 npm test           # Run Vitest unit tests
 ```
 
-> No runner build step — JavaScript runs in the browser; Node examples run on StackBlitz. No backend.
-
 ## Content Structure
 
 ```
 src/content/docs/
-  en/                  # English — served at /en/...
-    js-essentials/
-    event-loop-async/
-    core-apis/
-    streams/
-    http-networking/
-    modules-npm/
-    testing-tooling/
-    index.mdx          # EN landing (splash)
-  th/                  # Thai — served at /th/...
+  en/                              # English — served at /en/...
+    graphql-foundations/           # what GraphQL is, the type system, request lifecycle
+    schema-design/                 # types, scalars, enums, interfaces, unions, inputs, nullability
+    queries-and-resolvers/         # queries, resolver chain, arguments/variables, fragments
+    mutations-and-subscriptions/   # mutation design, input/payload, subscriptions
+    pagination-and-relationships/  # relationships, offset & Relay connections, N+1/DataLoader
+    errors-and-validation/         # errors array, partial results, extensions, validation
+    security-and-performance/      # auth context, authorization, depth/complexity, caching
+    tooling-federation-building/   # schema-first vs code-first, codegen, testing, federation, Yoga
+    index.mdx                      # EN landing (splash)
+  th/                              # Thai — served at /th/...
     (same module directories)
-    index.mdx          # TH landing (splash)
+    index.mdx
 ```
 
-### The 7 Modules
+## Components & Lesson Template
 
-| Directory | Module | Runner |
-| --------- | ------ | ------ |
-| `js-essentials` | JavaScript Essentials | in-browser JS (modules lesson: node) |
-| `event-loop-async` | Event Loop & Async | in-browser JS |
-| `core-apis` | Core APIs (process/Buffer/fs/events) | node (StackBlitz) |
-| `streams` | Streams & I/O | node (StackBlitz) |
-| `http-networking` | HTTP & Networking | node (StackBlitz) |
-| `modules-npm` | Modules & npm | code / node |
-| `testing-tooling` | Testing & Tooling | code / node |
+- **`NodeRunner.tsx`** `{ code, node? }` — sandboxed-iframe JS runner with console capture; in-browser GraphQL runs via the esm.sh dynamic import. `node` mode → a runnable GraphQL Yoga StackBlitz project (`node-runner.ts`). Runnable demos are a hoisted `export const ...Code` + `<NodeRunner code={...} />` (add `node` for a Yoga server, where `code` exports `typeDefs` + `resolvers`).
+- **`Mermaid.astro`** `{ code, title }`, **`Callout.astro`** `{ title }`, **`Quiz.tsx`** `{ id, questions }` (0-based `answer`, field `q`), **`ProgressTracker.tsx`** `{ id }`.
 
-### Lesson Template
-
-frontmatter (`title`, `description`, `sidebar.order`) → imports → concept intro → prose → hoisted `export const ...Code` + `<NodeRunner code={...} [node] />` → `<Callout>` (key point / gotcha) → `<Quiz>` → `<ProgressTracker>` (last). IDs follow `<module>/<slug>`.
+Per-lesson order: frontmatter → imports → concept intro → prose (fenced `graphql`/`ts`/`json` + `<Mermaid>`) → `export const ...Code` + `<NodeRunner>` → `<Callout>` → `<Quiz>` → `<ProgressTracker>` (last). IDs follow `<module>/<slug>`.
 
 > **⚠️ Authoring notes:**
-> - **`<NodeRunner code={...} />`** runs JS in the browser (editable, click Run). **`<NodeRunner code={...} node />`** is for snippets needing the Node runtime (process/Buffer/fs/http/streams/require/npm) — code + "Open in StackBlitz", no in-browser run.
-> - **In `export const` snippets, prefer string concatenation over template literals** to avoid escaping. If you must use a template literal, escape interpolation as `\${...}` and backticks as `` \` ``.
-> - **Never put a bare `{...}` in prose or headings** — keep object/destructuring examples in backtick code spans or fenced ```js blocks.
-> - **Internal links must include the base path**, e.g. `/nodejs-deep-dive/en/event-loop-async/`.
-> - **Do NOT run a `\n`/`\t`-doubling escaping codemod** on this content — it corrupts indentation. Verify by building + browser-testing instead.
-
-## How the Hybrid Runner Works
-
-`<NodeRunner>` (`src/components/NodeRunner.tsx`) has two modes, both backed by pure helpers in `src/components/node-runner.ts`:
-
-- **JS mode (default):** `buildJsSrcdoc(code)` builds an iframe `srcdoc` that overrides `console.*` to print into the page and runs the snippet in an async IIFE. Sync, promises, microtasks, and `setTimeout` all execute with correct ordering. Editable + re-runnable.
-- **Node mode (`node` prop):** `buildNodeProject(code)` builds a minimal Node project (`package.json` with `"type":"module"` + `index.js`); the button calls the StackBlitz SDK's `openProject` to launch it in a WebContainer. Falls back to opening `stackblitz.com/fork/node` + copying the code.
+> - **In `export const` snippets:** escape `${`→`\${` and nested backticks as `` \` `` — the SDL inside `buildSchema(\`...\`)` and multi-line queries use backticks; double-escape `\\n`. Fenced blocks are literal. SDL/queries go in fenced ` ```graphql `.
+> - **In-browser GraphQL pattern:** `(async () => { const { graphql, buildSchema } = await import('https://esm.sh/graphql@16'); ... console.log(JSON.stringify(result, null, 2)); })();`
+> - **Never a bare `{...}`/`${...}` in prose** — GraphQL selection sets `{ field }`, SDL, and JS objects live in code spans / fenced blocks / `export const`. **Diagrams are Mermaid, not ASCII.**
+> - **Internal links include the base path and matching locale** (`/graphql-design-from-zero-to-hero/en/...` on EN, `/th/...` on TH).
+> - Use **current GraphQL** (SDL, Relay cursor connections, DataLoader, `GraphQLError` extensions, depth/complexity limiting, federation, GraphQL Yoga, GraphQL Code Generator).
 
 ## Deployment
 
-Fully static (`output: 'static'`) → `dist/`. Deploys to GitHub Pages via `.github/workflows/deploy.yml` (build with `withastro/action` on Node 22, publish with `actions/deploy-pages`).
+Fully static → `dist/`. Base path in `astro.config.mjs`: `site: 'https://avetavos.github.io'`, `base: '/graphql-design-from-zero-to-hero'`.
 
-One-time setup: create the repo, push `main`, set **Settings → Pages → Source: GitHub Actions**. The base path in `astro.config.mjs` is `site: 'https://avetavos.github.io'`, `base: '/nodejs-deep-dive'`. If you change `base`, update the base-prefixed links in `src/content/docs/{en,th}/index.mdx`.
+Deployed to GitHub Pages via **branch-source** (`gh-pages`): build `dist/`, add `.nojekyll`, push to `gh-pages`, set **Settings → Pages → Source: Deploy from a branch → `gh-pages` / `/`**, then **request a Pages build** (`gh api -X POST repos/<owner>/<repo>/pages/builds`) — flipping the source alone does not trigger one. If you change `base`, update the base-prefixed links in `src/content/docs/{en,th}/index.mdx`.
