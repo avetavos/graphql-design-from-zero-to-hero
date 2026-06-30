@@ -76,6 +76,40 @@ export const partialCode = `(async () => {
 
 อ่าน output เป็นเรื่องราวของการกักกัน `bio` เป็น nullable ดังนั้นเมื่อ resolver ของมัน throw server จึงตั้งมันเป็น `null` และบันทึก error หนึ่งตัวด้วย `path: ["profile", "bio"]` ที่สำคัญคือ `displayName` ไม่ถูกแตะต้อง คุณยังได้ `"Ada Lovelace"` อยู่ นั่นคือ **partial data** นั่นคือ response ที่ใช้ได้แม้จะมีความล้มเหลว ถ้า `bio` ถูกประกาศเป็น `bio: String!` error จะลอยขึ้นไปยัง `profile` (nullable) แล้ว null ทั้ง profile object แทนที่จะเป็นแค่ field เดียว
 
+| Benefits | Trade-offs |
+|---|---|
+| field บางตัว fail ไม่ทำให้ query ทั้งหมด fail | client ต้องจัดการ partial data + error พร้อมกัน |
+| user ยังเห็นข้อมูลที่ fetch ได้แม้บาง field error | null propagation อาจทำให้ field ที่ non-null null ได้ถ้า parent null |
+| resolver แต่ละตัวทำงาน independent | partial success ยาก track ใน monitoring |
+| เหมาะกับ non-critical field เช่น recommendation, analytics | client ที่ไม่ check error อาจแสดง incomplete data โดยไม่รู้ |
+
+## Common Mistakes
+
+**ไม่ระบุว่า Field ไหน Non-critical**
+
+อาการ:
+- critical field (price, stock) และ non-critical field (related product) มี nullability เดียวกัน
+- field ที่ควร fail gracefully กลับทำให้ response ทั้งหมด null
+- ทำ non-critical field เป็น nullable และออกแบบ null state ใน UI
+
+**Null Propagation ที่ไม่คาดคิด**
+
+อาการ:
+- `order.payment!.status` — payment เป็น non-null
+- ถ้า payment resolver fail → payment เป็น null → ทำให้ order เป็น null ทั้งหมด
+- ออกแบบ non-null อย่างระวัง — field ที่อาจ fail ควร nullable
+
+> 💡 Real World Example
+>
+> **Netflix:**
+> - หน้า home แสดง recommendation section — ถ้า recommendation service ล้ม
+> - section นั้น null แต่ส่วนอื่น (hero, trending) ยังแสดงได้
+> - partial result ทำให้ degraded experience ดีกว่า full error
+>
+> **Airbnb:**
+> - listing page มีหลาย section (price, reviews, host, amenities)
+> - แต่ละ section resolver แยกกัน — section ที่ fail ไม่ block section อื่น
+
 <Callout title="nullability คือเครื่องมือกักกันความล้มเหลว">
 ทุก `!` ที่คุณเพิ่มเข้าไปคือการตัดสินใจเรื่องทั้งการมีอยู่และการแพร่กระจาย field แบบ non-null ให้การรับประกันที่แข็งแกร่งแก่ client แต่ก็เปลี่ยนความล้มเหลวของ resolver เพียงตัวเดียวให้กลายเป็นการล่มทั้ง subtree เมื่อมัน throw ส่วน field แบบ nullable ทำให้ client ต้องเสียการ์ดหนึ่งตัวแต่กักความล้มเหลวเอาไว้และเปิดทางให้เกิด partial responses ออกแบบเส้นแบ่งนี้อย่างจงใจ ทำให้ leaf ที่คุณผลิตได้เสมอเป็น non-null และเก็บ field ที่มีแนวโน้มล้มเหลวหรือเป็นทางเลือกไว้เป็น nullable เพื่อให้ dependency ที่ไม่เสถียรเพียงตัวเดียวไม่สามารถลบทั้ง query ให้ว่างเปล่าได้
 </Callout>

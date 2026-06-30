@@ -114,6 +114,44 @@ export const restCompareCode = `(async () => {
 
 เลือก **GraphQL** เมื่อ client หลากหลายต้องการชิ้นส่วนข้อมูลชุดเดียวกันในแบบที่แตกต่างกัน เมื่อมุมมองต่าง ๆ รวบรวม resource ที่เกี่ยวข้องกันหลายตัว เมื่อทีมผลิตภัณฑ์ทำงานเร็วและต้องการเพิ่ม field โดยไม่ต้องประสานงานการปล่อย endpoint หรือเมื่อ strong typing และ introspection ทั่วทั้งพื้นผิวของ API นำมาซึ่งประโยชน์ที่แท้จริง
 
+| | REST | GraphQL |
+|---|---|---|
+| Endpoint | หลาย endpoint | single `/graphql` |
+| Response | server กำหนด | client เลือก field |
+| Versioning | `/v1/`, `/v2/` | schema evolution + deprecation |
+| Caching | HTTP cache ง่าย | ต้องใช้ persisted query |
+| Type Safety | OpenAPI (optional) | built-in schema |
+| Learning Curve | ต่ำ | สูงกว่า |
+
+| ใช้ REST เมื่อ | ใช้ GraphQL เมื่อ |
+|---|---|
+| public API ที่ต้องการ HTTP cache | หลาย client ต้องการ data shape ต่างกัน |
+| simple CRUD ที่ endpoint ชัดเจน | mobile app ที่ bandwidth จำกัด |
+| team ไม่มี GraphQL experience | schema ซับซ้อนและมี relationship หลายชั้น |
+| file upload heavy | ต้องการ type-safe client code gen |
+
+## Common Mistakes
+
+**ใช้ GraphQL เพราะ hype ไม่ใช่เพราะ problem**
+อาการ:
+- API มี 5 endpoint ที่ชัดเจน แต่เปลี่ยนไปใช้ GraphQL เพราะ "modern"
+- ทีมเสียเวลา setup GraphQL แทนที่จะ ship feature
+
+**คิดว่า GraphQL เร็วกว่า REST เสมอ**
+อาการ:
+- ไม่ implement DataLoader — N+1 ทำให้ GraphQL ช้ากว่า REST มาก
+- ไม่มี query depth limit — client ส่ง deeply nested query ทำให้ server overload
+
+> 💡 Real World Example
+>
+> **Twitter:**
+> - ใช้ REST API มาตลอดและ serve ได้ดี — ไม่จำเป็นต้องเปลี่ยน
+> - พิสูจน์ว่า REST ยังเหมาะสำหรับ high-traffic public API
+>
+> **Airbnb:**
+> - ใช้ GraphQL Federation สำหรับ internal API ระหว่าง team
+> - แต่ยัง expose REST สำหรับ partner API ที่ต้องการ HTTP caching
+
 <Callout title="GraphQL ไม่ใช่กระสุนเงิน">
 การนำ GraphQL มาใช้คือการแลก HTTP caching ที่ง่ายและแบบจำลองทางความคิดที่คุ้นเคย เพื่อแลกกับ query ที่ขับเคลื่อนโดย client และ graph ที่มี type กำกับ คุณยังรับมรดกความกังวลใหม่ ๆ มาด้วย — ปัญหา N+1 query, การจำกัด query-cost และ authorization ที่ต้องทำงานต่อ field เลือกมันเพราะข้อแลกเปลี่ยนของมันตรงกับปัญหาของคุณ ไม่ใช่เพราะมันใหม่กว่า
 </Callout>

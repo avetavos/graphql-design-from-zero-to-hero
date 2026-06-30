@@ -133,6 +133,37 @@ export const nestedCode = `(async () => {
 
 response เป็น object ที่ซ้อนกัน `currentUser` เก็บ `name` และ `favoriteTrack` ส่วน `favoriteTrack` เก็บ `title` ทุกปีกกาที่คุณเปิดใน query สร้างการซ้อนหนึ่งระดับในผลลัพธ์ ลองลบบรรทัด `title` ด้านในออก server จะปฏิเสธ query เพราะ field ที่คืน `Track` object type ต้องมี selection set
 
+| Benefits | Trade-offs |
+|---|---|
+| client ระบุเฉพาะ field ที่ต้องการ — ไม่รับ payload ส่วนเกิน | query syntax ใหม่สำหรับ developer ที่คุ้น REST |
+| nested query ครั้งเดียวแทนหลาย REST call | deeply nested query อาจทำให้ server overload |
+| operation name ช่วย debug และ monitor | ไม่มี query depth limit = security risk |
+| variables ทำให้ query reuse ได้และป้องกัน injection | client ต้องเรียนรู้ fragment, alias, variable syntax |
+
+## Common Mistakes
+
+**Query String แบบ Dynamic แทน Variable**
+อาการ:
+- `` `query { user(id: "${userId}") { name } }` `` — string interpolation ใน query
+- เสี่ยง injection และ prevent query caching
+- ใช้ variable เสมอ: `query GetUser($id: ID!) { user(id: $id) { name } }`
+
+**ไม่ตั้งชื่อ Operation**
+อาการ:
+- ส่ง anonymous query เช่น `query { ... }` แทน `query GetUserProfile { ... }`
+- monitoring tool แสดงแค่ "anonymous" ทำให้ trace ยาก
+- ตั้งชื่อทุก operation เพื่อ tracing และ debugging
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - ทุก query ใน GitHub documentation มีชื่อ operation ชัดเจน
+> - ช่วยให้ rate limiting และ monitoring ทำงานได้แม่นยำ
+>
+> **Apollo Client:**
+> - operation name ใช้เป็น cache key
+> - named query ทำให้ Apollo Studio tracking ทำงานได้
+
 <Callout title="query คือรูปร่างของ response">
 GraphQL query และ response ของมันมีโครงสร้างเหมือนกัน scalar เป็น leaf และจบกิ่ง ส่วน object type เปิด selection set ใหม่และเดินต่อ เมื่อคุณเขียน query คุณกำลังวาด tree ที่ server จะเติมให้พอดีเป๊ะ ตั้งชื่อ operation ของคุณ ซ้อนเข้าไปเฉพาะใน object type เท่านั้น แล้ว response จะไม่มีวันทำให้คุณประหลาดใจ
 </Callout>

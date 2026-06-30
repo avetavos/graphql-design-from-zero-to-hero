@@ -81,6 +81,39 @@ export const errorsCode = `(async () => {
 
 ดูที่ block แรก ไม่มี `data` key มีแค่ `errors` และ entry นั้นพก `locations` ที่ชี้ไปยังจุดที่ `ghostField` ปรากฏใน query ทีนี้ดู block ที่สอง `data` มีอยู่โดย `nowPlaying` ถูกตั้งเป็น `null` และ error ที่ตรงกันพก `path` เป็น `["nowPlaying"]` เพื่อให้ client รู้ได้แน่ชัดว่า field ไหนหายไป `errors` array เดียวกันแท้ๆ แต่เป็นสองสถานการณ์ที่ต่างกันมาก และคุณแยกแยะมันได้จากว่ามี `data` อยู่หรือไม่
 
+| Benefits | Trade-offs |
+|---|---|
+| error array ใน response — partial success เป็นไปได้ | error และ data ผสมกันใน response เดียว — client ต้องจัดการทั้งคู่ |
+| `extensions` field ให้ metadata เพิ่ม เช่น error code | developer มักลืม check `errors` array ทำให้ bug ซ่อน |
+| schema validation error ชัดเจน — field ไหน type ไหนผิด | HTTP 200 เสมอแม้มี error — monitoring ที่ดู HTTP status อาจไม่รู้ |
+| path ใน error บอกว่า field ไหนใน query ที่เกิด error | error format ต่างกันระหว่าง library — ต้อง normalize |
+
+## Common Mistakes
+
+**Throw Generic Error ทุกอย่าง**
+
+อาการ:
+- `throw new Error("Something went wrong")` ใน resolver ทุกจุดที่ error
+- client ไม่รู้ว่าเกิดอะไรขึ้น — ไม่มี error code หรือ detail
+- ใช้ error class ที่ specific: `UserNotFoundError`, `ValidationError` พร้อม code ใน extensions
+
+**ไม่ Check `errors` Array ใน Client**
+
+อาการ:
+- client check แค่ว่า `data` มีค่าหรือไม่
+- request สำเร็จบางส่วนแต่ client แสดงผลราวกับสำเร็จทั้งหมด
+- check `errors` array เสมอ แม้ `data` จะมีค่า
+
+> 💡 Real World Example
+>
+> **Apollo Server:**
+> - built-in error classes: `AuthenticationError`, `ForbiddenError`, `UserInputError`
+> - แต่ละ class set HTTP status code และ extensions.code อัตโนมัติ
+>
+> **GitHub:**
+> - error ใน response มี `message`, `type`, `path` ครบ
+> - client รู้ว่า field ไหนใน query ที่ fail และเหตุผลคืออะไร
+
 <Callout title="200 ก็ยังพก errors มาได้">
 HTTP status ของ GraphQL response ส่วนใหญ่เป็นเรื่องของ transport ไม่ใช่ของ operation operation ที่ parse, validate และ execute แล้วมักจะ return HTTP `200` แม้ว่า field ครึ่งหนึ่งของมันจะ throw ก็ตาม อย่าตีความ `200` ว่า "ทุกอย่างทำงานได้" เด็ดขาด ความจริงอยู่ใน `errors` array และอยู่ที่ว่ามี `data` หรือไม่ ให้อ่านสองสิ่งนั้น ไม่ใช่บรรทัด status
 </Callout>

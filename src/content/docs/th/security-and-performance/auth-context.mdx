@@ -93,6 +93,36 @@ export const authContextCode = `(async () => {
 
 ดู output ทั้งสองให้ดี เมื่อมี user ที่ verify แล้วบน context `me` คืน `"Ada Lovelace"` เมื่อ `user: null` `me` กลับมาเป็น `null` ในขณะที่ `serverTime` ยังทำงาน — field สาธารณะไม่สนใจว่าใครเป็นคนถาม resolver คงเหมือนเดิมทุกประการระหว่างสองการรัน; มีเพียง context เท่านั้นที่เปลี่ยน นั่นคือประเด็นทั้งหมด: identity ถูกสร้างหนึ่งครั้ง นอก resolver และ schema อ่านมันเหมือนข้อเท็จจริงระดับคำขออื่น ๆ
 
+| Benefits | Trade-offs |
+|---|---|
+| context ทำให้แชร์ auth information ข้าม resolver ได้ | context ที่ใหญ่เกินทำให้ dependency ไม่ชัดเจน |
+| inject user object เพียงครั้งเดียว — resolver ใช้ได้ทันที | context object ที่ mutable อาจเกิด race condition |
+| แยก auth logic ออกจาก resolver — resolver บาง | context factory ที่ fail ทำให้ทุก request fail |
+| ง่ายต่อการ test — inject mock context ใน test | context ที่ไม่มี type safety ทำให้ resolver เข้าถึง field ผิด |
+
+## Common Mistakes
+
+**Auth Logic ใน Resolver แต่ละตัว**
+อาการ:
+- ทุก resolver check `if (!token) throw new AuthenticationError()`
+- duplicate code และ inconsistent enforcement
+- ทำ auth check ใน context factory หรือ middleware — resolver ไม่ต้องรู้
+
+**Context ที่ Leak ข้าม Request**
+อาการ:
+- context object เป็น singleton ที่ share ข้าม request
+- user A อาจเห็นข้อมูลของ user B
+- สร้าง context object ใหม่ทุก request ใน `contextValue` factory
+
+> 💡 Real World Example
+>
+> **Apollo Server:**
+> - `contextValue` factory รัน per-request — inject user จาก JWT ทุกครั้ง
+> - `context.user` พร้อมใช้ใน resolver ทุกตัวโดยไม่ต้อง parse token ซ้ำ
+>
+> **GraphQL Yoga:**
+> - `context` factory รองรับ async — ทำ database lookup สำหรับ user ได้ใน context
+
 <Callout title="Authenticate ใน context, authorize ใน resolver">
 แยกสองงานนี้ออกจากกัน **Authentication** — การ verify token และ resolve current user — เกิดขึ้นหนึ่งครั้งต่อคำขอใน context factory ไม่เคยอยู่ภายใน schema field **Authorization** — การตัดสินว่า user นั้นอาจเห็น field ใด field หนึ่งได้หรือไม่ — เกิดขึ้นทีหลังใน resolver context factory ที่สะอาดซึ่งคืน `{ user }` (และ `null` สำหรับผู้เรียกแบบ anonymous) ให้คำตอบที่ไว้ใจได้กับทุก resolver สำหรับคำถาม "ใครเป็นคนถาม?" โดยไม่ต้อง parse credential ซ้ำ และทิ้งคำถาม "เขาได้รับอนุญาตไหม?" ไว้ให้บทเรียนถัดไป
 </Callout>

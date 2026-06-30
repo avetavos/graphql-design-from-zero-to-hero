@@ -17,18 +17,18 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 schema ที่ออกแบบไว้เปรียบเหมือนแบบร่างของสถาปนิก มันแม่นยำและเป็น contract แต่ไม่มีใครอาศัยอยู่ในแบบร่างได้ มีสี่สิ่งที่ขวางอยู่ระหว่างแบบร่างกับอาคารที่คนใช้งานได้จริง
 
-- **Implement** — เลือกว่า SDL กับโค้ด resolver จะสัมพันธ์กันอย่างไร SDL เป็น source of truth (schema-first) หรือถูก generate มาจากโค้ดของคุณ (code-first)? ตัวเลือกนี้กำหนดรูปร่างของ codebase ทั้งหมด
+- **Implement** — เลือกว่า SDL กับcode resolver จะสัมพันธ์กันอย่างไร SDL เป็น source of truth (schema-first) หรือถูก generate มาจากcodeของคุณ (code-first)? ตัวเลือกนี้กำหนดรูปร่างของ codebase ทั้งหมด
 - **Type & document** — เชื่อม schema เข้ากับ type system ของภาษาที่ใช้ เพื่อให้ compiler จับ resolver ที่ผิดได้ก่อนที่ client จะเจอ GraphQL Code Generator แปลง schema ให้เป็น TypeScript types ทั้งฝั่ง server และ client
 - **Test** — พิสูจน์ว่าเซอร์วิสทำงานถูกต้อง ทำ unit-test กับ resolver แต่ละตัว และ integration-test ด้วยการรัน operation จริงกับ schema แล้วตรวจสอบผลลัพธ์
 - **Federate** — เมื่อกราฟใหญ่เกินกว่าเซอร์วิสเดียวจะรับไหว ก็แยกออกเป็น **subgraphs** ที่ทีมต่าง ๆ เป็นเจ้าของ แล้วประกอบกลับเป็น **supergraph** เดียวหลัง gateway
 
-## โครงร่างของโมดูลนี้
+## What This Module Covers
 
 <Mermaid title="เส้นทางที่โมดูลนี้เดิน: การออกแบบป้อนให้การ implement ซึ่งถูก test และเมื่อขยายตัว ก็ถูก federate เป็นกราฟเดียว" code={moduleFlow} />
 
 อ่าน flow นั้นเป็น pipeline ที่คุณเริ่มไปแล้ว **Design** อยู่ข้างหลังคุณแล้ว ตอนนี้คุณตัดสินใจว่าจะ implement *อย่างไร* คุณทำให้ implementation นั้นมี **type** และผ่านการ **test** และเมื่อเซอร์วิสเดียวเริ่มแบกหลายทีมไม่ไหวเท่านั้น คุณจึงหันไปหา **federation** บทเรียนสุดท้ายดึงทุกอย่างมารวมกันใน TypeScript server ที่ทำงานได้จริง
 
-## แต่ละบทเรียนให้อะไรกับคุณ
+## What Each Lesson Covers
 
 - **Schema-first vs code-first** — สองวิธีในการสร้าง GraphQL server, ข้อแลกเปลี่ยนของแต่ละแบบ และเดโมที่ทั้งสองสไตล์ให้ schema เดียวกันเป๊ะ
 - **Codegen and testing** — การ generate resolvers และ operations ที่มี type พร้อมกลยุทธ์ unit และ integration testing ที่คุณนำไปใช้ได้วันนี้
@@ -78,7 +78,7 @@ export const quizIndex = [
     q: 'อะไรคือตัวเลือกหลักที่ขั้น "implement" บังคับให้คุณต้องตัดสินใจ?',
     options: [
       'จะใช้ database ตัวไหน',
-      'SDL เป็น source of truth (schema-first) หรือถูก generate มาจากโค้ด (code-first)',
+      'SDL เป็น source of truth (schema-first) หรือถูก generate มาจากcode (code-first)',
       'จะ listen ที่ port ไหน',
       'จะรองรับ subscriptions หรือไม่',
     ],

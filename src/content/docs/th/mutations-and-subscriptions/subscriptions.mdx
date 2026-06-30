@@ -13,7 +13,7 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 query คืนค่าครั้งเดียว mutation คืนค่าครั้งเดียว ส่วน **subscription** ต่างออกไป client subscribe เพียงครั้งเดียว แล้วเซิร์ฟเวอร์จะ push payload ใหม่ต่อไปเรื่อย ๆ ตราบเท่าที่ connection ยังเปิดอยู่ มันคือ root type ตัวที่สาม และเป็นวิธีที่ GraphQL ใช้จำลองเรียลไทม์ เช่น รีวิวใหม่ปรากฏขึ้น เพลงประมวลผลเสร็จ มีคนเริ่มพิมพ์ โดยที่ client ไม่ต้อง poll ครั้งแล้วครั้งเล่า
 
-ตัวรันในเบราว์เซอร์ที่ใช้ในบทเรียนอื่น ๆ รัน operation หนึ่งครั้งแล้วหยุด มันจึงสาธิตสตรีมแบบสด ๆ ไม่ได้ เราจะศึกษา subscription ในรูปของโค้ดบวกกับ sequence diagram แล้วชี้ให้คุณไปยังเซิร์ฟเวอร์ Yoga ที่รันได้ ซึ่งคุณเปิดและดูมันสตรีมจริงได้
+ตัวรันในเบราว์เซอร์ที่ใช้ในบทเรียนอื่น ๆ รัน operation หนึ่งครั้งแล้วหยุด มันจึงสาธิตสตรีมแบบสด ๆ ไม่ได้ เราจะศึกษา subscription ในรูปของcodeบวกกับ sequence diagram แล้วชี้ให้คุณไปยังเซิร์ฟเวอร์ Yoga ที่รันได้ ซึ่งคุณเปิดและดูมันสตรีมจริงได้
 
 ## การประกาศ subscription
 
@@ -162,6 +162,39 @@ export const resolvers = {
 <NodeRunner node client:visible code={subSchemaCode} />
 
 วิธีดูให้มันสตรีม คือเปิดโปรเจกต์ แล้วใน GraphiQL แท็บหนึ่งรัน `subscription { reviewAdded(trackId: "t1") { id rating } }` แล้วปล่อยให้มันรันค้างไว้ ในแท็บที่สองรัน mutation `addReview` สำหรับ `trackId: "t1"` แท็บ subscription จะอัปเดตในชั่วขณะที่ mutation publish ซึ่งนั่นคือคุณค่าทั้งหมดของสตรีม และไม่มีการ poll ใด ๆ ที่จะเทียบ latency ของมันได้
+
+| Benefits | Trade-offs |
+|---|---|
+| real-time push — client รับข้อมูลทันทีโดยไม่ต้อง poll | persistent connection — server ต้องรักษา state ต่อ subscriber ทุกคน |
+| latency ต่ำกว่า polling มาก — event มาถึง client ในชั่วขณะ | WebSocket ไม่ผ่าน HTTP cache — CDN ช่วยไม่ได้ |
+| client กำหนด field ที่ต้องการใน subscription เหมือน query | ซับซ้อนกว่า deployment — ต้องการ sticky session หรือ pub/sub bus กลาง |
+
+## Common Mistakes
+
+**ใช้ subscription แทน query ทุกอย่าง**
+
+อาการ:
+- subscribe `userProfile` เพื่อดูข้อมูลที่แทบไม่เปลี่ยน
+- server แบกรับ connection จำนวนมากโดยไม่จำเป็น
+- query ธรรมดาเร็วกว่าและ cache ได้
+
+**ไม่กรอง event ด้วย argument**
+
+อาการ:
+- `subscription { reviewAdded }` รับรีวิวทุกเพลง แทนที่จะเป็นเพลงที่ client สนใจ
+- client ต้อง filter ฝั่งตัวเองทุกครั้ง — traffic สูงโดยไม่จำเป็น
+- resolver ควรใช้ argument เช่น `trackId` เพื่อ scope subscription ตั้งแต่ต้น
+
+> 💡 Real World Example
+>
+> **Slack:**
+> - ใช้ WebSocket subscription สำหรับ message real-time ใน channel
+> - subscribe แยกต่อ channel เพื่อไม่ให้รับ event จาก workspace ทั้งหมด
+> - mutation `sendMessage` publish event — subscription resolver ส่งต่อให้ subscriber ที่ตรงกัน
+>
+> **Figma:**
+> - subscription สำหรับ cursor position และ object selection ของ collaborator
+> - กรอง event ด้วย `documentId` + `userId` เพื่อลด noise
 
 <Callout title="subscription คือช่องทางที่เปิดอยู่ ไม่ใช่การอ่านเพิ่ม">
 subscription คือ connection ที่อยู่ยาวนานและมี state คือ `subscribe` ครั้งเดียว แต่มี payload ถูก push หลายครั้ง จนกว่า client จะตัด connection อิมพลีเมนต์มันเป็นสองครึ่ง คือ `subscribe` ผลิตสตรีมของ event (โดยปกติจากบัส pub/sub ที่ mutation publish ไปยังมัน) และ `resolve` จัดรูปร่างแต่ละ event ให้เป็น payload พามันไปบน SSE เป็นค่าเริ่มต้น หรือ WebSocket เมื่อคุณต้องการแบบสองทาง และจงต้านทานการล่อใจที่จะ subscribe ทุกอย่าง ถ้าการเปลี่ยนแปลงเกิดจาก mutation ของ client เอง ก็แค่คืนผลลัพธ์ เก็บ subscription ไว้สำหรับ event ที่มาถึงตามนาฬิกาของเซิร์ฟเวอร์ ไม่ใช่ของ client

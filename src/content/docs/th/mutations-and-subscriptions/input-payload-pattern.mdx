@@ -152,6 +152,39 @@ export const payloadCode = `(async () => {
 
 อ่านผลลัพธ์ทั้งสองเทียบกัน การเรียกที่ไม่ถูกต้องคืน `review: null` และ entry ใน `userErrors` ที่ชี้ไปยัง field `rating` และที่สำคัญคือ array `errors` ระดับบนสุดไม่ปรากฏ เพราะไม่มีอะไร *ผิดพลาด* กับ request ผู้ใช้แค่ส่งข้อมูลที่ไม่ดีมา ส่วนการเรียกที่ถูกต้องคืนรีวิวและ `userErrors: []` ที่ว่างเปล่า client สามารถแตกกิ่งด้วยกฎเดียว คือ "`userErrors` ว่างหรือไม่?" ไม่ว่ามันจะเรียก mutation ตัวไหนก็ตาม
 
+| Benefits | Trade-offs |
+|---|---|
+| Input Type เป็น named type — เพิ่ม field แบบ optional ได้โดยไม่ทำลาย client เดิม | เพิ่ม type อีก 2 ตัวต่อ mutation — schema ยาวขึ้น |
+| payload พา `userErrors` ไว้ด้วย — client มี pattern เดียวสำหรับทุก mutation | ต้องตรวจ `userErrors` ทุกครั้ง แทนที่จะแค่ใช้ data โดยตรง |
+| Input Type reuse ได้ข้าม mutation — ลด duplication ใน schema | Input Type ซับซ้อนเกินไปอาจเป็น "God Input" ที่ยากต่อการ validate |
+
+## Common Mistakes
+
+**Payload บางเกินไป — คืนแค่ `id`**
+
+อาการ:
+- client รู้แค่ว่า mutation สำเร็จ แต่ไม่รู้ว่า state เปลี่ยนอย่างไร
+- ต้องส่ง query ตามหลังทุกครั้งเพื่อ refresh UI
+- optimistic update sync ไม่ได้เพราะขาด server-generated field
+
+**God Input — input type ตัวเดียวสำหรับทุกอย่าง**
+
+อาการ:
+- `UpdateUserInput` ที่มี field ทุก field ของ user ทั้งหมดเป็น optional
+- ไม่รู้ว่า field ไหน required สำหรับ operation ใด
+- validation logic ซับซ้อนเพราะต้องครอบคลุมทุก combination
+
+> 💡 Real World Example
+>
+> **GitHub GraphQL API:**
+> - `CreateIssueInput` มี `repositoryId`, `title` (required) และ optional field เช่น `body`, `assigneeIds`
+> - `CreateIssuePayload` คืน `issue` + `clientMutationId` — ไม่คืนแค่ ID
+> - convention นี้ใช้กับทุก mutation ใน GitHub API — client code มี pattern เดียวสม่ำเสมอ
+>
+> **Shopify Admin API:**
+> - `ProductInput` ที่ reuse ได้ใน `productCreate` และ `productUpdate`
+> - payload คืน `product` เต็ม + `userErrors` — UI อัปเดตได้ทันทีหลัง mutation
+
 <Callout title="input เข้า, payload ออก">
 ให้ทุก mutation ที่ไม่ใช่เรื่องเล็ก ๆ มี argument `input: SomeInput!` เดียวและ type คืนค่า `SomePayload!` ตัว input ทำให้คุณเพิ่ม field แบบ optional ในภายหลังได้โดยไม่ทำลาย signature ส่วน payload ที่มี entity แบบ nullable และ list `userErrors` แบบ non-null ให้รูปร่างเดียวที่สม่ำเสมอกับ client เพื่อจัดการทุก mutation คือตรวจ `userErrors` แล้วถ้ามันว่าง ก็ใช้ entity นี่คือธรรมเนียมที่ GraphQL API ขนาดใหญ่เกือบทุกตัวมาบรรจบกัน รับมันมาใช้ก่อนที่คุณจะต้องการมัน
 </Callout>

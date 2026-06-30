@@ -38,7 +38,7 @@ fragment TrackFields on Track {
 }
 ```
 
-selection ทั้งสองดึง `id`, `title` และ `durationSeconds` เข้ามาโดยไม่ต้องเขียนซ้ำ เปลี่ยน fragment ที่เดียวแล้วทุกจุดที่ spread จะอัปเดตตามไปด้วย เป็นผลตอบแทนเดียวกับการแยกโค้ดที่ซ้ำกันออกมาเป็น function
+selection ทั้งสองดึง `id`, `title` และ `durationSeconds` เข้ามาโดยไม่ต้องเขียนซ้ำ เปลี่ยน fragment ที่เดียวแล้วทุกจุดที่ spread จะอัปเดตตามไปด้วย เป็นผลตอบแทนเดียวกับการแยกcodeที่ซ้ำกันออกมาเป็น function
 
 ## Inline fragment
 
@@ -130,6 +130,36 @@ export const fragmentCode = `(async () => {
 <NodeRunner client:visible code={fragmentCode} />
 
 response มี key ระดับบนสุดสองตัวคือ `hit` และ `deepCut` แทนที่จะเป็น `track` ตัวเดียวที่ชนกัน นั่นคือ alias ทำงาน แต่ละตัวเก็บชุด field ครบถ้วนจาก `TrackFields` เขียนครั้งเดียวและใช้ซ้ำสองครั้ง นั่นคือ fragment ทำงาน ทั้งสองร่วมกันทำให้ query สั้นและ response มีรูปร่างที่ดี
+
+| Benefits | Trade-offs |
+|---|---|
+| Fragment ลด duplication ของ field selection ข้าม query | fragment มากเกินทำให้ query อ่านยาก |
+| Alias ทำให้ query field เดียวกันสองครั้งด้วยชื่อต่างกัน | Fragment ที่ไม่ใช้สร้าง dead code ใน client |
+| Fragment ช่วยให้ component-driven query (Relay) | Alias ที่ไม่สื่อความหมายทำให้ response งงยิ่งขึ้น |
+| Inline fragment ช่วย handle Union และ Interface type | Fragment spread ลึกมากทำให้ query ขนาดใหญ่ |
+
+## Common Mistakes
+
+**Copy-paste Field แทนใช้ Fragment**
+อาการ:
+- query 5 ชิ้นมี field ชุดเดียวกัน (`id`, `name`, `avatar`) เขียนซ้ำทุกที่
+- เปลี่ยน field เดียวต้องแก้ 5 query
+- สร้าง fragment `UserBasicInfo` แล้ว spread ใน query ทั้งหมด
+
+**Alias ที่ไม่สื่อความหมาย**
+อาการ:
+- `data1: user(id: 1) { name }` และ `data2: user(id: 2) { name }`
+- response มี `data1` และ `data2` ที่ client ต้องรู้ว่าหมายถึงอะไร
+- ใช้ alias ที่สื่อ intent: `primaryUser: user(id: $id1)`, `secondaryUser: user(id: $id2)`
+
+> 💡 Real World Example
+>
+> **Relay (Meta/Facebook):**
+> - บังคับ pattern "colocation" — component ประกาศ fragment ของตัวเองที่ต้องการ
+> - query ระดับ page รวม fragment จาก component ทั้งหมดอัตโนมัติ
+>
+> **Apollo Client:**
+> - `useFragment` hook ทำให้ component subscribe เฉพาะ field ที่ตัวเองประกาศใน fragment
 
 <Callout title="สามเครื่องมือเพื่อ query ที่สะอาดขึ้น">
 **Fragment** แยก selection set ที่ซ้ำกันออกเป็นหน่วยมีชื่อหนึ่งหน่วยที่คุณ spread ด้วย `...` **Inline fragment** (`... on Type`) เลือก field ที่มีอยู่เฉพาะบน type หนึ่ง ๆ ที่อยู่เบื้องหลัง interface หรือ union **Alias** (`key: field`) เปลี่ยนชื่อ field ใน response ซึ่งเป็นสิ่งที่ทำให้คุณร้องขอ field เดียวกันสองครั้งด้วย argument ต่างกันได้ ทั้งสามอย่างปั้นรูปร่างของ query และ response ของมัน ไม่มีตัวไหนเปลี่ยน server

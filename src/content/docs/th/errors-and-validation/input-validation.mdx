@@ -11,7 +11,7 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-Validation ใน GraphQL เกิดขึ้นในสองชั้นที่แตกต่างกันชัดเจน และการสับสนระหว่างสองชั้นนี้คือต้นเหตุของ API ที่ไม่ดีอยู่บ่อยครั้ง ชั้นแรกคือชั้น**โครงสร้าง** schema เองบังคับใช้ type, argument ที่จำเป็น และการเป็นสมาชิกของ enum ก่อนที่ resolver จะรันเสียอีก ชั้นที่สองคือชั้น**ความหมาย** ซึ่งคือ business rules เช่น "email ต้องไม่ซ้ำ" หรือ "rating อยู่ระหว่าง 1 ถึง 5" ที่มีแต่โค้ดของคุณเท่านั้นที่รู้ schema จัดการชั้นแรกให้ฟรีๆ ส่วนชั้นที่สองเป็นงานของคุณ
+Validation ใน GraphQL เกิดขึ้นในสองชั้นที่แตกต่างกันชัดเจน และการสับสนระหว่างสองชั้นนี้คือต้นเหตุของ API ที่ไม่ดีอยู่บ่อยครั้ง ชั้นแรกคือชั้น**โครงสร้าง** schema เองบังคับใช้ type, argument ที่จำเป็น และการเป็นสมาชิกของ enum ก่อนที่ resolver จะรันเสียอีก ชั้นที่สองคือชั้น**ความหมาย** ซึ่งคือ business rules เช่น "email ต้องไม่ซ้ำ" หรือ "rating อยู่ระหว่าง 1 ถึง 5" ที่มีแต่codeของคุณเท่านั้นที่รู้ schema จัดการชั้นแรกให้ฟรีๆ ส่วนชั้นที่สองเป็นงานของคุณ
 
 ## สิ่งที่ schema validate ให้ฟรีๆ
 
@@ -29,7 +29,7 @@ type Mutation {
 }
 ```
 
-ด้วย schema นี้ คุณไม่สามารถเรียก `addReview` โดยไม่มี `input` ได้ ไม่สามารถละ `trackId` หรือ `rating` ได้ และไม่สามารถส่ง `rating` ที่ไม่ใช่จำนวนเต็มได้ type system ปฏิเสธทั้งหมดนั้นโดยไม่ต้องมีโค้ด resolver สักบรรทัด สิ่งที่มันไม่อาจรู้ได้คือ `rating` ต้องอยู่ระหว่าง 1 ถึง 5 หรือ `comment` ต้องสั้นกว่า 500 ตัวอักษร เพราะนั่นคือ business rules
+ด้วย schema นี้ คุณไม่สามารถเรียก `addReview` โดยไม่มี `input` ได้ ไม่สามารถละ `trackId` หรือ `rating` ได้ และไม่สามารถส่ง `rating` ที่ไม่ใช่จำนวนเต็มได้ type system ปฏิเสธทั้งหมดนั้นโดยไม่ต้องมีcode resolver สักบรรทัด สิ่งที่มันไม่อาจรู้ได้คือ `rating` ต้องอยู่ระหว่าง 1 ถึง 5 หรือ `comment` ต้องสั้นกว่า 500 ตัวอักษร เพราะนั่นคือ business rules
 
 ## สองวิธีในการรายงานความล้มเหลวของ business-rule
 
@@ -133,8 +133,42 @@ export const validationCode = `(async () => {
 
 สังเกตสิ่งที่ *หายไป* จาก output ไม่มี `errors` array ระดับ top-level เลย rating ที่เป็น `9` ละเมิด business rule แต่เพราะเราออกแบบมันให้เป็น field `userErrors` ความล้มเหลวจึงมาถึงในรูปของ `data` ธรรมดา `data.addReview.review` เป็น `null` และ `data.addReview.userErrors` เก็บ entry ที่มี type ซึ่งชี้ไปยัง field `rating` client จัดการมันเหมือน selection อื่นๆ ลองเปลี่ยน `rating` เป็น `4` แล้วรันใหม่ `review` จะถูกเติมเข้ามาและ `userErrors` จะกลับมาว่างเปล่า
 
+| Benefits | Trade-offs |
+|---|---|
+| validate ก่อน resolver — ป้องกัน invalid data เข้า business logic | validation logic ซ้ำระหว่าง schema type system และ custom validator |
+| error message เฉพาะ field — client รู้ว่าต้องแก้ field ไหน | zod/yup validation ใน resolver เพิ่ม dependency |
+| type validation ฟรีจาก GraphQL type system | validation rule ที่ซับซ้อน (cross-field) ทำใน type system ยาก |
+| Input Type validation เกิดก่อน resolver execute | business rule validation ยังต้องทำใน service layer |
+
+## Common Mistakes
+
+**Validation ใน Resolver ที่ Throw GraphQL Error**
+
+อาการ:
+- resolver ทำ validation แล้ว throw error — client เห็น error ใน top-level `errors` array
+- validation error ควรอยู่ใน payload ไม่ใช่ top-level error
+- แยก system error (throw) กับ business validation error (payload.errors)
+
+**Validate เฉพาะ Type ไม่ Validate Business Rule**
+
+อาการ:
+- email field เป็น `String!` — validate แค่ว่าไม่ null
+- ไม่ validate ว่า email format ถูกต้องหรือ email ซ้ำในระบบ
+- type system validate format, service layer validate business rule
+
+> 💡 Real World Example
+>
+> **Shopify:**
+> - mutation return `userErrors: [UserError!]!` สำหรับ business validation
+> - `UserError` มี `field` (array ของ field path) และ `message`
+> - client รู้ว่า field ไหนผิดและแสดง error ที่ field นั้นได้
+>
+> **Zod + GraphQL:**
+> - ใช้ Zod validate input ใน resolver แล้วแปลง ZodError เป็น GraphQL payload error
+> - type-safe validation ที่ share schema ระหว่าง client และ server ได้
+
 <Callout title="validate สองชั้น รายงานอย่างมีจุดประสงค์">
-ให้ schema ทำงานเชิงโครงสร้าง เช่น argument ที่จำเป็น scalar type และ enum และอย่าไปตรวจซ้ำใน resolvers เพราะมันถูกดักเป็น request errors ก่อนที่โค้ดของคุณจะรัน สงวนตรรกะใน resolver ไว้สำหรับ business rules ที่ type system แสดงออกไม่ได้ จากนั้นเลือกช่องทางของคุณอย่างจงใจ throw `GraphQLError` สำหรับสิ่งที่กู้คืนไม่ได้ และ return typed `userErrors` ใน payload สำหรับความผิดพลาดแบบฟอร์มที่กู้คืนได้ซึ่งคุณอยากให้ client จัดการได้อย่างนุ่มนวล
+ให้ schema ทำงานเชิงโครงสร้าง เช่น argument ที่จำเป็น scalar type และ enum และอย่าไปตรวจซ้ำใน resolvers เพราะมันถูกดักเป็น request errors ก่อนที่codeของคุณจะรัน สงวนตรรกะใน resolver ไว้สำหรับ business rules ที่ type system แสดงออกไม่ได้ จากนั้นเลือกช่องทางของคุณอย่างจงใจ throw `GraphQLError` สำหรับสิ่งที่กู้คืนไม่ได้ และ return typed `userErrors` ใน payload สำหรับความผิดพลาดแบบฟอร์มที่กู้คืนได้ซึ่งคุณอยากให้ client จัดการได้อย่างนุ่มนวล
 </Callout>
 
 export const validationFlow = `flowchart TD

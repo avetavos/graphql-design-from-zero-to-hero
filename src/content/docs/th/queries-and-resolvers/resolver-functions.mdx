@@ -120,6 +120,36 @@ export const resolverCode = `(async () => {
 
 สังเกตว่า `id` และ `title` ไม่มี function `resolve` แบบระบุชัดเจน default resolver อ่านมันตรง ๆ จาก parent object ที่ resolver ของ `track` คืนมา resolver ของ `artist` แค่ส่งต่อ `parent.artist` ซึ่งจากนั้นก็กลายเป็น parent ของ `name` resolver แต่ละตัวมองขึ้นไปแค่หนึ่งระดับและมองข้ามไปแค่หนึ่ง field เท่านั้น
 
+| Benefits | Trade-offs |
+|---|---|
+| แต่ละ field มี resolver อิสระ — เปลี่ยน data source ได้โดยไม่กระทบ schema | resolver จำนวนมากใน schema ใหญ่ทำให้ manage ยาก |
+| context injection ทำให้แชร์ auth, db, logger ข้าม resolver | N+1 problem เกิดได้ง่ายถ้าไม่ใช้ DataLoader |
+| resolver chain ทำให้ต่อ data source หลายชนิดได้ | resolver ที่ logic หนักทำให้ debug ยาก |
+| default resolver ลด boilerplate สำหรับ simple field | test resolver ต้องการ mock context ที่ซับซ้อน |
+
+## Common Mistakes
+
+**Business Logic หนักใน Resolver**
+อาการ:
+- resolver มีทั้ง validation, authorization, database query, transformation ใน function เดียว
+- test ยากเพราะ side effect มาก
+- แยก: resolver ควรเรียก service/repository แค่ 1-2 บรรทัด
+
+**ไม่ใช้ DataLoader สำหรับ Relationship**
+อาการ:
+- resolver ของ `Post.author` ทำ `db.findUser(post.authorId)` ทุก post
+- 100 post = 100 database query (N+1)
+- ใช้ DataLoader batch query ทั้งหมดเป็น 1 request
+
+> 💡 Real World Example
+>
+> **GraphQL Yoga:**
+> - ใช้ resolver chain ต่อกับ database, REST API, cache ได้ใน resolver เดียว
+>
+> **Prisma:**
+> - ORM ยอดนิยมสำหรับ GraphQL resolver
+> - `prisma.user.findUnique()` ใน resolver ทำให้ code สั้นและ type-safe
+
 <Callout title="resolve ทีละ field ทีละหนึ่งระดับ">
 resolver ตอบคำถามเดียวเป๊ะ ๆ คือ "เมื่อมี `parent` และ `args` ของฉัน ค่าของ field นี้คืออะไร?" มันไม่เคยเอื้อมลงไปหา children เลย engine จัดการการเดินลงด้วยการส่งค่าที่คืนมาแต่ละตัวเป็น `parent` ตัวถัดไป พึ่งพา default resolver สำหรับการอ่าน property ตรง ๆ แชร์ state ระดับ request ผ่าน `context` และเขียน resolver แบบระบุชัดเจนเฉพาะตรงที่มีงานจริงเกิดขึ้น
 </Callout>

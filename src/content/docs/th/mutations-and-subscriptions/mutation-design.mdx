@@ -135,6 +135,39 @@ export const designCode = `(async () => {
 
 ผลลัพธ์เล่าเรื่องราวทั้งหมด `createReview` คืนรีวิวใหม่เอี่ยมที่มี `published: false` และ `publishReview` ที่แยกออกมาต่างหากพลิก field นั้นเพียง field เดียว สอง intent สอง mutation แต่ละตัวคืน object ที่ได้รับผลกระทบ ผู้อ่านที่กวาดตามอง schema สามารถเดาได้เลยว่าแต่ละตัวทำอะไร ซึ่งนั่นคือหัวใจทั้งหมดของการตั้งชื่อตาม intent
 
+| Benefits | Trade-offs |
+|---|---|
+| mutation ตั้งชื่อตาม intent — `publishReview` แทน `updateReview` — อ่านแล้วเข้าใจทันที | ต้องออกแบบ mutation ใหม่ทุกครั้งที่ intent ใหม่เกิดขึ้น — schema เติบโตเร็วกว่า REST endpoint |
+| แต่ละ mutation แทนการเปลี่ยนแปลงเชิงตรรกะเดียว — failure กลางทางไม่ทิ้งข้อมูลครึ่ง ๆ กลาง ๆ | mutation เล็กหลายตัวอาจเพิ่ม round-trip ถ้า client ต้องเรียกหลายครั้งตามลำดับ |
+| คืน object ที่ได้รับผลกระทบ — client อัปเดต cache ได้ทันทีโดยไม่ต้อง re-fetch | payload ขนาดใหญ่กว่า REST `204 No Content` — bandwidth เพิ่มขึ้นเล็กน้อย |
+
+## Common Mistakes
+
+**ตั้งชื่อ mutation ตาม CRUD แทน intent**
+
+อาการ:
+- `updateUser(id, fields)` ที่รับ input ทุกอย่างและเปลี่ยนอะไรก็ได้
+- server ไม่รู้ว่า client กำลัง publish, archive, หรือแค่แก้ชื่อ
+- ไม่สามารถรัน validation หรือ side effect ที่ต่างกันต่อ intent
+
+**มัด intent หลายอย่างไว้ใน mutation เดียวเพื่อประหยัด round-trip**
+
+อาการ:
+- `createAndPublishReview` ที่ทำสองสิ่งพร้อมกัน
+- failure ครึ่งทางทำให้ข้อมูล inconsistent
+- unit test ยากเพราะครั้งเดียวต้องครอบคลุมหลาย behavior
+
+> 💡 Real World Example
+>
+> **GitHub GraphQL API:**
+> - แยก `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue` ออกจากกัน
+> - แต่ละ mutation คืน `Issue` object พร้อม field ที่ได้รับผลกระทบทั้งหมด
+> - audit log บอกได้ว่าใครทำอะไรจาก mutation name โดยตรง
+>
+> **Shopify Storefront API:**
+> - `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove` — แยก intent ชัดเจน
+> - คืน `Cart` object เต็มทุกครั้ง เพื่อให้ client sync UI ได้ใน round-trip เดียว
+
 <Callout title="mutation คือกริยา ไม่ใช่แถวข้อมูล">
 ออกแบบ mutation รอบ ๆ การกระทำที่ผลิตภัณฑ์ของคุณเปิดเผยออกมา ไม่ใช่รอบ ๆ ตารางที่อยู่ข้างใต้ เริ่มต้นแต่ละชื่อด้วยกริยาที่ระบุ intent (`createReview`, `publishReview`, `archiveTrack`) จำกัดแต่ละ mutation ให้เป็นหนึ่งการเปลี่ยนแปลงเชิงตรรกะ เพื่อให้ความล้มเหลวบางส่วนไม่มีทางทิ้งข้อมูลไว้ครึ่ง ๆ กลาง ๆ และคืน object ที่ได้รับผลกระทบเสมอ เพื่อให้ client รีเฟรชได้โดยไม่ต้องส่งคำขอครั้งที่สอง หากคุณพบว่าตัวเองกำลังเขียน `updateX` ตัวเดียวที่ทำได้ห้าอย่างต่างกัน แสดงว่าคุณมีห้า mutation ซ่อนอยู่ในตัวเดียว
 </Callout>

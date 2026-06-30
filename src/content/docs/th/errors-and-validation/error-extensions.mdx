@@ -47,7 +47,7 @@ throw new GraphQLError('No track exists with that id.', {
 
 ## การปกปิด internal errors
 
-มีแง่มุมด้านความปลอดภัยอยู่ด้วย exception ที่ไม่คาดคิด เช่น การเรียก database ที่ล้มเหลว หรือการ dereference null ลึกๆ ในโค้ดของคุณ มักพก stack trace หรือข้อความภายในที่คุณต้องไม่ส่งไปให้ client เด็ดขาด รูปแบบเชิงป้องกันคือ ปล่อยให้ความล้มเหลวที่ *คาดไว้* throw `GraphQLError` พร้อม code ที่จงใจ และ**ดักจับทุกอย่างที่เหลือ** แล้วแทนที่ด้วย masked error ทั่วไปก่อนที่มันจะออกจาก server
+มีแง่มุมด้านความปลอดภัยอยู่ด้วย exception ที่ไม่คาดคิด เช่น การเรียก database ที่ล้มเหลว หรือการ dereference null ลึกๆ ในcodeของคุณ มักพก stack trace หรือข้อความภายในที่คุณต้องไม่ส่งไปให้ client เด็ดขาด รูปแบบเชิงป้องกันคือ ปล่อยให้ความล้มเหลวที่ *คาดไว้* throw `GraphQLError` พร้อม code ที่จงใจ และ**ดักจับทุกอย่างที่เหลือ** แล้วแทนที่ด้วย masked error ทั่วไปก่อนที่มันจะออกจาก server
 
 <Mermaid title="ความล้มเหลวที่คาดไว้คง code ของมันไว้ ส่วนที่ไม่คาดคิดถูกปกปิด" code={maskFlow} />
 
@@ -103,6 +103,39 @@ export const extensionsCode = `(async () => {
 <NodeRunner client:visible code={extensionsCode} />
 
 ใน output นั้น `data.track` เป็น `null` เพราะ field เป็น nullable และ error entry เพียงตัวเดียวตอนนี้พก `extensions.code === "NOT_FOUND"` พร้อมคำใบ้ `argument` ที่เราแนบไว้ client สามารถอ่าน code นั้นและแสดงผลว่า "track not found" ได้โดยไม่ต้องไปแกะข้อความภาษาอังกฤษเลย ซึ่งเป็น contract เชิงโปรแกรมที่ `Error` ธรรมดาให้เราไม่ได้
+
+| Benefits | Trade-offs |
+|---|---|
+| error code ทำให้ client จัดการ error programmatically | extensions ที่มากเกินทำให้ error response ใหญ่ |
+| timestamp, requestId ใน extensions ช่วย debug | sensitive information ใน extensions อาจ leak ได้ |
+| custom extension ให้ข้อมูล domain-specific error | format extensions ไม่มีมาตรฐาน — ต้องตกลงกันเอง |
+| stack trace ใน extensions ช่วย development | stack trace ใน production เป็น security risk |
+
+## Common Mistakes
+
+**Stack Trace ใน Production Response**
+
+อาการ:
+- extensions มี `stacktrace` array แม้ใน production
+- expose internal code path และ file structure ให้ผู้โจมตี
+- ปิด stack trace ใน production: `formatError` ที่ filter out stacktrace เมื่อ `NODE_ENV === 'production'`
+
+**Error Code ที่ไม่ Documented**
+
+อาการ:
+- client ได้ `"code": "ERR_42"` แต่ไม่รู้ว่าหมายถึงอะไร
+- developer ต้องถามหรือดู source code เพื่อรู้ error code
+- document error code ทั้งหมดใน schema description หรือ API doc
+
+> 💡 Real World Example
+>
+> **Apollo Server:**
+> - error extensions มี `code` (enum) และ `http.status` สำหรับ custom HTTP status
+> - production build ซ่อน `stacktrace` อัตโนมัติ
+>
+> **Stripe:**
+> - error code เป็น machine-readable string: `card_declined`, `insufficient_funds`
+> - client จัดการแต่ละ error code ต่างกันโดยไม่ต้อง parse error message
 
 <Callout title="code สำหรับเครื่อง message สำหรับมนุษย์">
 มอง `extensions.code` เป็น enum ที่คงที่ซึ่ง client พึ่งพา และมอง `message` เป็นประโยคที่หันหน้าให้มนุษย์ซึ่งคุณเรียบเรียงใหม่ได้อย่างอิสระ throw `GraphQLError` สำหรับความล้มเหลวที่คุณคาดการณ์ได้ เช่น not found, unauthenticated, bad input และให้ code ที่จงใจกับแต่ละอัน สำหรับทุกอย่างที่ไม่คาดคิด ให้ดักจับและปกปิด log สาเหตุจริงไว้ฝั่ง server แล้ว return `INTERNAL_SERVER_ERROR` ทั่วไปกลับไปให้ client typed ตรงที่มันช่วย และทึบตรงที่มันปกป้อง

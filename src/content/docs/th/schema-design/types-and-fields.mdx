@@ -152,6 +152,36 @@ export const typesFieldsCode = `(async () => {
 
 query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ่งรายการ จากนั้นก้าวเข้าไปใน `author` และออกมายังรายการสูตรอาหารของผู้แต่งคนนั้น หนึ่งรอบการสื่อสาร หลาย type — นั่นคือกราฟที่กำลังทำงาน
 
+| Benefits | Trade-offs |
+|---|---|
+| type system เป็น living documentation ที่ accurate เสมอ | schema ใหญ่ที่ไม่ organize ดีอ่านยาก |
+| rename field โดยใช้ `@deprecated` แทนการลบ — backward compat | type ที่ leak database detail ทำให้ refactor ยาก |
+| field-level description ทำให้ introspection เป็น API doc | type ที่ generic เกิน เช่น `JSON` ลด type safety |
+| non-null `!` บังคับ client จัดการ null อย่างถูกต้อง | null vs non-null design ผิด ทำให้ client ต้อง null check ที่ไม่จำเป็น |
+
+## Common Mistakes
+
+**Type ที่สะท้อน Database Schema ตรง ๆ**
+อาการ:
+- GraphQL type ชื่อ `users_table` หรือ field ชื่อ `user_id` แทน `userId`
+- expose column name จาก database ให้ client โดยตรง
+- schema ควรสะท้อน business domain ไม่ใช่ database implementation
+
+**`JSON` Scalar ทุกที่ที่ไม่รู้จะทำยังไง**
+อาการ:
+- `metadata: JSON` แทนที่จะออกแบบ type ให้ชัดเจน
+- client ไม่รู้ว่า metadata มี field อะไร — ไม่มี type checking
+- หากยังไม่รู้ shape ใช้ `JSON` ชั่วคราวได้ แต่วางแผน migrate ไป typed field
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - ใช้ `@deprecated(reason: "...")` แทนการลบ field
+> - migration period — field ยังคง serve ต่อไป แต่ client รู้ว่าต้องอัปเดต
+>
+> **Shopify:**
+> - schema design ยึด "client first" — field ทุกตัวออกแบบจาก client use case ไม่ใช่ database
+
 <Callout title="Field คือหน่วยของการออกแบบ">
 ทุกการตัดสินใจที่คุณทำใน schema ลงเอยที่ field: ชื่อของมัน type ของมัน argument ที่มันรับ และ description ที่อธิบายมัน ตั้งชื่อ field ตามคุณสมบัติใน domain มอบ argument ให้ field ที่ต้องการมัน เขียนเอกสารสิ่งที่ไม่ชัดเจนในตัวเอง และปล่อยให้ field ที่เป็น object type แสดงความสัมพันธ์ที่ client จะเดินผ่านจริง ๆ จัดการ field ให้ถูกต้องแล้วส่วนที่เหลือของ schema ก็จะตามมาเอง
 </Callout>

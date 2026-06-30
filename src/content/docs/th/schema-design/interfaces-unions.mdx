@@ -1,6 +1,6 @@
 ---
 title: Interfaces และ Unions
-description: 'interface สำหรับ field ที่ใช้ร่วมกัน, union สำหรับทางเลือกแบบเลือกหนึ่ง, __typename และการเลือกฟิลด์ต่อ type ด้วย inline fragment'
+description: 'interface สำหรับ field ที่ใช้ร่วมกัน, union สำหรับทางเลือกแบบเลือกหนึ่ง, __typename และการเลือก field ต่อ type ด้วย inline fragment'
 sidebar:
   order: 4
 ---
@@ -85,7 +85,7 @@ type Query {
 }
 ```
 
-อ่าน `... on Movie` ว่า "หากผลลัพธ์นี้เป็น `Movie` ให้เลือก field เหล่านี้ด้วย" สำหรับ interface คุณสามารถเลือก field ที่ใช้ร่วมกันได้โดยตรง (ไม่ต้องใช้ fragment) และใช้ inline fragment เฉพาะกับส่วนเสริมที่เฉพาะของแต่ละ type เท่านั้น `__typename` แทบจะคุ้มค่าเสมอที่จะขอบน field ที่เป็น polymorphic — client ใช้มันเพื่อตัดสินว่าจะรันโค้ดสาขาไหนของตัวเอง
+อ่าน `... on Movie` ว่า "หากผลลัพธ์นี้เป็น `Movie` ให้เลือก field เหล่านี้ด้วย" สำหรับ interface คุณสามารถเลือก field ที่ใช้ร่วมกันได้โดยตรง (ไม่ต้องใช้ fragment) และใช้ inline fragment เฉพาะกับส่วนเสริมที่เฉพาะของแต่ละ type เท่านั้น `__typename` แทบจะคุ้มค่าเสมอที่จะขอบน field ที่เป็น polymorphic — client ใช้มันเพื่อตัดสินว่าจะรันcodeสาขาไหนของตัวเอง
 
 ## union พร้อม fragment รันได้จริง
 
@@ -139,6 +139,37 @@ export const unionCode = `(async () => {
 <NodeRunner client:visible code={unionCode} />
 
 แต่ละรายการในลิสต์คืนกลับมาพร้อมป้ายกำกับ `__typename` ของมัน และมีเฉพาะ inline fragment ที่ตรงกับ type นั้นเท่านั้นที่มีส่วนร่วมในการให้ field ตัว `Episode` พกพา `seasonNumber` มา ส่วน `Movie` พกพา `rating` มา หนึ่ง field สองรูปร่าง ปลอดภัยด้าน type อย่างเต็มที่
+
+| | Interface | Union |
+|---|---|---|
+| ใช้เมื่อ | type มี field ร่วมกัน | type ไม่มี field ร่วมกัน |
+| ตัวอย่าง | `Animal` → `Dog`, `Cat` | `SearchResult` → `User`, `Post`, `Tag` |
+| client query | field จาก interface ได้ตรง | ต้องใช้ inline fragment ทุกครั้ง |
+| เพิ่ม type ใหม่ | type ใหม่ต้อง implement interface | เพิ่ม member ใน union ได้โดยตรง |
+
+## Common Mistakes
+
+**Interface เมื่อไม่มี Shared Field จริง**
+อาการ:
+- สร้าง interface `Node` ที่มีแค่ `id: ID!` โดยไม่มี shared behavior
+- ทุก type implement แต่ไม่ได้ใช้ polymorphism จริง
+- Interface มีค่าเมื่อมี field หรือ behavior ที่ใช้ร่วมกันจริง ๆ
+
+**Union ที่มีแค่ 1 Member**
+อาการ:
+- `union UserResult = User` — Union ที่มีแค่ type เดียว
+- เพิ่ม indirection โดยไม่มีประโยชน์
+- ใช้ type ตรง ๆ หรือรอจนมี multiple member จริงก่อน
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - `Node` interface: ทุก object ที่มี `id` implement interface นี้
+> - ทำให้ client ใช้ `node(id: ID!)` query เพื่อ fetch object ใด ๆ ด้วย global ID
+>
+> **Shopify:**
+> - `SearchResult` Union รวม `Product`, `Collection`, `Page`, `Article`
+> - client ใช้ inline fragment เลือก field ตาม `__typename`
 
 <Callout title="interface = field ที่ใช้ร่วมกัน; union = ทางเลือกที่ไม่เกี่ยวข้องกัน">
 หยิบ **interface** มาใช้เมื่อหลาย type เป็นรูปแบบที่แตกต่างของแนวคิดเดียวกันและใช้ field ที่คุณอยากจะ query ด้วยกันร่วมกัน — field ที่ใช้ร่วมกันอยู่บน interface และคุณเลือกส่วนเสริมเฉพาะของแต่ละ type ด้วย inline fragment หยิบ **union** มาใช้เมื่อทางเลือกต่าง ๆ ไม่มีอะไรเหมือนกันเลยและแค่ครอบครองช่องเดียวกัน — ไม่มี field ที่ใช้ร่วมกัน ดังนั้นทุกการเลือกเกิดขึ้นภายใน fragment `... on Type` ในทั้งสองกรณี ให้ขอ `__typename` เพื่อให้ client รู้ว่าได้รับ type รูปธรรมตัวไหนมา

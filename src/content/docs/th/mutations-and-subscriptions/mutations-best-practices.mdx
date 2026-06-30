@@ -36,7 +36,7 @@ input AddToCartInput {
 
 <Mermaid title="การ validate ที่กู้คืนได้อยู่ใน payload; ความล้มเหลวระดับ protocol และที่ไม่คาดคิดอยู่ใน array errors ระดับบนสุด" code={errorDiagram} />
 
-เหตุผลที่ต้องแยกมันออกจากกันคือตัว client โค้ดที่แสดงข้อความ validation ใต้ field ของฟอร์มไม่ควรต้อง parse ช่องทางเดียวกันกับที่นำเสนอ "เซสชันของคุณหมดอายุ" ใส่สิ่งที่ผู้ใช้แก้ได้ไว้ใน `userErrors` แล้วปล่อยให้ทุกอย่างที่เหลือ throw
+เหตุผลที่ต้องแยกมันออกจากกันคือตัว client codeที่แสดงข้อความ validation ใต้ field ของฟอร์มไม่ควรต้อง parse ช่องทางเดียวกันกับที่นำเสนอ "เซสชันของคุณหมดอายุ" ใส่สิ่งที่ผู้ใช้แก้ได้ไว้ใน `userErrors` แล้วปล่อยให้ทุกอย่างที่เหลือ throw
 
 ## หลีกเลี่ยง mutation ที่ chatty
 
@@ -114,6 +114,39 @@ export const bestCode = `(async () => {
 <NodeRunner client:visible code={bestCode} />
 
 บรรทัดสุดท้ายคือบทพิสูจน์ หลังจากการสร้าง การ retry และการเรียกที่ถูกปฏิเสธ store มีรีวิวอยู่ **หนึ่ง** ตัวพอดี การ retry คืนรีวิวตัวเดิมโดยไม่เปลี่ยนแปลง คือ idempotency ที่ทำงานจริง และการเรียกที่ไม่ถูกต้องกลับมาเป็น `userError` ใน payload พร้อม `review: null` ไม่เคยแตะ store และไม่เคยยก error ระดับบนสุดเลย นั่นคือแนวปฏิบัติที่ดีทุกข้อจากบทเรียนนี้ที่เห็นได้ในผลลัพธ์เดียว
+
+| Best Practice | ทำไมสำคัญ |
+|---|---|
+| Idempotency key (`requestId`) | ป้องกันการสร้างซ้ำเมื่อ network drop แล้ว client retry |
+| User error ใน `payload.userErrors` | client แยก validation error จาก protocol error ได้โดยไม่ต้อง parse `errors[0].message` |
+| คืน object ที่ได้รับผลกระทบแบบเต็ม | optimistic UI ปรับ sync ได้ในทันทีโดยไม่ต้อง re-fetch |
+| หลีกเลี่ยง mutation ที่ chatty | ลด round-trip และความเสี่ยงจาก partial failure กลางลำดับ |
+
+## Common Mistakes
+
+**ส่ง user error ผ่าน top-level `errors` แทน payload**
+
+อาการ:
+- client ต้อง parse `errors[0].message` เพื่อแสดง validation message ใต้ form field
+- ไม่สามารถแยก "rating ไม่ถูกต้อง" กับ "session หมดอายุ" ได้จาก channel เดียวกัน
+- optimistic UI ไม่รู้ว่าต้อง rollback หรือ retry
+
+**คืนแค่ `Boolean` หรือ `id` จาก mutation**
+
+อาการ:
+- client ต้องส่ง query ตามหลังทุกครั้งเพื่อรู้ว่า state เปลี่ยนอย่างไร
+- 2 round-trip แทนที่จะเป็น 1
+- optimistic UI sync ไม่ได้เพราะขาด server-assigned field เช่น `updatedAt`, `slug`
+
+> 💡 Real World Example
+>
+> **Relay (Facebook's GraphQL client):**
+> - กำหนด convention ว่า mutation ทุกตัวต้องมี `clientMutationId` สำหรับ idempotency
+> - คืน payload object ที่มี `userErrors` array เสมอ — ไม่ใช้ top-level errors สำหรับ validation
+>
+> **Apollo Client:**
+> - `optimisticResponse` option ต้องการ object ที่มี shape ตรงกับ server payload
+> - ถ้า mutation คืนแค่ `id` โดยไม่มี field อื่น optimistic update ทำไม่ได้
 
 <Callout title="เช็กลิสต์สำหรับ mutation">
 ก่อนคุณจะปล่อย mutation ออกไป ให้ไล่ตามรายการนี้ มันปลอดภัยที่จะ retry ไหม และถ้าไม่ มันรับ idempotency key หรือเปล่า ปัญหาราย​ field ที่กู้คืนได้ลงเอยใน `userErrors` ของ payload ขณะที่เฉพาะความล้มเหลวระดับ protocol และที่ไม่คาดคิดเท่านั้นที่ throw ไปยัง `errors` ระดับบนสุดหรือไม่ การกระทำหนึ่งอย่างของผู้ใช้แมปเข้ากับการเดินทางไปกลับหนึ่งรอบ พร้อมคืนข้อมูลพอที่จะข้ามการอ่านตามหลังไหม และ payload ให้สิ่งที่ optimistic client ต้องใช้เพื่อปรับให้ตรงกันหรือย้อนกลับไหม ติ๊กถูกทั้งสี่ช่องนั้น แล้ว mutation ของคุณจะทำงานเหมือนกันทั้งบนการเชื่อมต่อรถไฟที่ไม่เสถียร และในการสาธิตที่สะอาดสะอ้าน

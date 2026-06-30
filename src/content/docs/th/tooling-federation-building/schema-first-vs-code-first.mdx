@@ -1,6 +1,6 @@
 ---
 title: Schema-First vs Code-First
-description: 'สองวิธีในการสร้าง GraphQL server — SDL เป็น source of truth เทียบกับ schema ที่ generate มาจากโค้ด — ข้อแลกเปลี่ยนของแต่ละแบบ และเดโมที่ทั้งสองให้ schema เดียวกัน'
+description: 'สองวิธีในการสร้าง GraphQL server — SDL เป็น source of truth เทียบกับ schema ที่ generate มาจากcode — ข้อแลกเปลี่ยนของแต่ละแบบ และเดโมที่ทั้งสองให้ schema เดียวกัน'
 sidebar:
   order: 2
 ---
@@ -39,9 +39,9 @@ const resolvers = {
 
 จุดแข็งคือ contract อยู่ **กลางเวทีและเด่นชัด** ใคร ๆ ก็ตาม — frontend, backend หรือคนที่ไม่ใช่วิศวกร — ก็อ่าน SDL แล้วรู้ได้ทันทีว่า API ให้บริการอะไรบ้าง ความเสี่ยงคือ **drift**: ไม่มีอะไรใน SDL ล้วน ๆ ที่บังคับให้ return type ของ resolver ตรงกับ type ที่ field ประกาศไว้ resolver อาจคืนค่าผิดรูปร่างได้อย่างเงียบ ๆ แล้วคุณจะพบก็ต่อเมื่อ runtime เท่านั้น ช่องว่างตรงนั้นคือสิ่งที่ code generation ในบทเรียนถัดไปเข้ามาปิด
 
-## Code-first — โค้ดนำ
+## Code-first — codeนำ
 
-ในการพัฒนาแบบ **code-first** คุณสร้าง schema ด้วยภาษาโปรแกรมของคุณ คุณสร้าง type object ขึ้นในโค้ด แล้ว SDL จะถูก **generate** ออกมาจาก object เหล่านั้น โค้ดคือ source of truth ส่วน SDL เป็น artifact ที่คุณพิมพ์ออกมาดูได้
+ในการพัฒนาแบบ **code-first** คุณสร้าง schema ด้วยภาษาโปรแกรมของคุณ คุณสร้าง type object ขึ้นในcode แล้ว SDL จะถูก **generate** ออกมาจาก object เหล่านั้น codeคือ source of truth ส่วน SDL เป็น artifact ที่คุณพิมพ์ออกมาดูได้
 
 ```ts
 import {
@@ -65,16 +65,16 @@ const QueryType = new GraphQLObjectType({
 const schema = new GraphQLSchema({ query: QueryType });
 ```
 
-ตรงนี้ field, type ของมัน, arguments ของมัน และ resolver ของมันอยู่ **ด้วยกัน** ในหนึ่ง object compiler ตรวจสอบทั้งหมดนี้เป็นหน่วยเดียว ดังนั้นปัญหา drift จึงแทบหายไป — resolver ที่คืน type ผิดจะเป็น type error ก่อนที่คุณจะรันอะไรก็ตาม ต้นทุนคือความอ่านง่าย: ตอนนี้ contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็น SDL ที่สะอาด และมือใหม่ต้องอ่านโค้ด ไม่ใช่เอกสาร เพื่อทำความเข้าใจ API
+ตรงนี้ field, type ของมัน, arguments ของมัน และ resolver ของมันอยู่ **ด้วยกัน** ในหนึ่ง object compiler ตรวจสอบทั้งหมดนี้เป็นหน่วยเดียว ดังนั้นปัญหา drift จึงแทบหายไป — resolver ที่คืน type ผิดจะเป็น type error ก่อนที่คุณจะรันอะไรก็ตาม ต้นทุนคือความอ่านง่าย: ตอนนี้ contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็น SDL ที่สะอาด และมือใหม่ต้องอ่านcode ไม่ใช่เอกสาร เพื่อทำความเข้าใจ API
 
 ## ข้อแลกเปลี่ยน เทียบกันเคียงข้าง
 
 <Mermaid title="schema เดียวกันที่ไปถึงด้วยสองเส้นทาง — และ source of truth ไหลไปในทิศตรงข้ามกัน" code={approachFlow} />
 
-- **Source of truth.** Schema-first: SDL. Code-first: โค้ด
+- **Source of truth.** Schema-first: SDL. Code-first: code
 - **ความอ่านง่ายของ contract.** Schema-first ชนะ — SDL เรียบและแชร์ได้ง่าย ส่วน code-first ซ่อนมันไว้หลัง constructor
-- **Type safety แบบไม่ต้องตั้งค่าเพิ่ม.** Code-first ชนะ — โค้ดและ type ถูกตรวจสอบไปด้วยกัน ส่วน schema-first ต้องใช้ code generation (บทเรียนถัดไป) เพื่อจับ resolver drift
-- **Tooling และการทำงานร่วมกัน.** ไฟล์ SDL ของ schema-first diff ได้สะอาดตอน review และแชร์กับคนที่ไม่ใช่วิศวกรหรือเครื่องมือออกแบบได้ ส่วนการเปลี่ยนแปลงแบบ code-first อ่านเหมือนการเปลี่ยนโค้ดทั่วไป
+- **Type safety แบบไม่ต้องตั้งค่าเพิ่ม.** Code-first ชนะ — codeและ type ถูกตรวจสอบไปด้วยกัน ส่วน schema-first ต้องใช้ code generation (บทเรียนถัดไป) เพื่อจับ resolver drift
+- **Tooling และการทำงานร่วมกัน.** ไฟล์ SDL ของ schema-first diff ได้สะอาดตอน review และแชร์กับคนที่ไม่ใช่วิศวกรหรือเครื่องมือออกแบบได้ ส่วนการเปลี่ยนแปลงแบบ code-first อ่านเหมือนการเปลี่ยนcodeทั่วไป
 
 ไม่มีแบบไหนถูกต้องเสมอไป stack TypeScript สมัยใหม่จำนวนมากลงตรงกลาง: เขียน SDL (schema-first) เพื่อให้ได้ contract ที่อ่านง่าย แล้ว **generate types** จากมันเพื่อให้ได้ safety แบบ code-first ด้วย แนวทางผสมนั้นคือสิ่งที่ส่วนที่เหลือของโมดูลนี้ต่อยอดขึ้นไป
 
@@ -136,8 +136,39 @@ export const sameSchemaCode = `(async () => {
 
 สังเกตว่า `printSchema` คืน SDL เดียวกันสำหรับทั้งสองแบบ และทั้งสอง query คืนข้อมูลเดียวกัน ปลายทาง — schema ที่มี type และรันได้ — เหมือนกันทุกประการ สิ่งที่ต่างกันมีเพียงว่าคุณเขียน artifact ไหนด้วยมือ และเครื่องสร้าง artifact ไหนให้ นั่นคือแก่นทั้งหมดของการตัดสินใจระหว่าง schema-first กับ code-first
 
+| | Schema-first (SDL) | Code-first (Programmatic) |
+|---|---|---|
+| เริ่มจาก | `.graphql` file | TypeScript/JavaScript code |
+| ตัวอย่าง | `type User { name: String! }` | `builder.objectType('User', ...)` |
+| ข้อดี | readable, language-agnostic, contract-first | type-safe, refactor ง่าย, ไม่ sync ไฟล์ |
+| ข้อเสีย | SDL กับ resolver อาจ drift | verbose, schema อ่านยากกว่า |
+| เหมาะกับ | ทีมที่มีทั้ง frontend/backend | TypeScript-heavy backend team |
+
+## Common Mistakes
+
+**SDL ที่ Drift จาก Resolver**
+อาการ:
+- schema SDL บอกว่า `name: String!` แต่ resolver return null
+- ไม่มี type check ระหว่าง SDL และ resolver
+- ใช้ codegen สร้าง resolver type จาก SDL — TypeScript จะ catch mismatch
+
+**Code-first ที่ไม่มี Type Safety**
+อาการ:
+- `t.field('name', { type: 'String', resolve: (parent) => parent.fullName })` — no type check on `parent`
+- ใช้ Pothos หรือ TypeGraphQL ที่ enforce type ของ parent, args, context
+
+> 💡 Real World Example
+>
+> **Shopify:**
+> - ใช้ SDL-first — schema เป็น source of truth ที่ทั้ง team ดูได้
+> - schema review เป็นส่วนหนึ่งของ code review process
+>
+> **Prisma:**
+> - Pothos (code-first) + Prisma integration ทำให้ schema generate ตาม database model
+> - type-safe ตั้งแต่ database ถึง GraphQL field โดยไม่ต้องเขียน sync code
+
 <Callout title="เลือกตามสิ่งที่คุณให้ความสำคัญ">
-เลือก **schema-first** เมื่อความอ่านง่ายและการแชร์ได้ของ contract สำคัญที่สุด — ไฟล์ SDL ที่สะอาดซึ่งทั้งองค์กรอ่านได้ — และวางแผนเพิ่ม code generation เพื่อความปลอดภัย เลือก **code-first** เมื่อ type safety แบบ end-to-end ที่ไม่ต้องเพิ่มขั้นตอน build สำคัญที่สุด และคุณยอมรับว่า contract อยู่ในโค้ด ไม่ว่าคุณจะเลือกแบบใด ให้ทำให้อันใดอันหนึ่งเป็น source of truth เดียว และอย่าแก้ไขอีกอันด้วยมือเด็ดขาด
+เลือก **schema-first** เมื่อความอ่านง่ายและการแชร์ได้ของ contract สำคัญที่สุด — ไฟล์ SDL ที่สะอาดซึ่งทั้งองค์กรอ่านได้ — และวางแผนเพิ่ม code generation เพื่อความปลอดภัย เลือก **code-first** เมื่อ type safety แบบ end-to-end ที่ไม่ต้องเพิ่มขั้นตอน build สำคัญที่สุด และคุณยอมรับว่า contract อยู่ในcode ไม่ว่าคุณจะเลือกแบบใด ให้ทำให้อันใดอันหนึ่งเป็น source of truth เดียว และอย่าแก้ไขอีกอันด้วยมือเด็ดขาด
 </Callout>
 
 export const approachFlow = `flowchart TD

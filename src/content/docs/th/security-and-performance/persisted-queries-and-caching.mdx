@@ -81,6 +81,37 @@ function charge(context, queryCost: number) {
 
 เมื่อนำมาซ้อนกับบทเรียนก่อนหน้า ภาพรวมทั้งหมดน่าอุ่นใจ Authentication ระบุชื่อผู้เรียก, authorization คุม gate แต่ละ field, depth และ complexity analysis ปฏิเสธรูปทรงที่ใช้ในทางที่ผิด, persisted queries แช่แข็งชุด operation ที่อนุญาต, caching ขจัดงานที่ทำซ้ำ, และ rate limiting จำกัดสิ่งที่เหลือ แต่ละชั้นเรียบง่าย; เมื่อรวมกันมันทำให้ endpoint เดียวที่ยืดหยุ่นปลอดภัยและเร็วได้อย่างแท้จริง
 
+| Benefits | Trade-offs |
+|---|---|
+| persisted query ลด payload — ส่งแค่ hash แทน query string | ต้อง register query ก่อน deploy — extra step ใน CI/CD |
+| GET request ได้ — HTTP cache ทำงานได้กับ GET | client และ server ต้อง sync query manifest |
+| ป้องกัน arbitrary query execution — เฉพาะ registered query | schema เปลี่ยนอาจทำให้ persisted query invalid |
+| ลด parse และ validate overhead ในบาง implementation | ซับซ้อนสำหรับ development และ debugging |
+
+## Common Mistakes
+
+**คิดว่า GraphQL Cache ได้แบบ REST โดยไม่ต้องทำอะไร**
+อาการ:
+- ไม่ implement persisted query และ GET request
+- POST request ทุกครั้ง — CDN และ HTTP cache ทำงานไม่ได้
+- REST endpoint ที่ cache ได้ง่ายกว่าอาจเหมาะกว่าถ้า caching สำคัญมาก
+
+**Field-level Cache ที่ไม่สอดคล้องกัน**
+อาการ:
+- cache TTL ต่างกันระหว่าง field ใน response เดียวกัน
+- response ที่รวม user profile (ไม่เปลี่ยน) กับ notification count (เปลี่ยนบ่อย)
+- แยก query ที่มี cache requirement ต่างกัน หรือใช้ `@cacheControl` directive
+
+> 💡 Real World Example
+>
+> **Apollo:**
+> - Apollo Persisted Queries — client ส่ง hash, server ค้นหา query จาก registry
+> - production traffic ลด query payload size 80-90%
+>
+> **Shopify:**
+> - Storefront API ใช้ GET + persisted query สำหรับ CDN caching
+> - product page cache ได้ที่ CDN — ลด latency สำหรับ read-heavy operation
+
 <Callout title="แช่แข็งสิ่งที่รัน, cache สิ่งที่ทำซ้ำ, จำกัดสิ่งที่เหลือ">
 ความยืดหยุ่นของ endpoint นั้นวิเศษในการพัฒนาและอันตรายใน production จงทำให้มันเชื่องด้วยสามนิสัย **Allowlist operation** ด้วย persisted (trusted) query เพื่อให้เฉพาะ operation ที่แอปของคุณเองส่งมาเท่านั้นที่ execute ได้ — และจำไว้ว่า APQ เพียงอย่างเดียวหด bandwidth แต่ไม่ทำ allowlist **Cache** ที่ระดับ response (key ด้วย viewer) และระดับ per-field (ด้วย `@cacheControl` TTL) และเสิร์ฟ persisted query ผ่าน `GET` เพื่อให้ CDN ช่วยได้ **Rate limit** ด้วยการใช้จ่าย complexity budget ไม่ใช่จำนวน raw request ทำทั้งสามอย่างแล้วคุณจะรักษาความสะดวกของ GraphQL ไว้ในขณะที่ขจัด footgun ด้าน security และ performance ส่วนใหญ่ออกไป
 </Callout>

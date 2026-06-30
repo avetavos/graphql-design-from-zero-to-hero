@@ -125,6 +125,37 @@ export const authzCode = `(async () => {
 
 อ่าน output ทั้งสองด้วยกัน ในฐานะ user ปกติ (ผู้ *ที่เป็น* เจ้าของ) `email` คืนที่อยู่แต่ `auditLog` ก่อให้เกิด `FORBIDDEN` error และค่าของมันเป็น `null` — ทว่า `me` และ `email` ยังกลับมา เพราะ field error ที่ถูก throw ทำให้เป็น null เฉพาะ field นั้นและคงส่วนที่เหลือไว้ ในฐานะ admin (ผู้ที่ *ไม่ใช่* เจ้าของ) `auditLog` คืนข้อมูลในขณะที่ `email` เป็น `null` อย่างเงียบ ๆ สไตล์การปฏิเสธคือทางเลือกต่อ field ที่จงใจ: `null` เงียบ ๆ สำหรับ email ที่เป็นความลับของเจ้าของ, error ดังสำหรับ log ที่มีแต่ admin
 
+| Approach | ข้อดี | ข้อเสีย |
+|---|---|---|
+| Check ใน Resolver | ง่าย implement | duplicate, ลืมง่าย |
+| Directive (`@auth`) | declarative, visible ใน schema | ต้อง implement directive transformer |
+| Shield / Rule Layer | centralized, composable | เพิ่ม dependency |
+| Service Layer | auth logic อยู่ใกล้ business logic | resolver ต้อง call service |
+
+## Common Mistakes
+
+**Authorization ใน Schema แต่ไม่ใน Resolver**
+อาการ:
+- schema บอกว่า field เป็น public แต่ resolver ยังต้อง check permission เอง
+- inconsistent — introspection อาจ expose field ที่ client เข้าถึงไม่ได้จริง
+- auth layer ควร enforce จริง ไม่ใช่แค่ document
+
+**Field-level Auth ที่ Incomplete**
+อาการ:
+- check auth ที่ Query root แต่ไม่ check ที่ nested resolver
+- `adminStats` ใน `User` type ไม่ได้ protect — ใครก็ query ได้ผ่าน user query
+- protect ทุก field ที่ sensitive ไม่ว่าจะ access ผ่านทางไหน
+
+> 💡 Real World Example
+>
+> **GraphQL Shield:**
+> - rule-based authorization layer สำหรับ GraphQL
+> - compose rule: `and(isAuthenticated, isAdmin)` สำหรับ admin-only field
+>
+> **GitHub:**
+> - field บาง field จะ return `null` แทน error เมื่อไม่มี permission
+> - ทำให้ partial result แสดงข้อมูลที่ได้รับอนุญาต โดยซ่อน field ที่ไม่ได้รับ
+
 <Callout title="Authorize ตรงที่ข้อมูลถูกผลิต และเลือกการปฏิเสธอย่างตั้งใจ">
 Authorization ไม่ใช่ประตูเดียวที่ทางเข้า — มันคือการตัดสินที่ทุก field วางการตรวจสอบไว้ใน resolver (หรือแยกเป็น directive หรือ middleware เพื่อให้ประกาศครั้งเดียว) และอย่าไว้ใจ client ในการบังคับใช้ เมื่อ access ถูกปฏิเสธ จงเลือก response อย่างจงใจ: **คืน `null`** เมื่อแม้แต่การยอมรับว่า field มีอยู่จะเป็นการรั่วไหลข้อมูล และ **throw `GraphQLError` พร้อม code `FORBIDDEN`** เมื่อ client ที่ซื่อตรงล้ำเส้นและสมควรได้รับการบอก ทั้งสองทางคงส่วนที่เหลือของ response ไว้ครบถ้วน
 </Callout>

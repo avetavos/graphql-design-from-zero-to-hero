@@ -146,6 +146,37 @@ export const loaderCode = `(async () => {
 
 ผลลัพธ์ทำให้ความต่างเป็นรูปธรรม: ด้วย post สี่อัน เส้นทางที่ไม่ batch เรียกการค้นหา author **4** ครั้ง ในขณะที่ `batchFn` ของ loader ที่ batch ยิงเพียง **ครั้งเดียว** — key ถูกรวบรวมระหว่างหนึ่ง tick และถูก resolve ไปพร้อมกัน ใน production batch function นั้นจะเป็น query `WHERE id IN (…)` เดียวแทนที่จะเป็นหลายสิบ query (package `dataloader` ตัวจริง ซึ่ง import ได้ด้วยวิธีเดียวกันผ่าน `await import('https://esm.sh/dataloader@2')` ทำสิ่งนี้พอดี พร้อม caching และการจัดการ edge case เพิ่มเติม; loader ด้านบนเป็นเวอร์ชันขั้นต่ำเพื่อแสดงกลไก)
 
+| Benefits (DataLoader) | Trade-offs |
+|---|---|
+| batch N database query เป็น 1 query — ลด round trip | ต้องเพิ่ม DataLoader ทุก relationship — setup เพิ่ม |
+| per-request cache — ไม่ query ซ้ำสำหรับ key เดียวในครั้งเดียวกัน | DataLoader เป็น per-request — ไม่ cache ข้าม request |
+| transparent กับ resolver — resolver ไม่ต้องรู้ว่ามี batching | async nature ต้องระวัง race condition |
+| ลด database connection pressure ใน concurrent request | DataLoader หลายตัวใน schema ใหญ่ต้องจัดการอย่างดี |
+
+## Common Mistakes
+
+**Resolver ที่ Query Database ทุก field**
+อาการ:
+- `Post.author` resolver ทำ `db.findUser(post.authorId)` ทุกครั้ง
+- 100 post = 100 database query แยก
+- solution: DataLoader.load(post.authorId) — batch เป็น query เดียว
+
+**DataLoader ที่ Shared ข้าม Request**
+อาการ:
+- สร้าง DataLoader ครั้งเดียวตอน server start แล้วใช้ร่วมกัน
+- per-request cache ทำงานผิด — user A เห็นข้อมูลของ user B
+- สร้าง DataLoader ใหม่ทุก request ใน context factory
+
+> 💡 Real World Example
+>
+> **Facebook (ผู้สร้าง DataLoader):**
+> - DataLoader เกิดจาก internal need ที่ Facebook ก่อนจะ open source
+> - batch loading ช่วยลด database round trip จากหลักร้อยเหลือหลักสิบต่อ request
+>
+> **Shopify:**
+> - ใช้ DataLoader สำหรับทุก relationship ใน GraphQL schema
+> - ประมวลผล request ที่มี product + variant + inventory ด้วย batch query
+
 <Callout title="หนึ่ง loader ต่อหนึ่ง request batch ด้วย key">
 ปัญหา N+1 เป็นเรื่องเชิงโครงสร้าง: GraphQL resolve แต่ละ field โดยอิสระ list ของ N item จึง trigger resolver ลูก N ตัว DataLoader แก้มันด้วยการเลื่อนการโหลดไปไว้ท้าย tick เรียก batch function ของคุณครั้งเดียวด้วย key ทั้งหมด และ cache รายการซ้ำภายใน request สร้าง loader ใหม่ต่อหนึ่ง request (เพื่อให้ cache ไม่รั่วระหว่างผู้ใช้) เขียน `batchFn` ที่คืนผลลัพธ์ในลำดับเดียวกับ key และเรียก `loader.load(key)` จาก resolver ของคุณ ทำเช่นนี้แล้ว query ที่ซ้อนกันลึก ๆ จะยังเป็น query ที่ batch ไว้ไม่กี่อันแทนที่จะเป็นหลายร้อย
 </Callout>

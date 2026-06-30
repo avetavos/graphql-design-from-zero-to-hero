@@ -133,6 +133,36 @@ export const connCode = `(async () => {
 
 ผลลัพธ์ให้ edge สองอัน แต่ละอันมี `node` และ `cursor` ทึบแสง พร้อมกับ `pageInfo` ที่บอก `hasNextPage: true` และส่ง `endCursor` กลับมา ส่ง `endCursor` นั้นเป็น `after` แล้วคุณจะได้สองอันถัดไป — และเพราะ cursor ตั้งชื่อให้ *item* ไม่ใช่ตำแหน่ง การแทรก post ใหม่ที่ด้านบนของ list จะไม่ทำให้หน้าสองซ้ำหรือข้ามอะไรไป ความเสถียรนั้นคือเหตุผลทั้งหมดที่ connection มีอยู่
 
+| Benefits | Trade-offs |
+|---|---|
+| stable pagination — item ไม่หาย/ซ้ำเมื่อ data เปลี่ยน | verbose กว่า offset — `edges.node` แทน item ตรง ๆ |
+| รองรับ infinite scroll ได้ดี | ต้องออกแบบ cursor strategy อย่างดี |
+| pageInfo ให้ข้อมูล `hasNextPage`, `hasPreviousPage` ครบ | cursor ที่ opaque ทำให้ skip ไปหน้าใดไม่ได้ |
+| มาตรฐาน spec ที่ client library รองรับ (Apollo, Relay) | implementation ซับซ้อนกว่า offset |
+
+## Common Mistakes
+
+**Cursor ที่เป็น Offset ซ่อนอยู่**
+อาการ:
+- cursor เป็นแค่ `base64(offset)` — ไม่ stable
+- เมื่อ item ถูกลบ cursor เดิมชี้ไปผิด position
+- ใช้ opaque cursor จาก unique identifier เช่น `base64(id)` หรือ `base64(createdAt:id)`
+
+**Edge Type ที่ไม่มี Custom Field**
+อาการ:
+- `Edge` มีแค่ `node` และ `cursor` — ไม่ใช้ประโยชน์ของ Edge
+- edge สามารถมี relationship metadata เช่น `joinedAt` สำหรับ user-in-group
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - ทุก list ใช้ Relay Connection spec: `repository.issues(first: 10, after: $cursor)`
+> - ทำให้ paginate ผ่าน issue, PR, comment ได้อย่าง consistent
+>
+> **Shopify:**
+> - Storefront API ใช้ Connection ทุกที่ — products, orders, collections
+> - client library เช่น Hydrogen ใช้ Connection spec สำหรับ automatic pagination
+
 <Callout title="ใช้ cursor สำหรับ list ที่ใหญ่หรือเปลี่ยนแปลง">
 รูปร่างของ Relay connection — `edges { node cursor }` และ `pageInfo { hasNextPage endCursor }` ที่ paging ด้วย `first`/`after` — มี boilerplate มากกว่า `limit`/`offset` แต่มันคุ้มค่ากับ list ที่ใหญ่หรือเปลี่ยนแปลงขณะที่ผู้ใช้กำลังเรียกดู cursor ระบุ item แทนที่จะเป็นตำแหน่ง การแทรกและลบแบบพร้อมกันจึงไม่ทำให้ขอบเขตของหน้าเสียหาย และฐานข้อมูลสามารถ seek ตรงไปยัง cursor ได้แทนที่จะนับผ่านแถวที่ถูกข้าม สำหรับ feed, ผลการค้นหา และ collection ที่มีปริมาณมาก จงหยิบ connection มาใช้
 </Callout>

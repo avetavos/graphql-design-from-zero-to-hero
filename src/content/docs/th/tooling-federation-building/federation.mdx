@@ -80,6 +80,38 @@ gateway ไม่ได้รวม schema แบบมั่ว ๆ มัน *
 
 ความผิดพลาดที่พบบ่อยที่สุดของ federation คือการแยกตาม *layer ทางเทคนิค* — "database subgraph", "validation subgraph" นั่นสร้างคอขวดขึ้นมาใหม่ เพราะทุกฟีเจอร์ยังคงแตะทุก layer อยู่ดี ให้แยกตาม **domain** แทน: accounts, catalog, reviews, billing แต่ละ subgraph จึงตรงกับทีมที่เป็นเจ้าของชิ้นส่วนแนวตั้งทั้งชิ้นแบบ end to end ได้ และรอยต่อของ `@key`/reference ตกลงบนขอบเขต domain ตามธรรมชาติ (review *มี* author หนึ่งคน; product *มี* reviews)
 
+| Benefits | Trade-offs |
+|---|---|
+| แต่ละ team ดูแล subgraph ของตัวเอง — schema ownership ชัดเจน | infrastructure ซับซ้อนกว่า monolithic schema |
+| extend type ข้าม subgraph ได้ — `User` ใน product service มี field จาก review service | learning curve สูง — ต้องเข้าใจ entity, @key, @external |
+| deploy subgraph อิสระโดยไม่กระทบ subgraph อื่น | gateway เป็น single point of failure ถ้าไม่ design ดี |
+| scale แต่ละ subgraph ตาม load ของมัน | subgraph ที่ schema ไม่ compatible ทำให้ federation fail |
+
+## Common Mistakes
+
+**Federation ตั้งแต่ต้น โดยไม่มีหลาย Team**
+อาการ:
+- 1 team ดูแล subgraph ทั้งหมด
+- ซับซ้อนกว่า monolithic schema โดยไม่ได้ประโยชน์
+- เริ่มด้วย monolithic schema แล้ว federate เมื่อ team แยกกันจริง
+
+**Circular Entity Reference**
+อาการ:
+- `User` subgraph reference `Order` และ `Order` subgraph reference `User` แบบ circular
+- gateway ต้องทำ round trip ซ้ำซ้อนเพื่อ resolve
+- ออกแบบ entity ownership ให้ชัดเจน — ใคร owns ใคร
+
+> 💡 Real World Example
+>
+> **Airbnb:**
+> - ใช้ Apollo Federation สำหรับ internal GraphQL platform
+> - แต่ละ team ดูแล subgraph: listing, booking, user, review
+> - schema gateway รวม subgraph สำหรับ mobile และ web client
+>
+> **Netflix:**
+> - Federated GraphQL ช่วยให้ 100+ team ทำงานอิสระ
+> - schema registry ติดตาม breaking change ก่อน deploy
+
 <Callout title="federate ตาม domain และเฉพาะเมื่อจำเป็นเท่านั้น">
 หันไปหา federation เมื่อ schema เดียวและทีมเดียวกลายเป็นคอขวดแล้ว — ไม่ใช่ก่อนหน้านั้น เซอร์วิสเดียวสร้าง, test และเข้าใจได้ง่ายกว่า และผลิตภัณฑ์ส่วนใหญ่ไม่เคยโตเกินมัน เมื่อคุณแยกจริง ๆ ให้แยกตาม **domain** เพื่อให้แต่ละ subgraph ตรงกับทีมหนึ่งและชิ้นส่วนของธุรกิจที่มีขอบเขตชัดเจน ปล่อยให้ entities และ `@key` แบกการเชื่อมโยงข้าม domain เก็บ `__resolveReference` ไว้เป็นรอยต่อเพียงอันเดียว และไว้ใจ composition validation ให้ปฏิเสธการเปลี่ยนแปลงใด ๆ ที่จะทำให้กราฟที่รวมกันแล้วพัง
 </Callout>

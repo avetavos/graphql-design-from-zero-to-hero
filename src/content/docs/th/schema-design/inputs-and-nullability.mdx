@@ -43,7 +43,7 @@ input CreateBookInput {
 }
 ```
 
-`title` และ `authorId` เป็น non-null ดังนั้นการละเว้นมันจึงเป็นข้อผิดพลาดด้านการตรวจสอบที่ถูกดักไว้ก่อนที่ resolver ใด ๆ จะทำงาน `pageCount` เป็น nullable จึงเป็น optional nullability บน input คือวิธีที่คุณแสดง "จำเป็น vs ไม่จำเป็น" โดยไม่ต้องเขียนโค้ดตรวจสอบสักบรรทัด — ระบบ type บังคับใช้มันให้คุณ
+`title` และ `authorId` เป็น non-null ดังนั้นการละเว้นมันจึงเป็นข้อผิดพลาดด้านการตรวจสอบที่ถูกดักไว้ก่อนที่ resolver ใด ๆ จะทำงาน `pageCount` เป็น nullable จึงเป็น optional nullability บน input คือวิธีที่คุณแสดง "จำเป็น vs ไม่จำเป็น" โดยไม่ต้องเขียนcodeตรวจสอบสักบรรทัด — ระบบ type บังคับใช้มันให้คุณ
 
 ## List และเครื่องหมายอัศเจรีย์สองตัว
 
@@ -79,7 +79,7 @@ type Query {
 
 ## ออกแบบ input ที่ทนทานต่อเวลา
 
-นิสัยไม่กี่อย่างช่วยให้ input น่าใช้เมื่อเวลาผ่านไป ห่อ argument ของ mutation ไว้ใน `input` type เดียวเพื่อให้ลายเซ็นคงเสถียร ทำให้ field เป็น non-null เฉพาะเมื่อการดำเนินการทำต่อไปไม่ได้จริง ๆ หากขาดมัน — การใช้ `!` มากเกินไปทำให้ API แข็งทื่อและทำให้ client พังเมื่อข้อกำหนดผ่อนคลายลง ให้ค่า default สำหรับการแบ่งหน้าและการเรียงลำดับ เพื่อให้การเรียกแบบง่ายเป็นการเรียกที่ทำได้ง่าย และคง input type ให้มีจุดโฟกัส: หนึ่ง input ต่อหนึ่งการดำเนินการ ตั้งชื่อตามการดำเนินการ ดีกว่าถุงรวมขนาดยักษ์ของ field optional ที่ใช้ร่วมกัน
+นิสัยไม่กี่อย่างช่วยให้ input น่าใช้เมื่อเวลาผ่านไป ห่อ argument ของ mutation ไว้ใน `input` type เดียวเพื่อให้ลายเซ็นคงเสถียร ทำให้ field เป็น non-null เฉพาะเมื่อการทำงานทำต่อไปไม่ได้จริง ๆ หากขาดมัน — การใช้ `!` มากเกินไปทำให้ API แข็งทื่อและทำให้ client พังเมื่อข้อกำหนดผ่อนคลายลง ให้ค่า default สำหรับการแบ่งหน้าและการเรียงลำดับ เพื่อให้การเรียกแบบง่ายเป็นการเรียกที่ทำได้ง่าย และคง input type ให้มีจุดโฟกัส: หนึ่ง input ต่อหนึ่งการทำงาน ตั้งชื่อตามการทำงาน ดีกว่าถุงรวมขนาดยักษ์ของ field optional ที่ใช้ร่วมกัน
 
 ## Inputs, nullability และ default รันได้จริง
 
@@ -144,8 +144,39 @@ export const inputsCode = `(async () => {
 
 mutation ส่งมาเฉพาะสอง field ที่จำเป็นเท่านั้น เพราะ `pageCount` เป็น nullable ใน input การละเว้นมันจึงถูกต้องตามกฎ และ resolver เติมมันด้วย `null` field `tags` คืนกลับมาเป็น `[]` — list ที่ non-null เพียงแต่ว่างเปล่า — ตรงตามที่ `[String!]!` สัญญาไว้เป๊ะ ระบบ type ตรวจสอบ input ทั้งหมดก่อนที่ resolver จะทำงานเสียอีก
 
+| Benefits | Trade-offs |
+|---|---|
+| Input Type รวม argument ไว้ที่เดียว — signature เสถียรเมื่อเพิ่ม field | Input type แยกจาก output type — ต้องนิยาม 2 ชุดสำหรับ entity เดียว |
+| nullability บน input เป็น self-documenting — required vs optional ชัดเจน | `!` มากเกินไปทำ API แข็งทื่อ — เปลี่ยน required เป็น optional ทีหลังยาก |
+| `[T!]!` บอก client ชัดว่า list รับประกัน non-null ทุก element | nullable field จำนวนมากใน input เดียวทำ mutation design สับสน |
+| ค่า default ลด boilerplate ใน client | default ที่ซับซ้อนซ่อน behavior — ต้องอ่าน schema ดี |
+
+## Common Mistakes
+
+**Input เดียวสำหรับ Create และ Update**
+อาการ:
+- `BookInput` ที่ทั้ง `createBook` และ `updateBook` ใช้ร่วมกัน
+- create ต้องการ `title!` แต่ update ต้องการ `title?`
+- แยก `CreateBookInput` และ `UpdateBookInput` ออกจากกัน
+
+**ทำ Field ทุกตัวเป็น Non-null**
+อาการ:
+- `UpdateBookInput { title: String!, authorId: ID!, pageCount: Int! }`
+- client ต้องส่งทุก field แม้ต้องการ update แค่ field เดียว
+- partial update ควรใช้ nullable field เพื่อ "ไม่ส่ง = ไม่เปลี่ยน"
+
+> 💡 Real World Example
+>
+> **Relay Convention:**
+> - mutation ทุกตัวรับ `input: XxxInput!` argument เดียว
+> - pattern นี้ทำให้ schema evolve ได้โดยไม่เปลี่ยน mutation signature
+>
+> **GitHub:**
+> - ใช้ naming convention `CreateIssueInput`, `UpdateIssueInput`, `CloseIssueInput`
+> - แต่ละ operation มี input type เฉพาะตัว — ไม่ใช้ร่วมกัน
+
 <Callout title="Input และ nullability คือวิธีที่สัญญาตรวจสอบตัวเอง">
-มัด argument ที่เกี่ยวข้องกันเข้าไว้ใน `input` object type — โดยเฉพาะสำหรับ mutation — และปล่อยให้ nullability ทำการตรวจสอบให้คุณ: `!` สำหรับสิ่งที่จำเป็น แบบธรรมดาสำหรับสิ่งที่ optional และ `[T!]!` สำหรับ list ที่รับประกันของค่าที่รับประกัน เพิ่มค่า default เพื่อให้การเรียกที่พบบ่อยสั้นกระชับ เมื่อออกแบบเช่นนี้ argument ของคุณจะอธิบายเป๊ะ ๆ ว่า client ส่งอะไรได้ และปฏิเสธสิ่งที่เหลือโดยอัตโนมัติ โดยไม่ต้องเขียนโค้ดตรวจสอบด้วยมือใน resolver ของคุณเลย
+มัด argument ที่เกี่ยวข้องกันเข้าไว้ใน `input` object type — โดยเฉพาะสำหรับ mutation — และปล่อยให้ nullability ทำการตรวจสอบให้คุณ: `!` สำหรับสิ่งที่จำเป็น แบบธรรมดาสำหรับสิ่งที่ optional และ `[T!]!` สำหรับ list ที่รับประกันของค่าที่รับประกัน เพิ่มค่า default เพื่อให้การเรียกที่พบบ่อยสั้นกระชับ เมื่อออกแบบเช่นนี้ argument ของคุณจะอธิบายเป๊ะ ๆ ว่า client ส่งอะไรได้ และปฏิเสธสิ่งที่เหลือโดยอัตโนมัติ โดยไม่ต้องเขียนcodeตรวจสอบด้วยมือใน resolver ของคุณเลย
 </Callout>
 
 export const inputDiagram = `flowchart TD

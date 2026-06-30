@@ -118,6 +118,37 @@ export const depthCode = `(async () => {
 
 output จัดอันดับสาม query ตาม depth และใช้ limit query ที่ตื้นและปานกลางผ่าน; ตัวที่ใช้ในทางที่ผิด — ลึกห้าชั้นของ `friends` — เกิน limit ที่ 5 และถูกปฏิเสธ สังเกตว่า *ไม่มี resolver ตัวใดรัน*: เราทำงานบน AST ที่ parse แล้วล้วน ๆ เหมือนที่ validation rule ทำพอดี ดังนั้น query ที่เป็นอันตรายจึงถูกโยนทิ้งก่อนที่มันจะกินค่าใช้จ่ายใด ๆ ไลบรารี depth-limit จริง ๆ ทำการเดินแบบเดียวกัน; complexity analysis ขยายมันต่อด้วยการให้น้ำหนักแต่ละ field แทนที่จะแค่นับชั้นการซ้อน
 
+| Benefits | Trade-offs |
+|---|---|
+| ป้องกัน malicious query ที่ nested ลึกมาก | threshold ที่ผิดอาจ reject legitimate query |
+| complexity limit ป้องกัน expensive query ที่ fetch ข้อมูลมหาศาล | ต้องคำนวณ complexity weight ให้แม่นยำ |
+| เพิ่มก่อน production — ปัญหา performance ชัดหลัง launch | complexity score ที่ซับซ้อนเกินยากต่อการ maintain |
+| log rejected query เพื่อ tune limit | ต้อง communicate limit ให้ client รู้ล่วงหน้า |
+
+## Common Mistakes
+
+**ไม่มี Depth หรือ Complexity Limit เลย**
+อาการ:
+- client ส่ง `{ users { posts { author { posts { author { posts { ... } } } } } } }` ได้
+- server CPU spike และ response time สูงมาก
+- เพิ่ม `graphql-depth-limit` หรือ `graphql-query-complexity` ก่อน production
+
+**Limit ที่ Strict เกินโดยไม่ทดสอบ**
+อาการ:
+- depth limit 3 ทำให้ query ปกติของ client fail
+- ต้อง test real-world query ก่อนตั้ง limit
+- เริ่มจาก log + monitor ก่อน enforce hard limit
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - GraphQL API มี rate limit ตาม complexity point
+> - `rateLimit { cost, remaining, resetAt }` ใน response บอก client ว่าใช้ไปเท่าไร
+>
+> **Shopify:**
+> - query cost limit ตาม "cost" ของแต่ละ field
+> - list field มี cost สูงกว่า scalar — `products(first: 100)` แพงกว่า `product { title }`
+
 <Callout title="วัด cost แล้วปฏิเสธก่อนที่คุณจะ execute">
 query หนึ่งอาจผ่าน authentication และ authorization และยังเป็นอาวุธ denial-of-service ได้ เพราะ client ควบคุมรูปทรงของงาน จงป้องกันเป็นชั้น ๆ: **depth limiting** หยุดการซ้อนที่ควบคุมไม่ได้, **complexity analysis** จัดงบประมาณ cost รวม (นับ argument และ alias), และ **timeout** จับอะไรก็ตามที่กลายเป็นว่าแพงตอน runtime สองตัวแรกเป็น static — มันอ่าน query ที่ parse แล้วและปฏิเสธระหว่าง validation ดังนั้น resolver จึงไม่เคยรัน จงตั้ง maximum depth และ complexity budget บนทุก public GraphQL endpoint เสมอ; endpoint ที่ไม่มีสิ่งเหล่านี้ก็อยู่ห่างจาก outage เพียง query ฉลาด ๆ หนึ่งตัวเท่านั้น
 </Callout>

@@ -35,7 +35,7 @@ type Query {
 }
 ```
 
-resolver คำนวณ `offset = (page - 1) * pageSize` แล้วดำเนินการเหมือนเดิมทุกประการ เลขหน้าดีกว่าสำหรับการสร้างส่วนท้าย "หน้า 1 2 3" ส่วน `offset` ดิบ ๆ ดีกว่าสำหรับ infinite scroll กลไกเบื้องล่างนั้นเหมือนกัน
+resolver คำนวณ `offset = (page - 1) * pageSize` แล้วทำงานเหมือนเดิมทุกประการ เลขหน้าดีกว่าสำหรับการสร้างส่วนท้าย "หน้า 1 2 3" ส่วน `offset` ดิบ ๆ ดีกว่าสำหรับ infinite scroll กลไกเบื้องล่างนั้นเหมือนกัน
 
 ## รอยรั่วสองจุด
 
@@ -107,6 +107,36 @@ export const offsetCode = `(async () => {
 <NodeRunner client:visible code={offsetCode} />
 
 ผลลัพธ์คืน item 3–4 (`offset: 2`, `limit: 2`) พร้อมกับ `totalCount` และ flag `hasMore` ที่ client ใช้เพื่อ render ตัวเปิดหน้า (pager) ได้ นี่คือ offset pagination ที่ทำงานได้ดี — list เล็ก ๆ ที่เสถียร ซึ่ง deep offset และการแก้ไขแบบพร้อมกันไม่ใช่เรื่องต้องกังวล ทันทีที่ list ของคุณใหญ่ขึ้นหรือเปลี่ยนแปลงอยู่ตลอด รอยรั่วสองจุดข้างต้นจะเริ่มกัด ซึ่งนั่นคือสิ่งที่บทเรียนถัดไปเรื่อง cursor connection ถูกออกแบบมาเพื่อแก้
+
+| Benefits | Trade-offs |
+|---|---|
+| เรียบง่าย — `skip` และ `take` เข้าใจง่าย | inconsistent result เมื่อ data เพิ่ม/ลบระหว่าง paginate |
+| random access — ข้ามหน้าได้โดยตรง | performance ลดเมื่อ offset ใหญ่ — database ต้อง scan |
+| นับจำนวน page ทั้งหมดได้ง่าย | ไม่เหมาะกับ infinite scroll ที่ต้องการ stable cursor |
+| ง่ายต่อการ implement ใน SQL | เกิด duplicate/missing item เมื่อ concurrent insert |
+
+## Common Mistakes
+
+**Offset Pagination สำหรับ Real-time Feed**
+อาการ:
+- feed ที่มีข้อมูลใหม่เพิ่มบ่อย — user เลื่อนหน้า 2 แต่เห็น item เดียวกับหน้า 1
+- offset pagination ไม่ stable กับ data ที่เปลี่ยนบ่อย
+- ใช้ cursor pagination (Relay Connection) สำหรับ feed
+
+**Count Query แยกทุก Request**
+อาการ:
+- ทุก page request ทำ `COUNT(*)` เพิ่มเติม
+- expensive บน table ใหญ่ — PostgreSQL ต้อง sequential scan
+- cache total count หรือใช้ estimated count แทน exact count
+
+> 💡 Real World Example
+>
+> **Stack Overflow:**
+> - ใช้ offset pagination สำหรับ question list — เหมาะเพราะ content ไม่เปลี่ยนบ่อย
+> - page URL มี `?page=2` — shareable และ bookmarkable
+>
+> **Admin dashboards:**
+> - offset pagination เหมาะสำหรับ admin table ที่ต้องการ random access และ page number
 
 <Callout title="หยิบ offset มาใช้เมื่อ list เล็กและเสถียร">
 offset pagination เป็นค่า default ที่ถูกต้องสำหรับ list ที่สั้นและค่อนข้างนิ่ง — ตารางในหน้า admin, การตั้งค่า, หรือไม่กี่หน้าที่ผู้ใช้คาดหวังการนำทางด้วยเลขหน้า มันง่ายมากที่จะ implement และจับคู่ลงบน SQL ได้โดยตรง แต่มันต้องจ่ายต้นทุนที่เพิ่มขึ้นในหน้าลึก ๆ และมันอาจทำให้ item ซ้ำหรือถูกข้ามได้เมื่อ list เบื้องล่างเปลี่ยนแปลงระหว่าง request สำหรับ collection ที่ใหญ่หรือเคลื่อนไหวเร็ว pagination แบบ cursor เป็นตัวเลือกที่ปลอดภัยกว่า

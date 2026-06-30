@@ -1,0 +1,75 @@
+---
+title: Glossary
+description: คำศัพท์ GraphQL ที่ใช้ตลอด course นี้ — รักษา terminology ภาษาอังกฤษตามที่ developer ใช้จริง
+sidebar:
+  order: 99
+---
+
+## Core GraphQL Terms
+
+| English | Thai Style | ความหมาย |
+|---|---|---|
+| Schema | Schema | สัญญาระหว่าง client และ server — กำหนดว่าข้อมูลใดขอได้และส่งกลับอะไร |
+| Resolver | Resolver | function ที่รับผิดชอบดึงข้อมูลสำหรับ field หนึ่ง ๆ |
+| Query | Query | operation สำหรับอ่านข้อมูล |
+| Mutation | Mutation | operation สำหรับเปลี่ยนแปลงข้อมูล |
+| Subscription | Subscription | operation สำหรับรับข้อมูล real-time ผ่าน persistent connection |
+| Field | Field | property หนึ่งหน่วยบน type ที่ client สามารถขอได้ |
+| Type | Type | โครงสร้างข้อมูลใน schema (Object Type, Scalar, Enum, Interface, Union) |
+| Scalar | Scalar | type พื้นฐานที่ไม่มี sub-field: String, Int, Float, Boolean, ID |
+| Enum | Enum | set ของค่าที่เป็นไปได้ที่กำหนดใน schema |
+| Interface | Interface | contract ที่ type หลายตัวสามารถ implement |
+| Union | Union | type ที่อาจเป็น type ใดก็ได้จากกลุ่มที่กำหนด |
+| Directive | Directive | คำสั่งพิเศษใน schema หรือ query เช่น `@deprecated`, `@include` |
+| Fragment | Fragment | ชุด field ที่ reuse ได้ข้าม query |
+| Operation | Operation | query, mutation, หรือ subscription หนึ่งชิ้น |
+| Input Type | Input Type | type พิเศษสำหรับรับ argument ซับซ้อนใน mutation |
+| Output Type | Output Type | type ที่ resolver ส่งกลับมา |
+| Introspection | Introspection | GraphQL query ที่ถามระบบว่า schema มีอะไรบ้าง |
+
+## Pagination
+
+| English | Thai Style | ความหมาย |
+|---|---|---|
+| Pagination | Pagination | การแบ่งผลลัพธ์เป็นหน้า ๆ |
+| Cursor | Cursor | pointer ไปยัง item ใน dataset — ใช้ใน cursor-based pagination |
+| Connection | Connection | pattern มาตรฐานสำหรับ paginated list (Relay spec) |
+| Edge | Edge | wrapper ของ item ใน Connection — มี `node` และ `cursor` |
+| Node | Node | item หนึ่งชิ้นใน Connection |
+| Offset Pagination | Offset Pagination | pagination ด้วย skip + limit — ง่ายแต่มีปัญหากับ concurrent update |
+
+## Performance & Architecture
+
+| English | Thai Style | ความหมาย |
+|---|---|---|
+| N+1 Query Problem | N+1 Query Problem | ปัญหา performance ที่เกิดจากการ query ซ้ำ N ครั้งสำหรับ N item |
+| DataLoader | DataLoader | utility ที่ batch และ cache database query เพื่อแก้ N+1 |
+| Persisted Query | Persisted Query | query ที่ hash ไว้ล่วงหน้า ส่งแค่ ID แทน query string เต็ม |
+| Federation | Federation | pattern รวมหลาย GraphQL service เข้าเป็น graph เดียว |
+| Subgraph | Subgraph | GraphQL service หนึ่งตัวใน federated architecture |
+| Gateway | Gateway | entry point ที่รวม subgraph ทั้งหมดสำหรับ client |
+| Schema Stitching | Schema Stitching | วิธีเก่าในการรวม schema หลายตัว (ก่อน Federation) |
+
+## REST vs GraphQL
+
+| | REST | GraphQL |
+|---|---|---|
+| Endpoint | หลาย endpoint ต่อ resource | single endpoint `/graphql` |
+| Response | ขนาดตาม server กำหนด | ขนาดตาม client กำหนด |
+| Versioning | `/v1/`, `/v2/` | schema evolution ผ่าน deprecation |
+| Over-fetching | เกิดบ่อย | ไม่เกิด — client เลือก field เอง |
+| Under-fetching | เกิดบ่อย | ไม่เกิด — query nested ได้ครั้งเดียว |
+| Caching | ง่าย — HTTP cache per URL | ซับซ้อนกว่า — ต้องใช้ persisted query |
+| Type Safety | ขึ้นกับ OpenAPI/documentation | built-in — schema คือสัญญา |
+
+## เมื่อ **ไม่** ควรใช้ GraphQL
+
+- API ง่ายมาก — REST endpoints 3 ตัวไม่คุ้มกับ GraphQL overhead
+- Public API ที่ต้องการ HTTP cache — GraphQL ทำ caching ยากกว่า
+- ทีมยังไม่มี GraphQL expertise — learning curve สูง
+- File upload heavy — GraphQL ไม่ได้ออกแบบมาสำหรับ binary data
+- Real-time เท่านั้น — WebSocket โดยตรงอาจง่ายกว่า Subscription
+
+import ProgressTracker from '../../../components/ProgressTracker.tsx';
+
+<ProgressTracker client:visible id="glossary" />

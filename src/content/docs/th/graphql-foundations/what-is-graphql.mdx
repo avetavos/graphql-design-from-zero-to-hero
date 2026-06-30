@@ -108,6 +108,36 @@ export const selectCode = `(async () => {
 
 resolver คืน object ที่มีข้อมูลมากมายทั้ง `year`, `pages` และ `country` ของ author แต่ไม่มีตัวใดเลยปรากฏในผลลัพธ์ query ขอเพียง `title` และ `name` ของ `author` ที่ซ้อนอยู่ ดังนั้นเฉพาะแค่นั้น — และเฉพาะแค่นั้น — ที่ได้กลับมา ลองเพิ่ม `year` เข้าไปในการเลือกแล้วรันอีกครั้ง เพื่อดู response ขยายตามให้ตรงกัน
 
+| Benefits | Trade-offs |
+|---|---|
+| client กำหนด field ที่ต้องการเอง — ไม่มี over/under-fetching | learning curve สูงกว่า REST — ทีมต้องเรียน schema, resolver, type system |
+| single endpoint ทำให้ API surface เรียบง่าย | caching ยากกว่า — REST ใช้ HTTP cache per URL ได้ตรง ๆ |
+| type system ช่วย validate ก่อน runtime | tooling setup ซับซ้อนกว่า — ต้องมี schema, code gen, playground |
+| introspection ทำให้ tooling และ auto-complete ทำงานได้ | N+1 query problem ต้องจัดการด้วย DataLoader |
+
+## Common Mistakes
+
+**เข้าใจว่า GraphQL แทน REST ทุกกรณี**
+อาการ:
+- ใช้ GraphQL สำหรับ simple CRUD API ที่ 3 endpoint ก็พอ
+- เพิ่ม complexity โดยไม่ได้ประโยชน์จาก flexible query
+- REST ยังดีกว่าสำหรับ public API ที่ต้องการ HTTP cache
+
+**อธิบาย GraphQL ด้วย syntax ก่อนอธิบาย problem**
+อาการ:
+- developer เรียนรู้ SDL แต่ไม่เข้าใจว่าแก้ปัญหาอะไร
+- ถ้า developer ไม่เคยเจอ over-fetching จะไม่เข้าใจว่า GraphQL ช่วยอย่างไร
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - เปิด public GraphQL API v4 ในปี 2016 แทน REST API v3
+> - developer ลด request จาก 6-7 ครั้ง เหลือ 1 ครั้งสำหรับข้อมูลเดียวกัน
+>
+> **Shopify Storefront API:**
+> - GraphQL ช่วยให้ frontend team ดึงข้อมูล product, variant, collection ในครั้งเดียว
+> - ลด over-fetching ที่เคยเกิดกับ REST endpoint ที่ return ข้อมูล product ครบทุก field
+
 <Callout title="ทำไมเรื่องนี้ถึงสำคัญ">
 schema คือคำสัญญาเกี่ยวกับ *สิ่งที่เป็นไปได้* ส่วน query คือคำขอสำหรับ *สิ่งที่ต้องการ ณ ตอนนี้* การแยกความกังวลสองเรื่องนี้ออกจากกันคือหัวใจของ GraphQL API ตัวเดียวกันสามารถให้บริการทั้ง desktop dashboard ที่หิวข้อมูลและหน้าจอ mobile ที่ประหยัด โดยไม่มีฝ่ายใดต้องประนีประนอมเพื่ออีกฝ่าย
 </Callout>

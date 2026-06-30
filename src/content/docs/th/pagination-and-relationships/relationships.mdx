@@ -151,6 +151,37 @@ export const relCode = `(async () => {
 
 ไล่ดูผลลัพธ์: จาก `author` หนึ่งคน เรา resolve `posts` แบบ one-to-many และภายในแต่ละ post เรา resolve `tags` แบบ many-to-many แต่ละ field ที่เป็น relationship มี resolver ของตัวเองที่ค้นหา record ที่เชื่อมต่อกันด้วย id สังเกตว่าเราไม่เคยเขียน SQL `JOIN` เลย — กราฟ *คือ* การ join ที่แสดงออกในรูปของการเลือก field แบบซ้อนกัน
 
+| Benefits | Trade-offs |
+|---|---|
+| query relationship ได้ในครั้งเดียว — ไม่ต้อง join ที่ client | deep relationship นำไปสู่ N+1 ถ้าไม่ใช้ DataLoader |
+| schema แสดง relationship ชัดเจน — เข้าใจ data model ได้จาก schema | circular relationship อาจ query วนซ้ำไม่รู้จบ |
+| lazy load — query เฉพาะ relationship ที่ต้องการ | bidirectional relationship ต้องระวัง infinite loop ใน resolver |
+| resolver แต่ละ field ทำงาน independent | relationship ที่ไม่มี DataLoader อาจทำให้ query ช้ามาก |
+
+## Common Mistakes
+
+**Circular Relationship ที่ไม่มี Depth Limit**
+อาการ:
+- `User.posts.author.posts.author.posts...` — query วนซ้ำได้ไม่จำกัด
+- malicious client ส่ง deeply nested query ทำให้ server overload
+- ต้องมี query depth limit (Rule: depth-and-complexity)
+
+**Relationship ที่ Return ทั้ง Collection โดยไม่มี Pagination**
+อาการ:
+- `user { posts { title } }` — return โพสท์ทั้งหมดของ user
+- user ที่มีโพสท์หมื่นชิ้น ทำให้ query ช้ามาก
+- relationship collection ควรมี pagination argument เสมอ: `posts(first: 10)`
+
+> 💡 Real World Example
+>
+> **GitHub:**
+> - ทุก relationship collection paginated: `user { repositories(first: 20) { ... } }`
+> - ไม่มี relationship ที่ return unbounded list
+>
+> **Prisma:**
+> - ORM ที่ใช้คู่กับ GraphQL — relationship query ทำผ่าน `include` และ `select`
+> - ใช้ร่วมกับ DataLoader เพื่อป้องกัน N+1
+
 <Callout title="relationship ก็คือ field ที่มี type นั่นเอง">
 ไม่มีแนวคิด "relationship" แยกต่างหากที่ต้องเรียนรู้ใน GraphQL — การเชื่อมโยงคือ field ที่มี type เป็น type อีกตัว (to-one) หรือ list ของ type อีกตัว (to-many) และ many-to-many ก็เป็นเพียง field ที่เป็น list บนทั้งสองปลายเท่านั้น สร้างโมเดลทิศทางที่ client ของคุณเดินผ่านจริง ๆ ให้ resolver กับแต่ละ field ที่เป็น relationship เพื่อดึงอีกฝั่ง แล้วระบบ type จะเปลี่ยนข้อมูลของคุณให้เป็นกราฟโดยอัตโนมัติ
 </Callout>

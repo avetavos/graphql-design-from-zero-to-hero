@@ -118,6 +118,36 @@ export const variablesCode = `(async () => {
 
 query string พูดถึงแค่ `$id` ส่วนค่า `"t2"` อยู่ใน `variableValues` resolver รับมันผ่าน `args` แล้วไปค้นหา track เปลี่ยน `variableValues` เป็น `{ id: 't1' }` แล้วรันอีกครั้ง ข้อความของ query ตัวเดียวกันคืน track ที่ต่างกัน ซึ่งนั่นคือประเด็นทั้งหมดของ variable
 
+| Benefits | Trade-offs |
+|---|---|
+| variable ป้องกัน query injection | schema ต้องประกาศ argument type อย่างชัดเจน |
+| query reuse ได้โดยไม่ต้อง rebuild string | argument ที่ซับซ้อนต้องใช้ Input Type |
+| client ส่ง variable แยกจาก query — cache ได้ดีกว่า | default value ต้องประกาศใน schema ไม่ใช่ใน resolver |
+| type validation ของ variable เกิดก่อน execution | argument จำนวนมากทำให้ resolver signature ยาว |
+
+## Common Mistakes
+
+**ส่ง Argument เป็น String แทน Variable**
+อาการ:
+- `query { search(term: "GraphQL") }` แทน `query Search($t: String!) { search(term: $t) }`
+- ทำให้ persisted query cache miss ทุกครั้ง
+- ใช้ variable เสมอสำหรับ dynamic value
+
+**Argument ทุกอย่างเป็น String**
+อาการ:
+- `createUser(data: String!)` แทน `createUser(data: CreateUserInput!)`
+- เสีย type safety และ validation ที่ schema ให้ฟรี
+- ใช้ Input Type สำหรับ argument ที่มีหลาย field
+
+> 💡 Real World Example
+>
+> **GitHub API:**
+> - ทุก mutation ใช้ Input Type — `CreateIssueInput`, `AddCommentInput`
+> - ทำให้ schema evolution ง่าย — เพิ่ม optional field ใน Input ได้โดยไม่ break client
+>
+> **Relay:**
+> - enforce naming convention: mutation argument ต้องชื่อ `input` และเป็น Input Type เสมอ
+
 <Callout title="ประกาศ argument; ส่ง variable">
 field argument เป็นส่วนหนึ่งของ schema มันบอกว่า field รับ input อะไรได้บ้าง ส่วน query variable เป็นส่วนหนึ่งของ request มันพกพาค่าที่เป็นรูปธรรมเข้ามา มี type และแยกจากข้อความของ query เก็บ literal ไว้ใน playground และส่ง `$variables` จาก app จริง แล้ว query ของคุณจะนำกลับมาใช้ซ้ำได้ cache ได้ และปลอดภัยโดยโครงสร้าง
 </Callout>

@@ -130,6 +130,37 @@ export const testDemoCode = `(async () => {
 
 อ่าน output เป็นรายงานผล test แต่ละบรรทัด `PASS` คือ `expect` หนึ่งอันที่เป็นจริง assertion ของ `id` เป็นอันที่น่าสนใจ: มันพิสูจน์ว่า argument `"t1"` ไปถึง resolver จริง ๆ และกลับมาในข้อมูล ลองสลับค่าที่คาดหวัง `214` เป็น `999` แล้วรันใหม่เพื่อดูบรรทัด `FAIL` ปรากฏขึ้น — บรรทัดสีแดงนั้นแหละคือสิ่งที่จับ regression ได้ก่อนที่มันจะหลุดขึ้น production
 
+| Benefits | Trade-offs |
+|---|---|
+| type-safe resolver จาก schema — TypeScript type generate อัตโนมัติ | codegen ต้องรัน ทุกครั้งที่ schema เปลี่ยน |
+| client query ที่ type-safe — ไม่ต้อง type manually | setup codegen config ครั้งแรกซับซ้อน |
+| mock ใน test มาจาก schema — test ไม่ break เมื่อ schema เปลี่ยน | generated type ที่ไม่ดูแล accumulate ใน codebase |
+| integration test ที่ query จริงจับ bug ที่ unit test จับไม่ได้ | test database setup ซับซ้อนสำหรับ integration test |
+
+## Common Mistakes
+
+**Codegen ที่ไม่ Integrate ใน CI/CD**
+อาการ:
+- developer ลืม run codegen หลัง schema เปลี่ยน
+- TypeScript type ไม่ sync กับ schema จริง — false sense of type safety
+- run codegen ใน CI และ fail build ถ้า generated code ไม่ up-to-date
+
+**Test ที่ Mock ทุกอย่าง**
+อาการ:
+- unit test ทุกตัว mock database, mock context, mock resolver
+- pass ทั้งหมดแต่ production ยัง fail เพราะ resolver ที่แท้จริงมี bug
+- เพิ่ม integration test ที่ใช้ schema และ resolver จริงกับ test database
+
+> 💡 Real World Example
+>
+> **Apollo Codegen:**
+> - generate TypeScript type จาก schema และ client query
+> - ใช้แพร่หลายใน large TypeScript + GraphQL codebase
+>
+> **GraphQL Code Generator (The Guild):**
+> - plugin-based: generate resolver type, React hooks, Zod schema จาก GraphQL schema
+> - ใช้ใน production ที่ Klarna, Airbnb, และบริษัทใหญ่อื่น ๆ
+
 <Callout title="generate types แล้ว test พฤติกรรม">
 codegen และ test ไม่ใช่คู่แข่งกัน — มันครอบคลุมความล้มเหลวคนละแบบ code generation จับ error เรื่อง **รูปร่าง** ตอน compile time เพื่อให้ resolver ไม่มีทางคืน type ผิดอย่างเงียบ ๆ ส่วน test จับ error เรื่อง **พฤติกรรม** ตอน run time — ตรรกะผิด, argument ที่พลาดไป, `null` ที่ไม่คาดคิด เขียนทั้งสองอย่าง: regenerate types ทุกครั้งที่ schema เปลี่ยน, unit-test resolver ที่ยุ่งยาก และเก็บ integration test อย่างน้อยหนึ่งอันที่รัน operation จริงที่ client จะส่งมา
 </Callout>

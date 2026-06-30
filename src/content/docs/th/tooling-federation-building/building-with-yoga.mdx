@@ -118,9 +118,39 @@ mutation { postMessage(text: "Built it end to end") { id text } }
 
 Query `messages` อีกครั้งแล้ว message ใหม่ของคุณก็จะอยู่ตรงนั้น ในไม่กี่บรรทัด คุณได้ออกกำลังให้ query หนึ่งอัน, mutation หนึ่งอัน, request context และ store ในหน่วยความจำ — รูปร่างแบบเดียวกับที่ Yoga service บน production ทุกตัวมี เพียงแต่เล็กกว่า
 
-## สิ่งนี้อยู่ตรงไหนในคอร์สทั้งหมด
+## Where This Fits in the Course
 
 เซอร์วิสนี้คือจักรวาลย่อของหนังสือทั้งเล่ม `typeDefs` คือการออกแบบ schema resolvers คืองาน queries-and-resolvers และ mutations `context` คือที่ที่ security และ performance เข้ามาเกี่ยวข้อง เพิ่ม codegen และ test จากช่วงก่อนหน้าในโมดูลนี้ แล้วคุณก็ได้เซอร์วิสที่มี type ผ่านการ test แยกมันตาม domain แล้ววาง gateway ไว้ข้างหน้า แล้วคุณก็ได้บทเรียน federation ไฟล์เล็ก ๆ ไฟล์เดียว ทุกแนวคิด
+
+| Benefits | Trade-offs |
+|---|---|
+| envelop plugin system — composable middleware สำหรับทุก phase | plugin order สำคัญ — ผิดลำดับทำให้ behavior ผิด |
+| รองรับ Node.js, Deno, Bun, Cloudflare Workers | ecosystem เล็กกว่า Apollo Server |
+| built-in GraphiQL IDE — development ง่าย | ต้องเรียนรู้ envelop ถ้าต้องการ custom plugin |
+| lightweight กว่า Apollo Server — startup เร็วกว่า | community resource น้อยกว่า Apollo |
+
+## Common Mistakes
+
+**ใช้ Yoga โดยไม่มี Envelop Plugin สำหรับ Production**
+อาการ:
+- deploy production โดยไม่มี auth plugin, rate limit plugin, logging plugin
+- default Yoga setup เหมาะกับ development ไม่ใช่ production
+- เพิ่ม plugin ที่จำเป็นก่อน production: `useAuth`, `useRateLimit`, `useOpenTelemetry`
+
+**GraphiQL เปิดใน Production**
+อาการ:
+- GraphiQL accessible ใน production — introspection ให้ข้อมูล schema ทั้งหมด
+- ปิด GraphiQL และ introspection ใน production หรือ protect ด้วย auth
+
+> 💡 Real World Example
+>
+> **The Guild (Yoga creators):**
+> - ใช้ Yoga ใน production สำหรับ client ขนาดใหญ่หลายราย
+> - plugin ecosystem รวม DataLoader, Rate Limit, Auth, Tracing
+>
+> **Hive (GraphQL Schema Registry):**
+> - สร้างโดย The Guild — integrate กับ Yoga โดยตรง
+> - track schema usage, detect breaking change, monitor performance
 
 <Callout title="คุณสร้าง GraphQL service ได้แบบ end to end">
 GraphQL service เป็นเพียงสามสิ่งที่ผูกเข้าด้วยกัน: **typeDefs** สำหรับ contract, **resolvers** เพื่อทำให้มันเป็นจริง และ **context** เพื่อร้อย state ต่อ request GraphQL Yoga เปลี่ยนสิ่งเหล่านั้นให้เป็น HTTP server จริงที่มี playground และไม่มี boilerplate ทุกอย่างที่เหลือในคอร์สนี้ — design, codegen, testing, federation, security — แขวนอยู่บนโครงนี้ คุณเริ่มจากศูนย์ด้วย type เดียว ตอนนี้คุณตั้ง GraphQL service ที่มีเอกสาร มี type ทดสอบได้ และประกอบได้ขึ้นมาได้แล้ว นั่นแหละคือส่วน hero

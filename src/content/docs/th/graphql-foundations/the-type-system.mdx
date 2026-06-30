@@ -136,6 +136,37 @@ export const typeSystemCode = `(async () => {
 
 ดูผลลัพธ์ให้ใกล้ ๆ `title` และ `durationSeconds` กลับมาเป็นค่าที่รับประกันได้เพราะมันเป็น non-null ใน schema ส่วน `artist` เป็น object ที่ซ้อนอยู่ — query ก้าวจาก `Track` เข้าไปใน `Artist` — และภายในนั้น `bio` กลับมาเป็น `null` ซึ่งได้รับอนุญาตเพราะ `bio` ถูกประกาศโดยไม่มี `!` type system ทำนายทุกรูปร่างเหล่านี้ได้ก่อนที่ resolver จะรันด้วยซ้ำ
 
+| Benefits | Trade-offs |
+|---|---|
+| validate query ก่อน runtime — error เจอตั้งแต่ development | type system เพิ่ม verbosity ใน schema definition |
+| auto-complete และ type checking ใน IDE | schema migration ต้องระวัง backward compatibility |
+| code generation สำหรับ TypeScript type จาก schema | nullable by default ทำให้ต้อง null check ที่ client |
+| introspection ทำให้ tooling และ playground ทำงานได้ | type ที่ซับซ้อนทำให้ schema อ่านยากขึ้น |
+
+## Common Mistakes
+
+**Nullable ทุก field โดยไม่คิด**
+อาการ:
+- schema มี `String` แทนที่จะเป็น `String!` ทุกที่
+- client ต้อง null check ทุก field แม้ field นั้นจะไม่มีทางเป็น null จริง ๆ
+- ออกแบบ nullability อย่างตั้งใจ — `!` เมื่อมั่นใจ, nullable เมื่อ field อาจไม่มีค่า
+
+**Schema สะท้อน Database Table ตรง ๆ**
+อาการ:
+- type ใน schema ชื่อเดียวกับ table ใน database
+- field ใน schema = column ใน database ทุกตัว
+- expose implementation detail ให้ client โดยไม่จำเป็น
+
+> 💡 Real World Example
+>
+> **GitHub GraphQL API:**
+> - ใช้ custom scalar เช่น `URI`, `DateTime`, `HTML` นอกเหนือจาก built-in
+> - type system ทำให้ client รู้ว่า field ไหน return URL, รูปแบบวันที่, หรือ HTML string
+>
+> **Shopify:**
+> - ใช้ Interface สำหรับ Node (ทุก object ที่มี `id`) เพื่อให้ cache ง่าย
+> - ใช้ Union สำหรับ search result ที่อาจเป็น Product, Collection, หรือ Page
+
 <Callout title="อ่าน schema ก่อนเป็นอันดับแรก">
 เมื่อคุณเจอ GraphQL API ตัวใหม่ schema คือเอกสารประกอบ ก่อนเขียน query สักตัว อ่าน type ก่อน: มี field อะไรบ้าง คืนค่าอะไร อะไรเป็น non-null และ object type เชื่อมโยงกันที่ไหน ซึมซับ `!` ว่า "server รับประกันสิ่งนี้" และ `[X!]!` ว่า "ลิสต์ non-null ของค่า non-null" แล้วคุณจะทำนายทุก response ที่ API ตัวนั้นผลิตได้
 </Callout>
