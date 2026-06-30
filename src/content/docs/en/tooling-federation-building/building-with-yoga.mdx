@@ -17,9 +17,9 @@ This is where everything lands. You have designed schemas, written resolvers, ad
 
 A Yoga server is built from the same three pieces every GraphQL server has, now wired together explicitly:
 
-- **typeDefs** — the schema in SDL. This is your contract, written schema-first (the [Schema-First vs Code-First](/graphql-design-from-zero-to-hero/en/tooling-federation-building/schema-first-vs-code-first/) lesson). It holds a `Query` for reads and a `Mutation` for writes.
-- **resolvers** — the functions that fulfil each field. You met these in [Queries & Resolvers](/graphql-design-from-zero-to-hero/en/queries-and-resolvers/) and extended them with writes in the mutations module.
-- **context** — a per-request object Yoga builds once and threads into every resolver as the third argument. It is where request-scoped things live: the current user, a database handle, a request id. It is the clean place to put what [Security & Performance](/graphql-design-from-zero-to-hero/en/security-and-performance/) cares about.
+- **typeDefs** — the schema in SDL. This is your contract, written schema-first (the [Schema-First vs Code-First](/graphql/en/tooling-federation-building/schema-first-vs-code-first/) lesson). It holds a `Query` for reads and a `Mutation` for writes.
+- **resolvers** — the functions that fulfil each field. You met these in [Queries & Resolvers](/graphql/en/queries-and-resolvers/) and extended them with writes in the mutations module.
+- **context** — a per-request object Yoga builds once and threads into every resolver as the third argument. It is where request-scoped things live: the current user, a database handle, a request id. It is the clean place to put what [Security & Performance](/graphql/en/security-and-performance/) cares about.
 
 Yoga takes those three and turns them into an HTTP server with a built-in GraphiQL playground, sensible error handling, and subscriptions support — no boilerplate of your own.
 

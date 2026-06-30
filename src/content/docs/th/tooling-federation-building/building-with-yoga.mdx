@@ -17,9 +17,9 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 Yoga server สร้างจากสามชิ้นส่วนแบบเดียวกับที่ GraphQL server ทุกตัวมี เพียงแต่ตอนนี้ผูกเข้าด้วยกันอย่างชัดเจน:
 
-- **typeDefs** — schema ในรูป SDL นี่คือ contract ของคุณ เขียนแบบ schema-first (บทเรียน [Schema-First vs Code-First](/graphql-design-from-zero-to-hero/th/tooling-federation-building/schema-first-vs-code-first/)) มันมี `Query` สำหรับการอ่านและ `Mutation` สำหรับการเขียน
-- **resolvers** — ฟังก์ชันที่ทำให้แต่ละ field เป็นจริง คุณได้พบพวกมันใน [Queries & Resolvers](/graphql-design-from-zero-to-hero/th/queries-and-resolvers/) และต่อยอดด้วยการเขียนในโมดูล mutations
-- **context** — object ต่อหนึ่ง request ที่ Yoga สร้างครั้งเดียวแล้วร้อยเข้าไปในทุก resolver เป็น argument ตัวที่สาม มันคือที่อยู่ของสิ่งที่มีขอบเขตต่อ request: ผู้ใช้ปัจจุบัน, handle ของ database, request id มันคือที่สะอาด ๆ สำหรับวางสิ่งที่ [Security & Performance](/graphql-design-from-zero-to-hero/th/security-and-performance/) ใส่ใจ
+- **typeDefs** — schema ในรูป SDL นี่คือ contract ของคุณ เขียนแบบ schema-first (บทเรียน [Schema-First vs Code-First](/graphql/th/tooling-federation-building/schema-first-vs-code-first/)) มันมี `Query` สำหรับการอ่านและ `Mutation` สำหรับการเขียน
+- **resolvers** — ฟังก์ชันที่ทำให้แต่ละ field เป็นจริง คุณได้พบพวกมันใน [Queries & Resolvers](/graphql/th/queries-and-resolvers/) และต่อยอดด้วยการเขียนในโมดูล mutations
+- **context** — object ต่อหนึ่ง request ที่ Yoga สร้างครั้งเดียวแล้วร้อยเข้าไปในทุก resolver เป็น argument ตัวที่สาม มันคือที่อยู่ของสิ่งที่มีขอบเขตต่อ request: ผู้ใช้ปัจจุบัน, handle ของ database, request id มันคือที่สะอาด ๆ สำหรับวางสิ่งที่ [Security & Performance](/graphql/th/security-and-performance/) ใส่ใจ
 
 Yoga นำสามชิ้นนั้นมาแปลงเป็น HTTP server ที่มี GraphiQL playground ในตัว, การจัดการ error ที่สมเหตุสมผล และรองรับ subscriptions — โดยคุณไม่ต้องเขียน boilerplate เองเลย
 
