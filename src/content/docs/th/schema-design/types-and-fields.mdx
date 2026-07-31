@@ -1,6 +1,6 @@
 ---
 title: Types และ Fields
-description: 'Object type และ field ของมัน, argument ของ field, description และวิธีที่ object type เชื่อมโยงกันจนกลายเป็นกราฟ'
+description: 'object type กับ field, argument ของ field, description และวิธีที่ object type เชื่อมโยงกันจนกลายเป็นกราฟ'
 sidebar:
   order: 2
 ---
@@ -11,11 +11,11 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-Object type คือหัวเรี่ยวหัวแรงของ GraphQL schema เกือบทุกอย่างที่ client สัมผัสคือ object type ที่มี field และวิธีที่คุณเลือก field เหล่านั้น — ชื่อของมัน type ของมัน argument ที่มันรับ — คือเนื้อแท้ส่วนใหญ่ของการออกแบบ schema *เลย* บทเรียนนี้จะลงลึกเรื่อง object type และสี่สิ่งที่คุณทำได้กับ field ของมัน
+object type คือหัวเรี่ยวหัวแรงของ GraphQL schema เกือบทุกอย่างที่ client สัมผัสได้คือ object type ที่มี field และวิธีที่คุณเลือก field เหล่านั้น — ทั้งชื่อ, type และ argument ที่รับ — คือเนื้อแท้ส่วนใหญ่ของการออกแบบ schema บทเรียนนี้ลงลึกเรื่อง object type และสี่สิ่งที่คุณทำกับ field ได้
 
-## Object type และ field ของมัน
+## Object type และ field
 
-**object type** คือกลุ่มของ field ที่มีชื่อ แต่ละ field มีชื่อและ type นี่คือ type ที่จำลองสูตรอาหารในแอปทำอาหาร:
+**object type** คือกลุ่มของ field ที่มีชื่อกำกับ แต่ละ field มีทั้งชื่อและ type ตัวอย่างด้านล่างคือ type ที่จำลองสูตรอาหารในแอปทำอาหาร:
 
 ```graphql
 type Recipe {
@@ -26,11 +26,11 @@ type Recipe {
 }
 ```
 
-`Recipe` มีสี่ field สามตัวในนั้น resolve เป็น scalar — `ID` ตัวหนึ่ง `String` ตัวหนึ่ง และค่า `Int` สองตัว — และ type ของ field คือคำสัญญาว่า client จะได้รับอะไร ชื่อ field ควรอ่านได้เหมือนคุณสมบัติของสิ่งนั้น: `title`, `servings`, `prepMinutes` ให้เลือกคำนามใน domain ที่ชัดเจนแทนการย่อ schema ถูกอ่านบ่อยกว่าที่มันถูกเขียนมาก
+`Recipe` มีสี่ field โดยสามตัว resolve เป็น scalar — `ID` หนึ่งตัว `String` หนึ่งตัว และ `Int` สองตัว ส่วน type ของแต่ละ field คือคำสัญญาว่า client จะได้อะไรกลับไป ชื่อ field ควรอ่านแล้วเหมือนคุณสมบัติของสิ่งนั้น เช่น `title`, `servings`, `prepMinutes` เลือกคำนามใน domain ที่ชัดเจนแทนตัวย่อ เพราะคนอ่าน schema บ่อยกว่าเขียนมาก
 
 ## Argument ของ field
 
-field สามารถรับ **argument** ได้ เหมือนพารามิเตอร์ของฟังก์ชัน argument ช่วยให้ field เดียวรองรับคำขอได้หลายรูปแบบ การใช้งานคลาสสิกคือ field สำหรับค้นหาบน type `Query` ระดับ root:
+field รับ **argument** ได้เหมือน parameter ของฟังก์ชัน ตัว argument ช่วยให้ field เดียวรองรับคำขอได้หลายรูปแบบ การใช้งานคลาสสิกคือ field สำหรับค้นหาบน root type `Query`:
 
 ```graphql
 type Query {
@@ -39,7 +39,7 @@ type Query {
 }
 ```
 
-`recipe` รับ `id` ที่จำเป็นต้องมีและคืนสูตรอาหารหนึ่งรายการ (หรือ `null` หากไม่มีรายการใดตรง) `recipes` รับ argument `first` และ `search` แบบ optional เพื่อแบ่งหน้าและกรองรายการ argument ไม่ได้จำกัดอยู่แค่ field ระดับ root — field ใด ๆ ก็รับมันได้ รูปแบบที่พบบ่อยคือการให้ field ปรับรูปร่างผลลัพธ์ของตัวเอง:
+`recipe` รับ `id` แบบบังคับ แล้วคืนสูตรอาหารหนึ่งรายการ (หรือ `null` ถ้าไม่มีรายการไหนตรง) ส่วน `recipes` รับ argument `first` กับ `search` แบบ optional ไว้แบ่งหน้าและกรองรายการ ทั้งนี้ argument ไม่ได้จำกัดอยู่แค่ field ระดับ root — field ไหนก็รับได้ รูปแบบที่พบบ่อยคือให้ field ปรับรูปร่างผลลัพธ์ของตัวเอง:
 
 ```graphql
 type Recipe {
@@ -49,11 +49,11 @@ type Recipe {
 }
 ```
 
-ตรงนี้ client สามารถขอ `description` ที่ถูกตัดให้สั้นลงได้โดยส่ง `maxLength` มา และ resolver ก็ทำการตัดให้ argument อยู่บน field ที่ใช้มัน
+ตรงนี้ client ขอ `description` แบบตัดสั้นได้ด้วยการส่ง `maxLength` มา แล้ว resolver ก็ตัดให้ สังเกตว่า argument วางอยู่บน field ที่ใช้งานจริง
 
 ## Description — เอกสารใน schema
 
-GraphQL มีระบบเอกสารในตัว type, field หรือ argument ใด ๆ สามารถมี **description** เขียนเป็น string literal ตรง ๆ เหนือมันได้ description เหล่านี้จะปรากฏในเครื่องมือต่าง ๆ ใน GraphiQL และในเอกสารที่ถูกสร้างขึ้น:
+GraphQL มีระบบเอกสารมาให้ในตัว ทุก type ทุก field ทุก argument ใส่ **description** ได้ด้วยการเขียน string literal ไว้เหนือบรรทัดนั้น ตัว description จะโผล่ในเครื่องมือต่าง ๆ ทั้งใน GraphiQL และในเอกสารที่ generate ออกมา:
 
 ```graphql
 """
@@ -71,7 +71,7 @@ type Recipe {
 }
 ```
 
-บล็อกที่ใช้เครื่องหมายคำพูดสามตัวรองรับข้อความหลายบรรทัด ส่วน string ที่ใช้เครื่องหมายคำพูดเดี่ยวก็พอสำหรับหนึ่งบรรทัด description ไม่ใช่เครื่องประดับ — มันเป็นส่วนหนึ่งของสัญญาที่มนุษย์อ่าน เขียนมันเหมือนกำลังอธิบาย field ให้นักพัฒนาที่ไม่เคยเห็น domain ของคุณมาก่อนฟัง
+บล็อกที่ใช้เครื่องหมายคำพูดสามตัวรองรับข้อความหลายบรรทัด ส่วน string เครื่องหมายคำพูดเดี่ยวก็พอสำหรับบรรทัดเดียว description ไม่ใช่เครื่องประดับ แต่เป็นส่วนหนึ่งของ contract ฝั่งที่มนุษย์อ่าน เขียนเหมือนกำลังอธิบาย field ให้ developer ที่ไม่เคยเห็น domain ของคุณมาก่อนฟัง
 
 ## ความสัมพันธ์ — วิธีที่ type เชื่อมโยงกันเป็นกราฟ
 
@@ -91,7 +91,7 @@ type Author {
 }
 ```
 
-field `author` บน `Recipe` ชี้ไปที่ type `Author` และ field `recipes` บน `Author` ชี้กลับมา client สามารถเริ่มที่สูตรอาหาร ก้าวเข้าไปในผู้แต่งของมัน แล้วเดินไปยังสูตรอาหารอื่น ๆ ของผู้แต่งคนนั้น — ทั้งหมดใน query เดียว field ที่เชื่อมโยงเหล่านี้คือเส้นเชื่อม (edge) ของกราฟของคุณ และการเลือกมันให้ดีคือสิ่งที่ทำให้ API รู้สึกเป็นอันหนึ่งอันเดียวกัน
+field `author` บน `Recipe` ชี้ไปที่ type `Author` และ field `recipes` บน `Author` ก็ชี้กลับมา client จึงเริ่มจากสูตรอาหาร ก้าวเข้าไปหาผู้แต่ง แล้วเดินต่อไปยังสูตรอื่น ๆ ของผู้แต่งคนนั้นได้ในการ query ครั้งเดียว field ที่เชื่อมโยงแบบนี้คือ edge ของกราฟ และการเลือก edge ให้ดีคือสิ่งที่ทำให้ API รู้สึกเป็นเนื้อเดียวกัน
 
 <Mermaid title="Object type ที่เชื่อมโยงกันด้วย field ก่อเกิดเป็นกราฟที่ client เดินผ่าน" code={fieldsDiagram} />
 
@@ -152,14 +152,14 @@ export const typesFieldsCode = `(async () => {
 
 query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ่งรายการ จากนั้นก้าวเข้าไปใน `author` และออกมายังรายการสูตรอาหารของผู้แต่งคนนั้น หนึ่งรอบการสื่อสาร หลาย type — นั่นคือกราฟที่กำลังทำงาน
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | type system เป็น living documentation ที่ accurate เสมอ | schema ใหญ่ที่ไม่ organize ดีอ่านยาก |
 | rename field โดยใช้ `@deprecated` แทนการลบ — backward compat | type ที่ leak database detail ทำให้ refactor ยาก |
 | field-level description ทำให้ introspection เป็น API doc | type ที่ generic เกิน เช่น `JSON` ลด type safety |
 | non-null `!` บังคับ client จัดการ null อย่างถูกต้อง | null vs non-null design ผิด ทำให้ client ต้อง null check ที่ไม่จำเป็น |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Type ที่สะท้อน Database Schema ตรง ๆ**
 อาการ:
@@ -173,7 +173,7 @@ query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ
 - client ไม่รู้ว่า metadata มี field อะไร — ไม่มี type checking
 - หากยังไม่รู้ shape ใช้ `JSON` ชั่วคราวได้ แต่วางแผน migrate ไป typed field
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - ใช้ `@deprecated(reason: "...")` แทนการลบ field
@@ -183,7 +183,7 @@ query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ
 > - schema design ยึด "client first" — field ทุกตัวออกแบบจาก client use case ไม่ใช่ database
 
 <Callout title="Field คือหน่วยของการออกแบบ">
-ทุกการตัดสินใจที่คุณทำใน schema ลงเอยที่ field: ชื่อของมัน type ของมัน argument ที่มันรับ และ description ที่อธิบายมัน ตั้งชื่อ field ตามคุณสมบัติใน domain มอบ argument ให้ field ที่ต้องการมัน เขียนเอกสารสิ่งที่ไม่ชัดเจนในตัวเอง และปล่อยให้ field ที่เป็น object type แสดงความสัมพันธ์ที่ client จะเดินผ่านจริง ๆ จัดการ field ให้ถูกต้องแล้วส่วนที่เหลือของ schema ก็จะตามมาเอง
+ทุกการตัดสินใจใน schema สุดท้ายมาลงที่ field ทั้งชื่อ type argument ที่รับ และ description ที่อธิบาย ตั้งชื่อ field ตามคุณสมบัติใน domain ใส่ argument ให้ field ที่ต้องใช้ เขียนเอกสารกำกับสิ่งที่ไม่ชัดเจนในตัวเอง และปล่อยให้ field ที่เป็น object type แสดงความสัมพันธ์ที่ client จะเดินผ่านจริง ๆ จัดการ field ให้ถูก แล้วที่เหลือของ schema จะตามมาเอง
 </Callout>
 
 export const fieldsDiagram = `flowchart LR
@@ -201,7 +201,7 @@ export const quizTypesFields = [
     q: 'อะไรที่เปลี่ยนกลุ่มของ object type แบน ๆ ให้กลายเป็นกราฟที่เดินผ่านได้?',
     options: [
       'เพิ่ม scalar field ให้มากขึ้น',
-      'field ที่ type ของมันเป็น object type อีกตัวหนึ่ง เชื่อมโยงสองตัวเข้าด้วยกัน',
+      'field ที่มี type เป็น object type อีกตัวหนึ่ง จึงเชื่อมสองตัวเข้าด้วยกัน',
       'เขียน description บนทุก field',
       'นิยาม type Mutation',
     ],
@@ -212,7 +212,7 @@ export const quizTypesFields = [
     options: [
       'เฉพาะบน field ของ type Query เท่านั้น',
       'เฉพาะบน scalar field เท่านั้น',
-      'บน field ใด ๆ ที่ต้องการมัน รวมถึง field ของ object ที่ซ้อนกัน',
+      'บน field ใดก็ได้ที่ต้องใช้ รวมถึง field ของ object ที่ซ้อนกัน',
       'เฉพาะภายใน input type เท่านั้น',
     ],
     answer: 2,
@@ -220,8 +220,8 @@ export const quizTypesFields = [
   {
     q: 'ใน SDL คุณแนบเอกสารให้กับ type หรือ field ได้อย่างไร?',
     options: [
-      'ด้วยคอมเมนต์ // เหนือมัน',
-      'ด้วย string literal (เครื่องหมายคำพูดเดี่ยวหรือสามตัว) ตรง ๆ เหนือมัน',
+      'ด้วยคอมเมนต์ // ด้านบน',
+      'ด้วย string literal (เครื่องหมายคำพูดเดี่ยวหรือสามตัว) วางไว้ด้านบนตรง ๆ',
       'ด้วย directive @doc',
       'SDL ไม่รองรับ description',
     ],

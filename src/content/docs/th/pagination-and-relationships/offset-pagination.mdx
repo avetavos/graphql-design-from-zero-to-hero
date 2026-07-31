@@ -1,6 +1,6 @@
 ---
 title: Offset Pagination
-description: 'pagination แบบ limit/offset (หรือเลขหน้า) อย่างง่าย วิธี resolve มัน และปัญหา deep-offset กับ shifting-window ที่ทำให้มันรั่ว'
+description: 'pagination แบบ limit/offset (หรือเลขหน้า) อย่างง่าย วิธี resolve และรอยรั่วสองจุดคือ deep-offset กับ shifting-window'
 sidebar:
   order: 3
 ---
@@ -39,9 +39,9 @@ resolver คำนวณ `offset = (page - 1) * pageSize` แล้วทำง�
 
 ## รอยรั่วสองจุด
 
-offset pagination นั้นเรียบง่าย แต่มันมีปัญหาที่รู้กันดีอยู่สองข้อ
+offset pagination นั้นเรียบง่าย แต่มีปัญหาที่รู้กันดีอยู่สองข้อ
 
-ข้อแรกคือ **ต้นทุนของ deep-offset** การจะคืน item 100,001–100,010 ฐานข้อมูลที่ใช้ `OFFSET 100000` ยังต้อง *นับผ่าน* แสนแถวแรกก่อนจะทิ้งมันไป ยิ่งเปิดหน้าลึกเท่าไหร่ แต่ละหน้าก็ยิ่งช้า — งานเพิ่มขึ้นตาม offset ไม่ใช่ตามขนาดของหน้า
+ข้อแรกคือ **ต้นทุนของ deep-offset** การจะคืน item 100,001–100,010 database ที่ใช้ `OFFSET 100000` ยังต้อง *นับผ่าน* แสนแถวแรกก่อนจะทิ้งทั้งหมดนั้นไป ยิ่งเปิดหน้าลึกเท่าไหร่ แต่ละหน้าก็ยิ่งช้า เพราะงานเพิ่มขึ้นตาม offset ไม่ใช่ตามขนาดของหน้า
 
 ข้อสองคือ **shifting window** offset ระบุ *ตำแหน่ง* ไม่ใช่ *item* ถ้ามี post ใหม่ถูกแทรกเข้ามาที่ด้านบนขณะที่ผู้ใช้กำลังอ่านอยู่ ทุก item จะเลื่อนลงไปหนึ่งช่อง หน้า 2 ตอนนี้จะเริ่มต้นด้วย item ที่ผู้ใช้เห็นไปแล้วในหน้า 1 และมี item หนึ่งหลุดลอดผ่านช่องว่างระหว่างหน้าไปอย่างเงียบ ๆ ในกรณีที่มีการลบ จะเกิดเหตุการณ์ตรงกันข้าม — item หนึ่งอาจถูกข้ามไปทั้งหมด
 
@@ -49,7 +49,7 @@ offset pagination นั้นเรียบง่าย แต่มันม�
 
 ## paging รันจริง
 
-runner ด้านล่างถือ list ที่เรียงลำดับขนาดเล็กไว้ และ resolve `posts(limit, offset)` ด้วยการ slice มัน รันตามที่เป็นอยู่เพื่อดึงหน้าสอง จากนั้นเปลี่ยน `offset` แล้วรันใหม่เพื่อสัมผัสว่า window เคลื่อนที่อย่างไร
+runner ด้านล่างถือ list ที่เรียงลำดับขนาดเล็กไว้ แล้ว resolve `posts(limit, offset)` ด้วยการ slice list นั้น รันตามที่เป็นอยู่เพื่อดึงหน้าสอง จากนั้นเปลี่ยน `offset` แล้วรันใหม่เพื่อดูว่า window เลื่อนไปอย่างไร
 
 export const offsetCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -108,14 +108,14 @@ export const offsetCode = `(async () => {
 
 ผลลัพธ์คืน item 3–4 (`offset: 2`, `limit: 2`) พร้อมกับ `totalCount` และ flag `hasMore` ที่ client ใช้เพื่อ render ตัวเปิดหน้า (pager) ได้ นี่คือ offset pagination ที่ทำงานได้ดี — list เล็ก ๆ ที่เสถียร ซึ่ง deep offset และการแก้ไขแบบพร้อมกันไม่ใช่เรื่องต้องกังวล ทันทีที่ list ของคุณใหญ่ขึ้นหรือเปลี่ยนแปลงอยู่ตลอด รอยรั่วสองจุดข้างต้นจะเริ่มกัด ซึ่งนั่นคือสิ่งที่บทเรียนถัดไปเรื่อง cursor connection ถูกออกแบบมาเพื่อแก้
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | เรียบง่าย — `skip` และ `take` เข้าใจง่าย | inconsistent result เมื่อ data เพิ่ม/ลบระหว่าง paginate |
 | random access — ข้ามหน้าได้โดยตรง | performance ลดเมื่อ offset ใหญ่ — database ต้อง scan |
 | นับจำนวน page ทั้งหมดได้ง่าย | ไม่เหมาะกับ infinite scroll ที่ต้องการ stable cursor |
 | ง่ายต่อการ implement ใน SQL | เกิด duplicate/missing item เมื่อ concurrent insert |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Offset Pagination สำหรับ Real-time Feed**
 อาการ:
@@ -129,7 +129,7 @@ export const offsetCode = `(async () => {
 - expensive บน table ใหญ่ — PostgreSQL ต้อง sequential scan
 - cache total count หรือใช้ estimated count แทน exact count
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Stack Overflow:**
 > - ใช้ offset pagination สำหรับ question list — เหมาะเพราะ content ไม่เปลี่ยนบ่อย
@@ -139,7 +139,7 @@ export const offsetCode = `(async () => {
 > - offset pagination เหมาะสำหรับ admin table ที่ต้องการ random access และ page number
 
 <Callout title="หยิบ offset มาใช้เมื่อ list เล็กและเสถียร">
-offset pagination เป็นค่า default ที่ถูกต้องสำหรับ list ที่สั้นและค่อนข้างนิ่ง — ตารางในหน้า admin, การตั้งค่า, หรือไม่กี่หน้าที่ผู้ใช้คาดหวังการนำทางด้วยเลขหน้า มันง่ายมากที่จะ implement และจับคู่ลงบน SQL ได้โดยตรง แต่มันต้องจ่ายต้นทุนที่เพิ่มขึ้นในหน้าลึก ๆ และมันอาจทำให้ item ซ้ำหรือถูกข้ามได้เมื่อ list เบื้องล่างเปลี่ยนแปลงระหว่าง request สำหรับ collection ที่ใหญ่หรือเคลื่อนไหวเร็ว pagination แบบ cursor เป็นตัวเลือกที่ปลอดภัยกว่า
+offset pagination เป็นค่า default ที่ถูกต้องสำหรับ list ที่สั้นและค่อนข้างนิ่ง เช่น ตารางในหน้า admin, การตั้งค่า หรือไม่กี่หน้าที่ผู้ใช้คาดหวังการนำทางด้วยเลขหน้า implement ง่ายมากและจับคู่ลงบน SQL ได้ตรง ๆ แต่ต้องจ่ายต้นทุนที่เพิ่มขึ้นในหน้าลึก ๆ และอาจทำให้ item ซ้ำหรือถูกข้ามได้เมื่อ list เบื้องล่างเปลี่ยนระหว่าง request สำหรับ collection ที่ใหญ่หรือเคลื่อนไหวเร็ว pagination แบบ cursor ปลอดภัยกว่า
 </Callout>
 
 export const shiftDiagram = `flowchart TD
@@ -163,8 +163,8 @@ export const quizOffset = [
     options: [
       'limit กำหนดว่าจะคืน item กี่อัน; offset กำหนดว่าจะข้ามกี่อันก่อน',
       'limit กำหนดงบประมาณด้านเวลา; offset กำหนดงบประมาณด้านหน่วยความจำ',
-      'มันเข้ารหัส cursor ทึบแสงที่ชี้ไปยัง item เฉพาะ',
-      'offset คืน item และ limit ข้ามมัน',
+      'เข้ารหัส cursor ทึบแสงที่ชี้ไปยัง item เฉพาะ',
+      'offset คืน item ส่วน limit ข้าม item',
     ],
     answer: 0,
   },
@@ -172,7 +172,7 @@ export const quizOffset = [
     q: 'ทำไม offset ที่ใหญ่มาก (เช่น OFFSET 100000) จึงมักจะช้า?',
     options: [
       'GraphQL ห้าม offset ที่เกิน 1000',
-      'ฐานข้อมูลต้องสแกนผ่านทุกแถวที่ถูกข้ามก่อนจะทิ้งมันไป',
+      'database ต้องสแกนผ่านทุกแถวที่ถูกข้ามก่อนจะทิ้งไป',
       'แต่ละแถวที่ถูกข้ามจะ trigger network request แยกต่างหาก',
       'offset ขนาดใหญ่ปิดการใช้งาน query cache อย่างถาวร',
     ],

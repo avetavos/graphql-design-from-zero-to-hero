@@ -11,32 +11,32 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-ใน[บทเรียนก่อนหน้า](/graphql/th/errors-and-validation/) เราได้เห็นว่า response สามารถพก `errors` array มาด้วย คราวนี้เราจะแกะ array นั้นออกมาดู ทุก entry ในนั้นคือ object ที่มีโครงสร้างพร้อมชุด key ที่ตายตัว และการเรียนรู้ที่จะอ่าน key เหล่านั้นจะเปลี่ยนคำว่า "มีอะไรพังสักอย่าง" ที่คลุมเครือ ให้กลายเป็น "field นี้ ณ ตำแหน่งนี้ใน query ของคุณ ล้มเหลวด้วยเหตุผลนี้" ที่ชัดเจน
+ใน[บทเรียนก่อนหน้า](/graphql/th/errors-and-validation/) เราเห็นแล้วว่า response พก `errors` array มาด้วยได้ คราวนี้มาแกะ array นั้นกัน ทุก entry คือ object ที่มีชุด key ตายตัว พออ่าน key พวกนี้เป็น คำว่า "มีอะไรพังสักอย่าง" ที่คลุมเครือจะกลายเป็น "field นี้ ตรงตำแหน่งนี้ใน query ของคุณ พังเพราะเหตุนี้"
 
 ## กายวิภาคของ error entry
 
-แต่ละ element ใน `errors` มี key ที่จำเป็นหนึ่งตัว และตัวเลือกอีกหลายตัวที่ specification กำหนดไว้
+แต่ละ element ใน `errors` มี key บังคับหนึ่งตัว และ key ที่จะใส่หรือไม่ใส่ก็ได้อีกหลายตัวตามที่ spec กำหนด
 
-- `message` — สตริงที่มนุษย์อ่านได้ซึ่งอธิบายว่าเกิดอะไรผิดพลาด นี่คือ key เดียวที่บังคับให้มี
-- `locations` — รายการตำแหน่ง `{ line, column }` ที่ชี้ไปยังจุดที่แน่นอนใน**ตัว query text** ที่กระตุ้นให้เกิด error
-- `path` — รายการของชื่อ field และ index ของ list ที่ไล่จาก root ของ response ลงไปยัง field ที่ล้มเหลว ตัวอย่างเช่น `["currentTrack", "title"]`
-- `extensions` — map สำหรับรายละเอียดที่เครื่องอ่านได้ ซึ่งเราจะอุทิศบทเรียนถัดจากนี้อีกหนึ่งบทให้กับมัน
+- `message` — string ที่คนอ่านรู้เรื่อง อธิบายว่าพังเพราะอะไร นี่คือ key เดียวที่บังคับ
+- `locations` — รายการตำแหน่ง `{ line, column }` ชี้ไปยังจุดที่แน่นอนใน**ตัว query text** ที่ทำให้เกิด error
+- `path` — รายการชื่อ field และ index ของ list ไล่จาก root ของ response ลงไปถึง field ที่พัง เช่น `["currentTrack", "title"]`
+- `extensions` — map ไว้ใส่รายละเอียดแบบเครื่องอ่านได้ และมีบทเรียนถัดไปทั้งบทให้เรื่องนี้
 
-`message` มีไว้สำหรับมนุษย์ ส่วน `locations` และ `path` มีไว้สำหรับเครื่องมือและ client ที่ต้องตอบสนองในเชิงโปรแกรม เมื่อรวมกันแล้วทั้งสองตัวช่วยให้ client ไฮไลต์ส่วนที่มีปัญหาของ query และส่งความล้มเหลวไปยังที่ที่ถูกต้องใน UI ของมันได้
+ค่า `message` มีไว้ให้คนอ่าน ส่วน `locations` กับ `path` มีไว้ให้ tooling และ client ที่ต้องเขียนโค้ดตอบสนอง สองตัวนี้รวมกันทำให้ client ไฮไลต์ส่วนที่มีปัญหาใน query และโยนความล้มเหลวไปแสดงถูกที่ใน UI ได้
 
 ## error สองตระกูล
 
-ไม่ใช่ error ทุกตัวจะมาถึงในขั้นตอนเดียวกัน specification แบ่งแยกออกเป็นสองตระกูล และความแตกต่างนี้สำคัญเพราะมันเป็นตัวตัดสินว่าคุณจะได้ `data` กลับมาเลยหรือไม่
+error ไม่ได้เกิดในขั้นตอนเดียวกันทั้งหมด ตัว spec จึงแบ่งเป็นสองตระกูล ความต่างนี้สำคัญ เพราะเป็นตัวตัดสินว่าคุณจะได้ `data` กลับมาหรือไม่ได้เลย
 
 <Mermaid title="Request errors หยุดก่อนการ execute ส่วน field errors เกิดขึ้นระหว่างการ execute" code={errorFamilies} />
 
-**Request errors** เกิดขึ้น *ก่อน* การ execute จะเริ่ม query parse ไม่ผ่าน หรือ parse ผ่านแต่ validate กับ schema ไม่ผ่าน เช่น field ที่ไม่รู้จัก argument ผิด type หรือ selection ที่ผิดรูป เพราะการ execute ไม่เคยเริ่มเลย response จึง**ไม่มี `data` key เลย** (แม้แต่ `null` ก็ไม่มี) มันพกมาแค่ `errors` เท่านั้น
+**Request errors** เกิด *ก่อน* execute จะเริ่ม คือ query parse ไม่ผ่าน หรือ parse ผ่านแต่ validate กับ schema ไม่ผ่าน เช่น เจอ field ที่ไม่รู้จัก argument ผิด type หรือ selection ผิดรูป เพราะ execute ไม่ได้เริ่มเลย response จึง**ไม่มี `data` key** (แม้แต่ `null` ก็ไม่มี) เหลือแค่ `errors` เท่านั้น
 
-**Field errors** (หรือเรียกอีกอย่างว่า execution errors) เกิดขึ้น *ระหว่าง* การ execute เมื่อ resolver throw หรือ return ค่าที่ไม่ถูกต้อง เมื่อตัวใดตัวหนึ่งทำงาน server กำลังสร้าง `data` อยู่แล้ว ดังนั้น response จึงรวม `data` โดยมี field ที่ล้มเหลวถูก null ออกไป พร้อมกับ `errors` entry สำหรับมัน นี่คือกรณีความสำเร็จบางส่วนที่เราจะศึกษาเชิงลึกในบทเรียนถัดไป
+**Field errors** (หรือ execution errors) เกิด *ระหว่าง* execute ตอนที่ resolver throw หรือคืนค่าที่ไม่ถูกต้อง จังหวะนั้น server กำลังประกอบ `data` อยู่แล้ว response จึงมี `data` ติดมาด้วย โดย field ที่พังกลายเป็น `null` และมี `errors` entry ของ field นั้นแนบมา นี่คือกรณีสำเร็จบางส่วนที่เราจะเจาะลึกในบทเรียนถัดไป
 
 ## ดู request error เทียบกับ field error
 
-runner ด้านล่างรัน operation สองอันกับ schema เดียวกัน อันแรกขอ field ที่ไม่มีอยู่จริง ซึ่งเป็น**ความล้มเหลวของ validation** จึงเป็น request error ที่ไม่มี `data` อันที่สองรัน query ที่ถูกต้องแต่ resolver ของมัน throw จึงเป็น **field error** ทำให้ `data` กลับมาโดยมี field ที่ล้มเหลวเป็น `null` ลองเปรียบเทียบ output ทั้งสอง
+ตัว runner ด้านล่างรัน operation สองอันกับ schema เดียวกัน อันแรกขอ field ที่ไม่มีอยู่จริง จึง**ตกตั้งแต่ validation** กลายเป็น request error ที่ไม่มี `data` อันที่สองรัน query ที่ถูกต้อง แต่ resolver throw จึงเป็น **field error** — `data` กลับมาโดย field ที่พังเป็น `null` ลองเทียบ output สองก้อนนี้ดู
 
 export const errorsCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -79,16 +79,16 @@ export const errorsCode = `(async () => {
 
 <NodeRunner client:visible code={errorsCode} />
 
-ดูที่ block แรก ไม่มี `data` key มีแค่ `errors` และ entry นั้นพก `locations` ที่ชี้ไปยังจุดที่ `ghostField` ปรากฏใน query ทีนี้ดู block ที่สอง `data` มีอยู่โดย `nowPlaying` ถูกตั้งเป็น `null` และ error ที่ตรงกันพก `path` เป็น `["nowPlaying"]` เพื่อให้ client รู้ได้แน่ชัดว่า field ไหนหายไป `errors` array เดียวกันแท้ๆ แต่เป็นสองสถานการณ์ที่ต่างกันมาก และคุณแยกแยะมันได้จากว่ามี `data` อยู่หรือไม่
+ดู block แรกก่อน ไม่มี `data` key มีแค่ `errors` และ entry นั้นพก `locations` ชี้ไปตรงจุดที่ `ghostField` โผล่ใน query ทีนี้ดู block ที่สอง คราวนี้ `data` มีอยู่ โดย `nowPlaying` เป็น `null` และ error ที่คู่กันพก `path` เป็น `["nowPlaying"]` ให้ client รู้แน่ชัดว่า field ไหนหายไป เป็น `errors` array ตัวเดียวกันแท้ ๆ แต่คนละสถานการณ์ และตัวแยกคือมี `data` อยู่หรือเปล่า
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | error array ใน response — partial success เป็นไปได้ | error และ data ผสมกันใน response เดียว — client ต้องจัดการทั้งคู่ |
 | `extensions` field ให้ metadata เพิ่ม เช่น error code | developer มักลืม check `errors` array ทำให้ bug ซ่อน |
 | schema validation error ชัดเจน — field ไหน type ไหนผิด | HTTP 200 เสมอแม้มี error — monitoring ที่ดู HTTP status อาจไม่รู้ |
 | path ใน error บอกว่า field ไหนใน query ที่เกิด error | error format ต่างกันระหว่าง library — ต้อง normalize |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Throw Generic Error ทุกอย่าง**
 
@@ -104,7 +104,7 @@ export const errorsCode = `(async () => {
 - request สำเร็จบางส่วนแต่ client แสดงผลราวกับสำเร็จทั้งหมด
 - check `errors` array เสมอ แม้ `data` จะมีค่า
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Apollo Server:**
 > - built-in error classes: `AuthenticationError`, `ForbiddenError`, `UserInputError`
@@ -115,7 +115,7 @@ export const errorsCode = `(async () => {
 > - client รู้ว่า field ไหนใน query ที่ fail และเหตุผลคืออะไร
 
 <Callout title="200 ก็ยังพก errors มาได้">
-HTTP status ของ GraphQL response ส่วนใหญ่เป็นเรื่องของ transport ไม่ใช่ของ operation operation ที่ parse, validate และ execute แล้วมักจะ return HTTP `200` แม้ว่า field ครึ่งหนึ่งของมันจะ throw ก็ตาม อย่าตีความ `200` ว่า "ทุกอย่างทำงานได้" เด็ดขาด ความจริงอยู่ใน `errors` array และอยู่ที่ว่ามี `data` หรือไม่ ให้อ่านสองสิ่งนั้น ไม่ใช่บรรทัด status
+HTTP status ของ GraphQL response เป็นเรื่องของ transport ไม่ใช่ของตัว operation ถ้า operation ผ่าน parse, validate แล้วเริ่ม execute ปกติจะได้ HTTP `200` กลับมา ต่อให้ field ครึ่งหนึ่ง throw ก็ตาม อย่าอ่าน `200` ว่า "ทุกอย่างเรียบร้อย" เด็ดขาด ความจริงอยู่ใน `errors` array และอยู่ที่ว่ามี `data` หรือไม่ ให้อ่านสองอย่างนั้น ไม่ใช่บรรทัด status
 </Callout>
 
 export const errorFamilies = `flowchart TD
@@ -133,36 +133,36 @@ export const errorFamilies = `flowchart TD
 
 export const quizGraphqlErrors = [
   {
-    q: 'key ใดเป็น key เดียวที่จำเป็นต้องมีบน GraphQL error entry?',
+    q: 'key ไหนคือ key เดียวที่ GraphQL error entry บังคับให้มี?',
     options: ['path', 'locations', 'message', 'extensions'],
     answer: 2,
   },
   {
-    q: 'key path บน error entry อธิบายถึงอะไร?',
+    q: 'key path บน error entry บอกอะไร?',
     options: [
-      'URL ที่ request ถูกส่งไป',
-      'รายการของชื่อ field และ index จาก root ของ response ไปยัง field ที่ล้มเหลว',
+      'URL ที่ส่ง request ไป',
+      'รายการชื่อ field และ index จาก root ของ response ไปยัง field ที่ล้มเหลว',
       'file path ของ resolver บน server',
       'บรรทัดและคอลัมน์ใน query text',
     ],
     answer: 1,
   },
   {
-    q: 'query อ้างถึง field ที่ไม่มีอยู่บน type นั้น response จะหน้าตาเป็นอย่างไร?',
+    q: 'ถ้า query อ้างถึง field ที่ไม่มีอยู่บน type นั้น response จะหน้าตาเป็นอย่างไร?',
     options: [
-      'data มีอยู่โดย field ถูกตั้งเป็น null พร้อมกับ error',
-      'มีแค่ errors ไม่มี data key เพราะ validation ล้มเหลวก่อนการ execute',
+      'มี data โดย field เป็น null พร้อมกับ error',
+      'มีแค่ errors ไม่มี data key เพราะ validation ตกตั้งแต่ก่อน execute',
       'response body ว่างเปล่า',
-      'มีแค่ data โดย field ที่ไม่รู้จักถูกตัดออก',
+      'มีแค่ data โดยตัด field ที่ไม่รู้จักทิ้ง',
     ],
     answer: 1,
   },
   {
-    q: 'query ที่ถูกต้องรันแต่ resolver หนึ่งตัว throw response จะ:',
+    q: 'ถ้า query ถูกต้องและรันไปแล้ว แต่ resolver ตัวหนึ่ง throw response จะเป็นอย่างไร?',
     options: [
       'ไม่มี data key เลย',
-      'รวม data โดย field ที่ล้มเหลวถูก null พร้อมกับ errors entry ที่มี path ชี้ไปยังมัน',
-      'return HTTP 500 โดยไม่มี body',
+      'มี data โดย field ที่พังเป็น null พร้อม errors entry ที่มี path ชี้ไปยัง field นั้น',
+      'คืน HTTP 500 โดยไม่มี body',
       'ตัด errors array ออกทั้งหมด',
     ],
     answer: 1,

@@ -11,15 +11,15 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-ใน[บทเรียนก่อนหน้า](/graphql/th/graphql-foundations/) เราได้ร่างภาพ GraphQL ไว้ในประโยคเดียว ตอนนี้มาช้าลงสักหน่อยแล้วเรียกชื่อสี่แนวคิดที่ทำให้มันทำงานได้ ทำสี่ข้อนี้ให้กระจ่าง แล้วทุกอย่างที่เหลือในคอร์สนี้ก็เป็นเพียงการต่อยอดจากมัน
+ใน[บทก่อนหน้า](/graphql/th/graphql-foundations/) เราร่างภาพ GraphQL ไว้ในประโยคเดียว คราวนี้มาดูช้า ๆ กับสี่แนวคิดที่ทำให้ GraphQL ทำงานได้ เข้าใจสี่ข้อนี้ให้ชัด แล้วที่เหลือทั้งคอร์สก็เป็นแค่การต่อยอด
 
 ## แนวคิดที่ 1 — endpoint เดียว
 
-REST API มักจะขยายตัวเป็นหนึ่ง URL ต่อหนึ่ง resource: เส้นทางหนึ่งสำหรับ users อีกเส้นทางสำหรับ posts ของพวกเขา และอีกเส้นทางสำหรับ comments ส่วน GraphQL API โดยทั่วไปจะเปิด **endpoint เดียว** (ตามธรรมเนียมคือ `/graphql`) สำหรับการอ่านและเขียนทั้งหมด คุณไม่ได้เดินทางระหว่าง URL แต่เดินทางระหว่าง **field** ของ graph ที่มี type กำกับ endpoint นั้นคงที่ สิ่งที่เปลี่ยนไปในแต่ละ request คือ query ที่คุณส่งไปยังมัน
+REST API มักขยายตัวเป็นหนึ่ง URL ต่อหนึ่ง resource เส้นทางหนึ่งสำหรับ users อีกเส้นสำหรับ posts ของพวกเขา และอีกเส้นสำหรับ comments ส่วน GraphQL API จะเปิด **endpoint เดียว** (ตามธรรมเนียมคือ `/graphql`) สำหรับการอ่านและเขียนทั้งหมด คุณไม่ได้ไล่ไปตาม URL แต่ไล่ไปตาม **field** ของ graph ที่มี type กำกับ ตัว endpoint อยู่นิ่ง สิ่งที่เปลี่ยนไปในแต่ละ request คือ query ที่คุณส่งเข้าไป
 
 ## แนวคิดที่ 2 — schema ที่มี type กำกับคือสัญญา
 
-GraphQL API ทุกตัวถูกนิยามด้วย **schema** ที่เขียนใน Schema Definition Language (SDL) schema จะระบุ type, field บนแต่ละ type และว่าแต่ละ field คืนค่าอะไร มันคือแหล่งความจริงเพียงหนึ่งเดียวที่ทั้ง client และ server ตกลงร่วมกัน:
+GraphQL API ทุกตัวนิยามด้วย **schema** ที่เขียนใน Schema Definition Language (SDL) schema ระบุ type, field บนแต่ละ type และค่าที่แต่ละ field คืนกลับมา นี่คือ single source of truth ที่ทั้ง client และ server ตกลงร่วมกัน:
 
 ```graphql
 type Author {
@@ -38,7 +38,7 @@ type Query {
 }
 ```
 
-เพราะ schema มี type กำกับและเครื่องอ่านได้ เครื่องมือต่าง ๆ จึงสามารถ validate query ก่อนที่มันจะรันด้วยซ้ำ เติม field ให้อัตโนมัติขณะที่คุณพิมพ์ และสร้าง type ของ TypeScript ให้โดยอัตโนมัติ สัญญานี้ถูกบังคับใช้จริง ไม่ใช่แค่เอกสารประกอบ
+เพราะ schema มี type กำกับและเครื่องอ่านได้ เครื่องมือต่าง ๆ จึง validate query ได้ตั้งแต่ก่อนรัน เติม field ให้อัตโนมัติขณะพิมพ์ และ generate type ของ TypeScript ให้เอง contract นี้ถูกบังคับใช้จริง ไม่ใช่แค่เอกสารประกอบ
 
 ## แนวคิดที่ 3 — client เป็นผู้กำหนด query
 
@@ -48,14 +48,14 @@ query คือการเลือก field ที่สะท้อนรู�
 
 ## แนวคิดที่ 4 — ไม่ over-fetching ไม่ under-fetching
 
-โหมดความล้มเหลวสองแบบนี้เป็นแรงขับเคลื่อนการออกแบบของ GraphQL เป็นอย่างมาก:
+รูปแบบความล้มเหลวสองแบบนี้เป็นแรงขับเคลื่อนการออกแบบของ GraphQL เป็นอย่างมาก:
 
 - **Over-fetching** — endpoint คืนข้อมูลมากกว่าที่หน้าจอต้องการ เปลือง bandwidth และบังคับให้ client ละเลย field
 - **Under-fetching** — endpoint คืนข้อมูลน้อยเกินไป ทำให้ client ต้องส่ง request ตามมาอีกหลายครั้งเพื่อประกอบเป็นมุมมองเดียว
 
-เพราะ GraphQL client ระบุ field ที่ต้องการอย่างแม่นยำ — ครอบคลุม type ที่เกี่ยวข้อง ในการเดินทางไปกลับครั้งเดียว — มันจึงเลี่ยงปัญหาทั้งสองได้ คุณขอ title, year และ name ของ author แล้วนั่นคือสิ่งที่ได้กลับมาเป๊ะ ๆ
+เพราะ GraphQL client ระบุ field ที่ต้องการได้แม่นยำ ครอบคลุม type ที่เกี่ยวข้อง ใน round trip เดียว จึงเลี่ยงปัญหาทั้งสองข้อได้ คุณขอ title, year และ name ของ author แล้วก็ได้กลับมาเป๊ะ ๆ แค่นั้น
 
-## ดูมันเลือก field เฉพาะ
+## ดูการเลือกเฉพาะ field ที่ต้องการ
 
 รันตัวอย่างด้านล่าง schema มี `featuredBook` ที่มี field ให้เลือกมากมาย แต่ query จงใจขอเพียงไม่กี่ตัว ดูว่า response มี *เฉพาะ* สิ่งที่ขอไป
 
@@ -108,14 +108,14 @@ export const selectCode = `(async () => {
 
 resolver คืน object ที่มีข้อมูลมากมายทั้ง `year`, `pages` และ `country` ของ author แต่ไม่มีตัวใดเลยปรากฏในผลลัพธ์ query ขอเพียง `title` และ `name` ของ `author` ที่ซ้อนอยู่ ดังนั้นเฉพาะแค่นั้น — และเฉพาะแค่นั้น — ที่ได้กลับมา ลองเพิ่ม `year` เข้าไปในการเลือกแล้วรันอีกครั้ง เพื่อดู response ขยายตามให้ตรงกัน
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | client กำหนด field ที่ต้องการเอง — ไม่มี over/under-fetching | learning curve สูงกว่า REST — ทีมต้องเรียน schema, resolver, type system |
 | single endpoint ทำให้ API surface เรียบง่าย | caching ยากกว่า — REST ใช้ HTTP cache per URL ได้ตรง ๆ |
 | type system ช่วย validate ก่อน runtime | tooling setup ซับซ้อนกว่า — ต้องมี schema, code gen, playground |
 | introspection ทำให้ tooling และ auto-complete ทำงานได้ | N+1 query problem ต้องจัดการด้วย DataLoader |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **เข้าใจว่า GraphQL แทน REST ทุกกรณี**
 อาการ:
@@ -128,7 +128,7 @@ resolver คืน object ที่มีข้อมูลมากมายท
 - developer เรียนรู้ SDL แต่ไม่เข้าใจว่าแก้ปัญหาอะไร
 - ถ้า developer ไม่เคยเจอ over-fetching จะไม่เข้าใจว่า GraphQL ช่วยอย่างไร
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - เปิด public GraphQL API v4 ในปี 2016 แทน REST API v3
@@ -154,7 +154,7 @@ export const quizWhatIs = [
     answer: 1,
   },
   {
-    q: 'หน้าจอ mobile ต้องการแค่ title แต่ endpoint บังคับให้มันต้องดาวน์โหลด record ทั้งหมด อาการแบบนี้เรียกว่าอะไร?',
+    q: 'หน้าจอ mobile ต้องการแค่ title แต่ endpoint บังคับให้ต้องดาวน์โหลด record ทั้งหมด อาการแบบนี้เรียกว่าอะไร?',
     options: ['Under-fetching', 'Over-fetching', 'Caching', 'Batching'],
     answer: 1,
   },

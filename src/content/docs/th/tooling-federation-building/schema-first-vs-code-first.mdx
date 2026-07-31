@@ -41,7 +41,7 @@ const resolvers = {
 
 ## Code-first — codeนำ
 
-ในการพัฒนาแบบ **code-first** คุณสร้าง schema ด้วยภาษาโปรแกรมของคุณ คุณสร้าง type object ขึ้นในcode แล้ว SDL จะถูก **generate** ออกมาจาก object เหล่านั้น codeคือ source of truth ส่วน SDL เป็น artifact ที่คุณพิมพ์ออกมาดูได้
+ในการพัฒนาแบบ **code-first** คุณสร้าง schema ด้วยภาษาโปรแกรมที่ใช้อยู่ คือสร้าง type object ขึ้นใน code แล้ว **generate** SDL ออกมาจาก object เหล่านั้น code คือ source of truth ส่วน SDL เป็น artifact ที่พิมพ์ออกมาดูได้
 
 ```ts
 import {
@@ -65,22 +65,22 @@ const QueryType = new GraphQLObjectType({
 const schema = new GraphQLSchema({ query: QueryType });
 ```
 
-ตรงนี้ field, type ของมัน, arguments ของมัน และ resolver ของมันอยู่ **ด้วยกัน** ในหนึ่ง object compiler ตรวจสอบทั้งหมดนี้เป็นหน่วยเดียว ดังนั้นปัญหา drift จึงแทบหายไป — resolver ที่คืน type ผิดจะเป็น type error ก่อนที่คุณจะรันอะไรก็ตาม ต้นทุนคือความอ่านง่าย: ตอนนี้ contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็น SDL ที่สะอาด และมือใหม่ต้องอ่านcode ไม่ใช่เอกสาร เพื่อทำความเข้าใจ API
+ตรงนี้ field, type, argument และ resolver อยู่ **ด้วยกัน** ในหนึ่ง object compiler ตรวจทั้งหมดนี้เป็นหน่วยเดียว ปัญหา drift จึงแทบหายไป resolver ที่คืน type ผิดจะกลายเป็น type error ตั้งแต่ก่อนคุณจะรันอะไร ต้นทุนคือความอ่านง่าย เพราะตอนนี้ contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็น SDL สะอาด ๆ มือใหม่จึงต้องอ่าน code ไม่ใช่เอกสาร เพื่อทำความเข้าใจ API
 
 ## ข้อแลกเปลี่ยน เทียบกันเคียงข้าง
 
 <Mermaid title="schema เดียวกันที่ไปถึงด้วยสองเส้นทาง — และ source of truth ไหลไปในทิศตรงข้ามกัน" code={approachFlow} />
 
 - **Source of truth.** Schema-first: SDL. Code-first: code
-- **ความอ่านง่ายของ contract.** Schema-first ชนะ — SDL เรียบและแชร์ได้ง่าย ส่วน code-first ซ่อนมันไว้หลัง constructor
+- **ความอ่านง่ายของ contract** Schema-first ชนะ เพราะ SDL เรียบและแชร์ง่าย ส่วน code-first ซ่อน contract ไว้หลัง constructor
 - **Type safety แบบไม่ต้องตั้งค่าเพิ่ม.** Code-first ชนะ — codeและ type ถูกตรวจสอบไปด้วยกัน ส่วน schema-first ต้องใช้ code generation (บทเรียนถัดไป) เพื่อจับ resolver drift
 - **Tooling และการทำงานร่วมกัน.** ไฟล์ SDL ของ schema-first diff ได้สะอาดตอน review และแชร์กับคนที่ไม่ใช่วิศวกรหรือเครื่องมือออกแบบได้ ส่วนการเปลี่ยนแปลงแบบ code-first อ่านเหมือนการเปลี่ยนcodeทั่วไป
 
-ไม่มีแบบไหนถูกต้องเสมอไป stack TypeScript สมัยใหม่จำนวนมากลงตรงกลาง: เขียน SDL (schema-first) เพื่อให้ได้ contract ที่อ่านง่าย แล้ว **generate types** จากมันเพื่อให้ได้ safety แบบ code-first ด้วย แนวทางผสมนั้นคือสิ่งที่ส่วนที่เหลือของโมดูลนี้ต่อยอดขึ้นไป
+ไม่มีแบบไหนถูกเสมอไป stack TypeScript สมัยใหม่จำนวนมากเลือกทางสายกลาง คือเขียน SDL (schema-first) เพื่อให้ได้ contract ที่อ่านง่าย แล้ว **generate type** ออกมาจาก SDL เพื่อให้ได้ safety แบบ code-first ด้วย แนวทางผสมนี้คือสิ่งที่โมดูลที่เหลือต่อยอดขึ้นไป
 
 ## schema เดียวกัน สองสไตล์ รันจริง
 
-เดโมด้านล่างสร้าง schema `hello(name)` ที่ *เหมือนกันเป๊ะ* สองครั้ง — ครั้งหนึ่งแบบ schema-first ด้วย `buildSchema` จาก SDL อีกครั้งแบบ code-first ด้วยการสร้าง type ขึ้นมา — แล้วพิมพ์ schema ทั้งสองเป็น SDL เพื่อให้คุณยืนยันได้ว่ามันเหมือนกัน จากนั้นรัน query เดียวกันผ่านแต่ละอัน กด **Run**
+เดโมด้านล่างสร้าง schema `hello(name)` ที่ *เหมือนกันเป๊ะ* สองครั้ง — ครั้งหนึ่งแบบ schema-first ด้วย `buildSchema` จาก SDL อีกครั้งแบบ code-first ด้วยการสร้าง type ขึ้นมา — แล้วพิมพ์ schema ทั้งสองเป็น SDL เพื่อให้คุณยืนยันได้ว่าเหมือนกันจริง จากนั้นรัน query เดียวกันผ่านทั้งสองแบบ กด **Run**
 
 export const sameSchemaCode = `(async () => {
   const {
@@ -144,7 +144,7 @@ export const sameSchemaCode = `(async () => {
 | ข้อเสีย | SDL กับ resolver อาจ drift | verbose, schema อ่านยากกว่า |
 | เหมาะกับ | ทีมที่มีทั้ง frontend/backend | TypeScript-heavy backend team |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **SDL ที่ Drift จาก Resolver**
 อาการ:
@@ -157,7 +157,7 @@ export const sameSchemaCode = `(async () => {
 - `t.field('name', { type: 'String', resolve: (parent) => parent.fullName })` — no type check on `parent`
 - ใช้ Pothos หรือ TypeGraphQL ที่ enforce type ของ parent, args, context
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Shopify:**
 > - ใช้ SDL-first — schema เป็น source of truth ที่ทั้ง team ดูได้
@@ -198,18 +198,18 @@ export const quizSchemaVsCode = [
     options: [
       'SDL ไม่สามารถแสดง field แบบ non-null ได้',
       'Drift — ไม่มีอะไรบังคับให้ resolver คืน type ที่ field ประกาศไว้',
-      'มันไม่สามารถนิยาม type Query ได้',
-      'มันทำงานได้เฉพาะใน JavaScript เท่านั้น',
+      'นิยาม type Query ไม่ได้',
+      'ทำงานได้เฉพาะใน JavaScript เท่านั้น',
     ],
     answer: 1,
   },
   {
     q: 'อะไรคือข้อเสียหลักของการพัฒนาแบบ code-first?',
     options: [
-      'มันไม่สามารถสร้าง schema ที่ถูกต้องได้',
+      'สร้าง schema ที่ถูกต้องไม่ได้',
       'contract ถูกฝังอยู่ใน constructor call แทนที่จะเป็นเอกสาร SDL ที่อ่านง่าย',
-      'มันไม่มี type safety',
-      'มันต้องใช้ federation',
+      'ไม่มี type safety',
+      'ต้องใช้ federation',
     ],
     answer: 1,
   },
@@ -217,7 +217,7 @@ export const quizSchemaVsCode = [
     q: 'ในเดโม printSchema แสดงอะไรเกี่ยวกับสองแนวทางนี้?',
     options: [
       'schema ทั้งสองต่างกัน',
-      'มันพิมพ์ออกมาเป็น SDL ที่เหมือนกัน — ปลายทางเหมือนกัน',
+      'พิมพ์ออกมาเป็น SDL ที่เหมือนกัน — ปลายทางเดียวกัน',
       'พิมพ์ได้เฉพาะ schema แบบ code-first เท่านั้น',
       'ทั้งสองไม่สามารถรัน query ได้',
     ],

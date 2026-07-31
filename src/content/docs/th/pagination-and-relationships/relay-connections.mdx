@@ -13,7 +13,7 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 offset pagination ระบุ *ตำแหน่ง* ซึ่งเลื่อนไปเมื่อ list เปลี่ยนแปลง **cursor pagination** แก้เรื่องนี้ด้วยการระบุ *item*: แต่ละ item จะได้ **cursor** ทึบแสงหนึ่งตัว และคุณขอ "item ถัดไป N อัน **หลังจาก** cursor นี้" เพราะ cursor ตั้งชื่อให้ item เฉพาะตัวแทนที่จะเป็นช่อง การแทรกและลบที่อื่นใน list จึงไม่ทำให้ผลลัพธ์ซ้ำหรือถูกข้ามอีกต่อไป
 
-รูปร่างของ cursor pagination ที่ถูกนำไปใช้อย่างแพร่หลายที่สุดคือ **Relay Connection specification** มันทำให้ชื่อ field เป็นมาตรฐาน เพื่อให้ tooling และ client สามารถทำ pagination กับ list ใด ๆ ด้วยวิธีเดียวกัน
+รูปร่างของ cursor pagination ที่ใช้กันแพร่หลายที่สุดคือ **Relay Connection specification** ซึ่งกำหนดชื่อ field ให้เป็นมาตรฐาน tooling และ client จึงทำ pagination กับ list ไหนก็ได้ด้วยวิธีเดียวกัน
 
 ## รูปร่างของ connection
 
@@ -43,8 +43,8 @@ type PageInfo {
 ถอดรหัสแต่ละชั้น:
 
 - **`edges`** คือ list — แต่แต่ละรายการคือ *edge* ไม่ใช่ node เปล่า ๆ
-- **`node`** คือ item ตัวจริง (`Post`) การห่อมันไว้ใน edge เผื่อที่ไว้สำหรับข้อมูลเฉพาะของแต่ละ edge
-- **`cursor`** คือ string ทึบแสงที่ระบุตำแหน่งของ edge นั้นใน connection *นี้* จงปฏิบัติกับมันเหมือนกล่องดำ อย่า parse มันเด็ดขาด
+- **`node`** คือ item ตัวจริง (`Post`) การห่อไว้ใน edge เผื่อที่สำหรับข้อมูลเฉพาะของแต่ละ edge
+- **`cursor`** คือ string ทึบแสงที่ระบุตำแหน่งของ edge นั้นใน connection *นี้* ให้ปฏิบัติเหมือนกล่องดำ อย่า parse เด็ดขาด
 - **`pageInfo`** บรรจุ metadata สำหรับ paging `hasNextPage` บอกว่ามี item เพิ่มอีกหรือไม่ ส่วน `endCursor` คือ cursor ของ edge สุดท้าย ซึ่งคุณป้อนเข้าไปใน request ถัดไป
 
 ## first และ after
@@ -60,13 +60,13 @@ pagination ไปข้างหน้าใช้ argument สองตัว `
 }
 ```
 
-ในการเอาหน้าถัดไป คุณหยิบ `pageInfo.endCursor` จาก response แล้วส่งกลับเป็น `after` (สเปกยังนิยาม `last`/`before` สำหรับ paging ย้อนกลับ ซึ่งเป็นภาพสะท้อนกระจกของ `first`/`after`)
+ในการเอาหน้าถัดไป คุณหยิบ `pageInfo.endCursor` จาก response แล้วส่งกลับเป็น `after` (สเปกยังนิยาม `last`/`before` สำหรับ paging ย้อนกลับ ที่เป็นภาพสะท้อนกระจกของ `first`/`after`)
 
 <Mermaid title="connection ห่อแต่ละ item ไว้ใน edge ที่มี cursor; pageInfo บอกคุณว่าจะดึงหน้าถัดไปอย่างไร" code={connDiagram} />
 
 ## connection รันจริง
 
-runner ด้านล่างสร้าง schema `PostConnection` ตัวจริง และ resolve `first`/`after` ด้วยการเข้ารหัส id ของแต่ละ item เป็น cursor รันมันเพื่อดึงหน้าหนึ่ง จากนั้นคัดลอก `endCursor` จากผลลัพธ์ไปใส่ใน argument `after:` แล้วรันใหม่เพื่อเดินไปข้างหน้า
+runner ด้านล่างสร้าง schema `PostConnection` ตัวจริง แล้ว resolve `first`/`after` ด้วยการเข้ารหัส id ของแต่ละ item เป็น cursor รันดูเพื่อดึงหน้าหนึ่ง จากนั้นคัดลอก `endCursor` จากผลลัพธ์ไปใส่ argument `after:` แล้วรันใหม่เพื่อเดินหน้าต่อ
 
 export const connCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -133,14 +133,14 @@ export const connCode = `(async () => {
 
 ผลลัพธ์ให้ edge สองอัน แต่ละอันมี `node` และ `cursor` ทึบแสง พร้อมกับ `pageInfo` ที่บอก `hasNextPage: true` และส่ง `endCursor` กลับมา ส่ง `endCursor` นั้นเป็น `after` แล้วคุณจะได้สองอันถัดไป — และเพราะ cursor ตั้งชื่อให้ *item* ไม่ใช่ตำแหน่ง การแทรก post ใหม่ที่ด้านบนของ list จะไม่ทำให้หน้าสองซ้ำหรือข้ามอะไรไป ความเสถียรนั้นคือเหตุผลทั้งหมดที่ connection มีอยู่
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | stable pagination — item ไม่หาย/ซ้ำเมื่อ data เปลี่ยน | verbose กว่า offset — `edges.node` แทน item ตรง ๆ |
 | รองรับ infinite scroll ได้ดี | ต้องออกแบบ cursor strategy อย่างดี |
 | pageInfo ให้ข้อมูล `hasNextPage`, `hasPreviousPage` ครบ | cursor ที่ opaque ทำให้ skip ไปหน้าใดไม่ได้ |
 | มาตรฐาน spec ที่ client library รองรับ (Apollo, Relay) | implementation ซับซ้อนกว่า offset |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Cursor ที่เป็น Offset ซ่อนอยู่**
 อาการ:
@@ -153,7 +153,7 @@ export const connCode = `(async () => {
 - `Edge` มีแค่ `node` และ `cursor` — ไม่ใช้ประโยชน์ของ Edge
 - edge สามารถมี relationship metadata เช่น `joinedAt` สำหรับ user-in-group
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - ทุก list ใช้ Relay Connection spec: `repository.issues(first: 10, after: $cursor)`
@@ -164,7 +164,7 @@ export const connCode = `(async () => {
 > - client library เช่น Hydrogen ใช้ Connection spec สำหรับ automatic pagination
 
 <Callout title="ใช้ cursor สำหรับ list ที่ใหญ่หรือเปลี่ยนแปลง">
-รูปร่างของ Relay connection — `edges { node cursor }` และ `pageInfo { hasNextPage endCursor }` ที่ paging ด้วย `first`/`after` — มี boilerplate มากกว่า `limit`/`offset` แต่มันคุ้มค่ากับ list ที่ใหญ่หรือเปลี่ยนแปลงขณะที่ผู้ใช้กำลังเรียกดู cursor ระบุ item แทนที่จะเป็นตำแหน่ง การแทรกและลบแบบพร้อมกันจึงไม่ทำให้ขอบเขตของหน้าเสียหาย และฐานข้อมูลสามารถ seek ตรงไปยัง cursor ได้แทนที่จะนับผ่านแถวที่ถูกข้าม สำหรับ feed, ผลการค้นหา และ collection ที่มีปริมาณมาก จงหยิบ connection มาใช้
+รูปร่างของ Relay connection — `edges { node cursor }` กับ `pageInfo { hasNextPage endCursor }` ที่ paging ด้วย `first`/`after` — มี boilerplate มากกว่า `limit`/`offset` แต่คุ้มกับ list ที่ใหญ่หรือเปลี่ยนแปลงระหว่างที่ผู้ใช้กำลังเลื่อนดู เพราะ cursor ระบุตัว item แทนที่จะระบุตำแหน่ง การแทรกหรือลบพร้อมกันจึงไม่ทำให้ขอบเขตของหน้าเพี้ยน และ database ก็ seek ตรงไปที่ cursor ได้เลย แทนที่จะนับผ่านแถวที่ข้าม สำหรับ feed, ผลการค้นหา และ collection ที่มีปริมาณมาก เลือกใช้ connection
 </Callout>
 
 export const connDiagram = `flowchart TD
@@ -182,7 +182,7 @@ export const quizRelay = [
     q: 'ใน Relay connection แต่ละรายการใน edges บรรจุอะไร?',
     options: [
       'node เปล่า ๆ เท่านั้น',
-      'node (ตัว item) บวกกับ cursor ที่ระบุตำแหน่งของมัน',
+      'node (ตัว item) บวกกับ cursor ที่ระบุตำแหน่งของ node นั้น',
       'string ที่เป็น cursor เท่านั้น',
       'pageInfo ฉบับเต็มสำหรับ item นั้น',
     ],

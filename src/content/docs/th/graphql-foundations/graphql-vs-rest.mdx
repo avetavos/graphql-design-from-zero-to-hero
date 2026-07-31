@@ -11,7 +11,7 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-REST รับใช้เว็บมาอย่างดีตลอดสองทศวรรษ และทีมส่วนใหญ่ที่หันมาใช้ GraphQL ก็กำลังย้ายมาจากมัน ดังนั้นคำถามที่ตรงไปตรงมาจึงไม่ใช่ "อันไหนดีกว่า" แต่เป็น "แต่ละอันปรับให้เหมาะกับอะไร และฉันกำลังเลือกข้อแลกเปลี่ยนแบบไหน?" บทเรียนนี้จะวางทั้งสองเทียบกันแบบเคียงข้าง
+REST รับใช้เว็บมาดีตลอดสองทศวรรษ และทีมส่วนใหญ่ที่หันมาใช้ GraphQL ก็ย้ายมาจาก REST คำถามที่ตรงประเด็นจึงไม่ใช่ "อันไหนดีกว่า" แต่เป็น "แต่ละอันออกแบบมาเพื่ออะไร และเรากำลังแลกอะไรอยู่" บทนี้จะวางทั้งสองเทียบกันแบบเคียงข้าง
 
 ## หลาย endpoint เทียบกับ graph เดียว
 
@@ -23,7 +23,7 @@ GET /users/42/posts
 GET /posts/99/comments
 ```
 
-request ของ GraphQL ที่เทียบเท่าคือ query เดียวไปยัง endpoint เดียว เดินจาก user ไปยัง posts ของพวกเขา ไปยัง comments ของแต่ละ post ในการเดินทางไปกลับครั้งเดียว:
+request ของ GraphQL ที่เทียบเท่าคือ query เดียวไปยัง endpoint เดียว เดินจาก user ไปยัง posts ของพวกเขา ไปยัง comments ของแต่ละ post ใน round trip เดียว:
 
 ```graphql
 {
@@ -39,14 +39,14 @@ request ของ GraphQL ที่เทียบเท่าคือ query �
 }
 ```
 
-<Mermaid title="การเดินทางไปกลับสามครั้งของ REST ยุบเหลือ query เดียวของ GraphQL" code={vsDiagram} />
+<Mermaid title="round trip สามครั้งของ REST ยุบเหลือ query เดียวของ GraphQL" code={vsDiagram} />
 
 ## การ over- และ under-fetching
 
 นี่คือจุดที่สัมผัสได้ถึงความแตกต่างในแต่ละวัน
 
 - กับ REST นั้น `GET /users/42` คืน payload คงที่ หากคุณต้องการแค่ name คุณก็ยังได้รับ record ทั้งหมดอยู่ดี (**over-fetching**) หากคุณต้องการ posts ที่เกี่ยวข้องคุณก็ต้องเรียกอีกครั้ง (**under-fetching**)
-- กับ GraphQL คุณระบุ field ที่ต้องการอย่างแม่นยำ ครอบคลุม type ที่เกี่ยวข้อง และได้มันมาใน response เดียว ทั้งสองปัญหาจึงไม่เกิดขึ้นโดยปริยาย
+- กับ GraphQL คุณระบุ field ที่ต้องการได้แม่นยำ ครอบคลุม type ที่เกี่ยวข้อง แล้วได้ทั้งหมดกลับมาใน response เดียว ปัญหาทั้งสองข้อจึงไม่เกิดตั้งแต่แรก
 
 ## การเปรียบเทียบแบบเคียงข้าง
 
@@ -62,13 +62,13 @@ request ของ GraphQL ที่เทียบเท่าคือ query �
 
 ## Versioning
 
-REST API มักทำ version ผ่าน URL — `/v1/users` แล้วก็ `/v2/users` ส่วน GraphQL พึ่งพา **การวิวัฒน์อย่างต่อเนื่อง** แทน: เพิ่ม field ใหม่ได้อย่างอิสระ (มันเป็นแบบ opt-in ดังนั้น client เก่าจึงไม่ได้รับผลกระทบ) และทำเครื่องหมาย field เก่าด้วย `@deprecated` เพื่อชี้นำให้ client เลิกใช้มันไปตามเวลา แทบไม่มีการกระโดดเวอร์ชันแบบหักดิบ
+REST API มักทำ version ผ่าน URL — `/v1/users` แล้วก็ `/v2/users` ส่วน GraphQL ใช้ **การวิวัฒน์อย่างต่อเนื่อง** แทน คือเพิ่ม field ใหม่ได้อิสระ (เป็น opt-in อยู่แล้ว client เก่าจึงไม่กระทบ) และ mark field เก่าด้วย `@deprecated` เพื่อค่อย ๆ พา client ออกจาก field นั้น แทบไม่ต้องกระโดดเวอร์ชันแบบหักดิบเลย
 
 ## ข้อแลกเปลี่ยนเรื่อง caching
 
-นี่คือต้นทุนที่จริงที่สุดของ GraphQL `GET /posts/99` ของ REST คือ URL ที่เสถียร ซึ่งเบราว์เซอร์ CDN และ proxy ต่าง cache ให้ฟรี ส่วน query ของ GraphQL มักมาในรูปของ request แบบ `POST` ที่มี query อยู่ใน body ดังนั้นชั้นของ HTTP caching นั้นจึงใช้ไม่ได้ทันทีตามค่าเริ่มต้น ทีมต่าง ๆ ทวงมันคืนด้วยเทคนิคอย่าง **persisted queries** (ส่ง hash ที่เสถียรแทนข้อความ query เต็ม) และ normalized client cache (เช่นที่มีใน Apollo Client หรือ urql) มันแก้ได้ แต่มันไม่ฟรี
+นี่คือต้นทุนที่จริงที่สุดของ GraphQL `GET /posts/99` ของ REST คือ URL ที่นิ่ง browser CDN และ proxy จึง cache ให้ฟรี ส่วน query ของ GraphQL มักมาในรูป `POST` ที่มี query อยู่ใน body ชั้น HTTP caching จึงใช้ไม่ได้ทันทีตามค่าเริ่มต้น ทีมต่าง ๆ ทวงคืนด้วยเทคนิคอย่าง **persisted query** (ส่ง hash ที่นิ่งแทนข้อความ query เต็ม) และ normalized client cache (แบบที่ Apollo Client หรือ urql มีให้) แก้ได้อยู่ แต่ไม่ฟรี
 
-## ดูความแตกต่างของการเดินทางไปกลับ
+## ดูความแตกต่างของ round trip
 
 ตัวรันด้านล่างรัน query ของ GraphQL เพียงตัวเดียว ซึ่งในโลกของ REST จะต้องใช้การเรียกแยกกันถึงสามครั้ง สังเกตว่า request เดียวคืนโครงสร้างที่ซ้อนชั้นและพร้อม render
 
@@ -130,7 +130,7 @@ export const restCompareCode = `(async () => {
 | team ไม่มี GraphQL experience | schema ซับซ้อนและมี relationship หลายชั้น |
 | file upload heavy | ต้องการ type-safe client code gen |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **ใช้ GraphQL เพราะ hype ไม่ใช่เพราะ problem**
 อาการ:
@@ -142,7 +142,7 @@ export const restCompareCode = `(async () => {
 - ไม่ implement DataLoader — N+1 ทำให้ GraphQL ช้ากว่า REST มาก
 - ไม่มี query depth limit — client ส่ง deeply nested query ทำให้ server overload
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Twitter:**
 > - ใช้ REST API มาตลอดและ serve ได้ดี — ไม่จำเป็นต้องเปลี่ยน
@@ -153,7 +153,7 @@ export const restCompareCode = `(async () => {
 > - แต่ยัง expose REST สำหรับ partner API ที่ต้องการ HTTP caching
 
 <Callout title="GraphQL ไม่ใช่กระสุนเงิน">
-การนำ GraphQL มาใช้คือการแลก HTTP caching ที่ง่ายและแบบจำลองทางความคิดที่คุ้นเคย เพื่อแลกกับ query ที่ขับเคลื่อนโดย client และ graph ที่มี type กำกับ คุณยังรับมรดกความกังวลใหม่ ๆ มาด้วย — ปัญหา N+1 query, การจำกัด query-cost และ authorization ที่ต้องทำงานต่อ field เลือกมันเพราะข้อแลกเปลี่ยนของมันตรงกับปัญหาของคุณ ไม่ใช่เพราะมันใหม่กว่า
+การเลือกใช้ GraphQL คือการแลก HTTP caching ที่ง่ายและ mental model ที่คุ้นเคย เพื่อให้ได้ query ที่ client กำหนดเองและ graph ที่มี type กำกับ พร้อมกันนั้นคุณก็รับเรื่องใหม่มาดูแลด้วย — ปัญหา N+1 query, การจำกัด query cost และ authorization ที่ต้องทำทีละ field เลือก GraphQL เพราะข้อแลกเปลี่ยนตรงกับปัญหาของคุณ ไม่ใช่เพราะใหม่กว่า
 </Callout>
 
 export const vsDiagram = `flowchart TB
@@ -168,27 +168,27 @@ export const vsDiagram = `flowchart TB
 
 export const quizVsRest = [
   {
-    q: 'ปัญหาใดที่ GraphQL เลี่ยงได้ตั้งแต่การออกแบบ ในขณะที่ REST เจอบ่อย?',
+    q: 'ปัญหาใดที่ GraphQL เลี่ยงได้ตั้งแต่การออกแบบ แต่ REST เจอบ่อย?',
     options: ['TLS handshake', 'Over- และ under-fetching', 'DNS resolution', 'JSON parsing'],
     answer: 1,
   },
   {
     q: 'อะไรคือข้อแลกเปลี่ยนของ GraphQL ที่ถูกพูดถึงบ่อยที่สุดเมื่อเทียบกับ REST?',
     options: [
-      'มันคืน JSON ไม่ได้',
+      'คืน JSON ไม่ได้',
       'HTTP-level caching ทำได้ยากกว่าเพราะ query มักเป็น request แบบ POST',
-      'มันไม่รองรับ authentication',
-      'มันต้องใช้ฐานข้อมูลแยกต่างหาก',
+      'ไม่รองรับ authentication',
+      'ต้องใช้ database แยกต่างหาก',
     ],
     answer: 1,
   },
   {
     q: 'โดยทั่วไป GraphQL จัดการกับการวิวัฒน์ของ API อย่างไรแทนการทำ version ใน URL อย่าง /v1 และ /v2?',
     options: [
-      'มันห้ามการเปลี่ยนแปลงใด ๆ หลังจากเปิดตัว',
-      'มันเพิ่ม field ใหม่และ deprecate ของเก่าบน schema เดียวที่วิวัฒน์ไป',
-      'มันส่ง endpoint ใหม่ในทุกการปล่อยเวอร์ชัน',
-      'มันทำ version ผ่าน HTTP header เท่านั้น',
+      'ห้ามเปลี่ยนแปลงอะไรเลยหลังเปิดตัว',
+      'เพิ่ม field ใหม่และ deprecate ของเก่าบน schema เดียวที่ค่อย ๆ วิวัฒน์',
+      'ออก endpoint ใหม่ทุกครั้งที่ปล่อยเวอร์ชัน',
+      'ทำ version ผ่าน HTTP header เท่านั้น',
     ],
     answer: 1,
   },

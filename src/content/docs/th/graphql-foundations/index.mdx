@@ -1,6 +1,6 @@
 ---
 title: พื้นฐาน GraphQL
-description: 'GraphQL คืออะไร มีไว้เพื่ออะไร และ query จริงตัวแรกของคุณที่รันได้ในเบราว์เซอร์'
+description: 'GraphQL คืออะไร มีไว้เพื่ออะไร และ query จริงตัวแรกของคุณที่รันได้ใน browser'
 sidebar:
   order: 1
 ---
@@ -11,31 +11,31 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-GraphQL คือ **query language สำหรับ API** ที่มาคู่กับ **type system** ซึ่งอธิบายข้อมูลที่ API เหล่านั้นสามารถส่งกลับมาได้ แทนที่จะต้องเรียก URL คงที่หลาย ๆ ตัวแล้วหวังว่าแต่ละตัวจะคืนข้อมูลในรูปแบบที่ถูกต้อง client จะส่ง request เพียงครั้งเดียวไปยัง endpoint เดียว และขอ field ที่ต้องการ *อย่างแม่นยำ* ส่วน server ก็จะตอบกลับด้วย response ที่มีรูปร่างตรงกับ request ที่ขอมา ไม่มากไม่น้อยไปกว่านั้น
+GraphQL คือ **query language สำหรับ API** ที่มาคู่กับ **type system** ที่อธิบายว่า API ส่งข้อมูลอะไรกลับมาได้บ้าง แทนที่จะเรียก URL คงที่หลายตัวแล้วหวังว่าแต่ละตัวจะคืนข้อมูลในรูปแบบที่ต้องการ ฝั่ง client ส่ง request ครั้งเดียวไปยัง endpoint เดียว แล้วระบุ field ที่ต้องการ *อย่างแม่นยำ* ส่วน server ตอบกลับด้วย response ที่มีรูปร่างตรงกับ request ไม่มากไม่น้อยไปกว่านั้น
 
-แนวคิดเดียวนี้เปลี่ยนอะไรไปมากมาย ข้อมูลที่ API ของคุณให้บริการได้กลายเป็น **graph** ของ type ที่เชื่อมโยงกัน และ query ก็เป็นเพียงเส้นทางที่คุณลากผ่าน graph นั้น
+แนวคิดเดียวนี้เปลี่ยนอะไรหลายอย่าง ข้อมูลที่ API ของคุณให้บริการกลายเป็น **graph** ของ type ที่เชื่อมโยงกัน ส่วน query คือเส้นทางที่คุณลากผ่าน graph นั้น
 
-## What This Module Covers
+## โมดูลนี้ครอบคลุมอะไรบ้าง
 
-นี่คือโมดูลพื้นฐานของคอร์ส เมื่อจบโมดูลนี้คุณจะสามารถอ่าน GraphQL ได้ อธิบายได้ว่าทำไมทีมต่าง ๆ ถึงเลือกใช้มัน และเข้าใจวิธีที่ server เปลี่ยน query ให้กลายเป็น response บทเรียนทั้งห้ามีดังนี้:
+นี่คือโมดูลพื้นฐานของคอร์ส เมื่อจบโมดูลนี้คุณจะอ่าน GraphQL ได้ อธิบายได้ว่าทำไมทีมถึงเลือกใช้ GraphQL และเข้าใจวิธีที่ server เปลี่ยน query ให้เป็น response บทเรียนทั้งห้ามีดังนี้:
 
 1. **พื้นฐาน GraphQL** (คุณอยู่ที่นี่) — ภาพรวมกว้าง ๆ และ query จริงตัวแรกของคุณ
 2. **GraphQL คืออะไร** — endpoint เดียว schema ที่มี type กำกับ และ query ที่ client เป็นผู้กำหนด
 3. **GraphQL vs REST** — ข้อแลกเปลี่ยน และเมื่อไรที่แต่ละแนวทางเหมาะสม
 4. **Type System** — object type, scalar, root type และ nullability
-5. **Request Lifecycle** — วิธีที่ request ถูก parse, validate และ execute
+5. **Request Lifecycle** — วิธีที่ server parse, validate และ execute request
 
-ทั้งคอร์สนี้สอนด้วย **TypeScript** ตัวอย่างcodeทุกชิ้นเป็นของจริง: ตัวรันในเบราว์เซอร์ด้านล่างนี้รัน GraphQL จริง ๆ โดยใช้ reference implementation และในบทเรียนถัด ๆ ไปเราจะปลุก server แบบเต็มตัวอย่าง [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) ที่คุณรันเองได้
+ทั้งคอร์สนี้สอนด้วย **TypeScript** และตัวอย่าง code ทุกชิ้นเป็นของจริง: ตัวรันใน browser ด้านล่างรัน GraphQL จริง ๆ ด้วย reference implementation ส่วนในบทเรียนถัด ๆ ไปเราจะยก server เต็มรูปแบบอย่าง [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server) ขึ้นมาให้คุณรันเอง
 
 ## รูปร่างของระบบ GraphQL
 
 <Mermaid title="client ขอ field ที่ต้องการอย่างแม่นยำจาก endpoint เดียว" code={overviewDiagram} />
 
-client สร้าง query ที่อธิบาย field ที่ต้องการ ส่วน server เก็บ schema (สัญญา) และชุดของ resolver function (ตรรกะ) เอาไว้ มันตรวจสอบ query เทียบกับ schema รัน resolver เพื่อรวบรวมข้อมูล แล้วคืน response ที่สะท้อนรูปร่างของ query
+ฝั่ง client สร้าง query ที่อธิบาย field ที่ต้องการ ส่วน server เก็บ schema (contract) และชุดของ resolver function (ตรรกะ) เอาไว้ โดย server จะตรวจ query เทียบกับ schema รัน resolver เพื่อรวบรวมข้อมูล แล้วคืน response ที่สะท้อนรูปร่างของ query
 
 ## query จริงตัวแรกของคุณ
 
-ด้านล่างคือตัวอย่าง GraphQL ที่ใช้งานได้จริง มันนิยาม schema เล็ก ๆ ที่มี field เดียวคือ `greeting` ให้ function สำหรับ resolve มัน แล้วรัน query กด **Run** แล้วดู GraphQL engine จริง ๆ สร้างผลลัพธ์ JSON ในแผงผลลัพธ์
+ด้านล่างคือตัวอย่าง GraphQL ที่ใช้งานได้จริง โดยนิยาม schema เล็ก ๆ ที่มี field เดียวคือ `greeting` ใส่ function สำหรับ resolve แล้วรัน query กด **Run** แล้วดู GraphQL engine ตัวจริงสร้างผลลัพธ์ JSON ในแผงผลลัพธ์
 
 export const helloCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -62,10 +62,10 @@ export const helloCode = `(async () => {
 
 <NodeRunner client:visible code={helloCode} />
 
-สังเกตว่าผลลัพธ์ถูกห่อไว้ในคีย์ `data` และภายในนั้น field ชื่อ `greeting` แมปไปยังค่าที่ resolver คืนกลับมา response คาดเดาได้เพราะมันเป็นไปตาม query ลองเปลี่ยน argument name หรือเปลี่ยน field แล้วรันอีกครั้งดู
+สังเกตว่าผลลัพธ์ถูกห่อไว้ในคีย์ `data` และข้างในนั้น field ชื่อ `greeting` แมปไปยังค่าที่ resolver คืนกลับมา response คาดเดาได้เพราะเป็นไปตาม query ลองเปลี่ยน argument name หรือเปลี่ยน field แล้วรันอีกครั้งดู
 
 <Callout title="แบบจำลองทางความคิดที่ควรพกติดตัวไป">
-GraphQL ไม่ใช่ฐานข้อมูล และไม่ใช่สิ่งที่มาแทน business logic ของคุณ มันคือสัญญาที่มี type กำกับซึ่งวางอยู่หน้าข้อมูลของคุณ ปล่อยให้ client อธิบายความต้องการได้อย่างแม่นยำ จดจำสามคำนี้ไว้ — **schema**, **query**, **resolver** — แล้วเนื้อหาที่เหลือของคอร์สนี้จะเข้าที่เข้าทางเอง
+GraphQL ไม่ใช่ database และไม่ใช่ตัวแทน business logic ของคุณ แต่เป็น contract ที่มี type กำกับซึ่งวางอยู่หน้าข้อมูล เปิดให้ client บอกความต้องการได้อย่างแม่นยำ จำสามคำนี้ไว้ — **schema**, **query**, **resolver** — แล้วเนื้อหาที่เหลือของคอร์สจะเข้าที่เข้าทางเอง
 </Callout>
 
 export const overviewDiagram = `flowchart LR

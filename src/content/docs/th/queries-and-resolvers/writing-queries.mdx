@@ -11,11 +11,11 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-GraphQL query คือข้อความ และข้อความนั้นมีรูปร่าง เมื่อคุณอ่านรูปร่างนั้นออก และเขียนมันขึ้นเองได้ คุณก็จะคุยกับ GraphQL API ตัวไหนก็ได้ บทเรียนนี้สร้าง query ขึ้นมาทีละชิ้น ตั้งแต่ field แล้วเป็น nested selection set จากนั้นก็เป็น operation name ที่ห่อทุกอย่างเข้าด้วยกัน
+GraphQL query คือข้อความ และข้อความนั้นมีรูปร่าง เมื่อคุณอ่านรูปร่างนั้นออกและเขียนขึ้นเองได้ คุณก็คุยกับ GraphQL API ตัวไหนก็ได้ บทเรียนนี้ประกอบ query ขึ้นมาทีละชิ้น เริ่มจาก field ต่อด้วย nested selection set แล้วจบที่ operation name ที่ห่อทุกอย่างเข้าด้วยกัน
 
 ## field
 
-หน่วยที่เล็กที่สุดของ query คือ **field** ชื่อเดียวที่ร้องขอข้อมูลชิ้นเดียว field ถูกห่อด้วยปีกกา ซึ่งเรียกว่า **selection set** selection set ที่อยู่บนสุดของ query เลือกข้อมูลจาก `Query` root
+หน่วยที่เล็กที่สุดของ query คือ **field** ชื่อเดียวที่ร้องขอข้อมูลหนึ่งชิ้น เราห่อ field ไว้ในปีกกา ที่เรียกว่า **selection set** โดย selection set บนสุดของ query จะเลือกข้อมูลจาก `Query` root
 
 ```graphql
 {
@@ -23,7 +23,7 @@ GraphQL query คือข้อความ และข้อความน�
 }
 ```
 
-นี่ร้องขอ field หนึ่งตัวคือ `currentUser` ถ้า field คืน scalar เช่น `String`, `Int` และอื่น ๆ การระบุชื่อมันก็เพียงพอแล้ว คุณมาถึง leaf และ query หยุดตรงนั้น คุณสามารถขอหลาย field เคียงข้างกันได้ง่าย ๆ เพียงแค่ระบุรายการ
+query นี้ร้องขอ field ตัวเดียวคือ `currentUser` ถ้า field คืน scalar อย่าง `String` หรือ `Int` แค่ระบุชื่อก็พอ เพราะคุณมาถึง leaf แล้ว query จึงหยุดตรงนั้น ถ้าอยากขอหลาย field เคียงกัน ก็แค่ไล่ชื่อเรียงลงมา
 
 ```graphql
 {
@@ -34,7 +34,7 @@ GraphQL query คือข้อความ และข้อความน�
 
 ## nested selection set
 
-เมื่อ field คืน **object type** แทนที่จะเป็น scalar การระบุชื่อมันเพียงอย่างเดียวไม่พอ GraphQL ต้องรู้ว่าคุณต้องการ field *ตัวไหน* ของ object นั้น คุณตอบด้วยการเปิด nested selection set ที่มีปีกกาของตัวเอง
+เมื่อ field คืน **object type** แทนที่จะเป็น scalar การระบุแค่ชื่อยังไม่พอ เพราะ GraphQL ต้องรู้ว่าคุณต้องการ field *ตัวไหน* ของ object นั้น คุณตอบคำถามนี้ด้วยการเปิด nested selection set ที่มีปีกกาของตัวเอง
 
 ```graphql
 {
@@ -46,7 +46,7 @@ GraphQL query คือข้อความ และข้อความน�
 }
 ```
 
-`currentUser` คืน `User` object ดังนั้นมันจึงต้องตามด้วย selection set ที่ระบุ field ของ `User` ที่คุณสนใจ การซ้อนแบบนี้สามารถลึกเท่าที่ graph เปิดให้ได้ ถ้า `User` มี field `address` ที่คืน `Address` object คุณก็ซ้อนอีกชั้น
+`currentUser` คืน `User` object จึงต้องตามด้วย selection set ที่ระบุ field ของ `User` ที่คุณสนใจ การซ้อนแบบนี้ลึกได้เท่าที่ graph เปิดให้ ถ้า `User` มี field `address` ที่คืน `Address` object คุณก็ซ้อนลงไปอีกชั้น
 
 ```graphql
 {
@@ -64,11 +64,11 @@ GraphQL query คือข้อความ และข้อความน�
 
 <Mermaid title="query ที่ซ้อนกันคือ tree ของ field ที่สะท้อนรูปร่างของ response" code={treeDiagram} />
 
-หลักคิดที่เป็นประโยชน์ field ที่คืน object type *ต้องมี* selection set และ field ที่คืน scalar *ห้ามมี* selection set ลืมกฎข้อใดข้อหนึ่ง แล้ว server จะปฏิเสธ query ระหว่างการ validate ก่อนที่ resolver ตัวใดจะได้รัน
+จำหลักง่าย ๆ ไว้ว่า field ที่คืน object type *ต้องมี* selection set ส่วน field ที่คืน scalar *ห้ามมี* selection set ถ้าลืมกฎข้อใดข้อหนึ่ง server จะปฏิเสธ query ตั้งแต่ตอน validate ก่อนที่ resolver ตัวไหนจะได้รัน
 
 ## operation name
 
-รูปแบบ `{ ... }` เปล่า ๆ เป็นรูปแบบย่อของ query คุณสามารถ และในทีมงานจริงควร เขียนแบบเต็มที่เริ่มด้วย keyword `query` ตามด้วย **operation name** ที่คุณเลือกเอง
+รูปแบบ `{ ... }` เปล่า ๆ เป็นรูปแบบย่อของ query คุณเขียนแบบเต็มก็ได้ และในงานจริงควรเขียนแบบเต็ม คือขึ้นต้นด้วย keyword `query` ตามด้วย **operation name** ที่คุณตั้งเอง
 
 ```graphql
 query GetCurrentUser {
@@ -79,11 +79,11 @@ query GetCurrentUser {
 }
 ```
 
-`GetCurrentUser` คือ operation name มันไม่เปลี่ยนผลลัพธ์เลย แต่มันคุ้มค่าใน 3 ทาง คือมันปรากฏใน server log และ tracing ทำให้คุณแยกแยะ request ได้ มันจำเป็นเมื่อ document หนึ่งมี operation มากกว่าหนึ่งตัว และมันทำให้ query อธิบายตัวเองได้ การตั้งชื่อ operation เป็นนิสัยที่ควรสร้างตั้งแต่เนิ่น ๆ
+`GetCurrentUser` คือ operation name ที่ไม่เปลี่ยนผลลัพธ์ แต่คุ้มค่าใน 3 ทาง — ปรากฏใน server log และ tracing ทำให้คุณแยกแยะ request ได้ จำเป็นเมื่อ document เดียวมี operation มากกว่าหนึ่งตัว และทำให้ query อธิบายตัวเองได้ การตั้งชื่อ operation เป็นนิสัยที่ควรสร้างตั้งแต่เนิ่น ๆ
 
 ## รัน query ที่ซ้อนกัน
 
-ตัวอย่างด้านล่างเลือก field ที่ซ้อนกัน คือ `currentUser` ที่พกพา `name` และ `favoriteTrack` object ที่ซ้อนอยู่ ซึ่งในตัวมันเองก็พกพา `title` query นี้ใช้รูปแบบเต็ม `query` พร้อม operation name กด **Run** แล้วเทียบ JSON กับ tree ของ field ที่คุณเขียน
+ตัวอย่างด้านล่างเลือก field ที่ซ้อนกัน คือ `currentUser` ที่พา `name` กับ `favoriteTrack` object มาด้วย และ `favoriteTrack` ก็พา `title` ต่ออีกชั้น ตัว query ใช้รูปแบบเต็มพร้อม operation name กด **Run** แล้วเทียบ JSON กับ tree ของ field ที่คุณเขียน
 
 export const nestedCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -131,16 +131,16 @@ export const nestedCode = `(async () => {
 
 <NodeRunner client:visible code={nestedCode} />
 
-response เป็น object ที่ซ้อนกัน `currentUser` เก็บ `name` และ `favoriteTrack` ส่วน `favoriteTrack` เก็บ `title` ทุกปีกกาที่คุณเปิดใน query สร้างการซ้อนหนึ่งระดับในผลลัพธ์ ลองลบบรรทัด `title` ด้านในออก server จะปฏิเสธ query เพราะ field ที่คืน `Track` object type ต้องมี selection set
+response เป็น object ที่ซ้อนกัน โดย `currentUser` เก็บ `name` กับ `favoriteTrack` ส่วน `favoriteTrack` เก็บ `title` ทุกปีกกาที่คุณเปิดใน query จะสร้างการซ้อนหนึ่งระดับในผลลัพธ์ ลองลบบรรทัด `title` ด้านในออกดู แล้ว server จะปฏิเสธ query ทันที เพราะ field ที่คืน `Track` object type ต้องมี selection set
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | client ระบุเฉพาะ field ที่ต้องการ — ไม่รับ payload ส่วนเกิน | query syntax ใหม่สำหรับ developer ที่คุ้น REST |
 | nested query ครั้งเดียวแทนหลาย REST call | deeply nested query อาจทำให้ server overload |
 | operation name ช่วย debug และ monitor | ไม่มี query depth limit = security risk |
 | variables ทำให้ query reuse ได้และป้องกัน injection | client ต้องเรียนรู้ fragment, alias, variable syntax |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Query String แบบ Dynamic แทน Variable**
 อาการ:
@@ -154,7 +154,7 @@ response เป็น object ที่ซ้อนกัน `currentUser` เก
 - monitoring tool แสดงแค่ "anonymous" ทำให้ trace ยาก
 - ตั้งชื่อทุก operation เพื่อ tracing และ debugging
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - ทุก query ใน GitHub documentation มีชื่อ operation ชัดเจน
@@ -165,7 +165,7 @@ response เป็น object ที่ซ้อนกัน `currentUser` เก
 > - named query ทำให้ Apollo Studio tracking ทำงานได้
 
 <Callout title="query คือรูปร่างของ response">
-GraphQL query และ response ของมันมีโครงสร้างเหมือนกัน scalar เป็น leaf และจบกิ่ง ส่วน object type เปิด selection set ใหม่และเดินต่อ เมื่อคุณเขียน query คุณกำลังวาด tree ที่ server จะเติมให้พอดีเป๊ะ ตั้งชื่อ operation ของคุณ ซ้อนเข้าไปเฉพาะใน object type เท่านั้น แล้ว response จะไม่มีวันทำให้คุณประหลาดใจ
+GraphQL query กับ response มีโครงสร้างเหมือนกัน ตัว scalar เป็น leaf ที่จบกิ่ง ส่วน object type เปิด selection set ใหม่แล้วเดินต่อ เมื่อคุณเขียน query คุณกำลังวาด tree ที่ server จะเติมให้พอดีเป๊ะ ตั้งชื่อ operation ให้เรียบร้อย แล้วซ้อนเฉพาะใน object type เท่านั้น สุดท้าย response จะไม่มีวันทำให้คุณประหลาดใจ
 </Callout>
 
 export const treeDiagram = `flowchart TD
@@ -177,30 +177,30 @@ export const treeDiagram = `flowchart TD
 
 export const quizWritingQueries = [
   {
-    q: 'When does a field require its own nested selection set?',
+    q: 'field ต้องมี nested selection set ของตัวเองเมื่อไหร่?',
     options: [
-      'เมื่อมันรับ argument',
-      'เมื่อมันคืน object type แทนที่จะเป็น scalar',
+      'เมื่อ field นั้นรับ argument',
+      'เมื่อ field นั้นคืน object type แทนที่จะเป็น scalar',
       'เฉพาะภายใน Mutation root เท่านั้น',
       'ไม่เคยต้องมี — selection set เป็นทางเลือกในทุกที่',
     ],
     answer: 1,
   },
   {
-    q: 'What is the role of the operation name in "query GetCurrentUser { ... }"?',
+    q: 'operation name ใน "query GetCurrentUser { ... }" ทำหน้าที่อะไร?',
     options: [
-      'มันเปลี่ยนว่า field ไหนจะถูกคืนกลับมา',
-      'มันติดป้ายให้ operation สำหรับ logging และจำเป็นเมื่อ document มีหลาย operation',
-      'มันจำเป็นสำหรับทุก ๆ query',
-      'มันบอก server ว่าควรข้าม resolver ตัวไหน',
+      'เปลี่ยนว่า server จะคืน field ไหนกลับมา',
+      'ติดป้ายให้ operation สำหรับ logging และจำเป็นเมื่อ document มีหลาย operation',
+      'ต้องมีในทุก query',
+      'บอก server ว่าควรข้าม resolver ตัวไหน',
     ],
     answer: 1,
   },
   {
-    q: 'How does the structure of a GraphQL response relate to the query?',
+    q: 'โครงสร้างของ GraphQL response สัมพันธ์กับ query อย่างไร?',
     options: [
       'response เป็น list แบนราบไม่ว่าจะซ้อนกันแค่ไหน',
-      'response สะท้อน query มันมี tree ของ field ที่เหมือนกัน',
+      'response สะท้อน query โดยมี tree ของ field ชุดเดียวกัน',
       'response เรียงตามลำดับตัวอักษรเสมอ',
       'response กลับลำดับการซ้อนของ query',
     ],

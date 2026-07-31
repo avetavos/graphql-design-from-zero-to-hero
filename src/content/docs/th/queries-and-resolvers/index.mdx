@@ -11,20 +11,20 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-ในโมดูล foundations คุณได้เรียนรู้ว่า schema คือสัญญา และ query คือเส้นทางที่ลากผ่าน graph ของ type ต่าง ๆ โมดูลนี้พูดถึงสองส่วนที่ทำให้เส้นทางนั้นมีชีวิต นั่นคือ **query** ที่ร้องขอข้อมูล และ **resolver** ที่สร้างข้อมูลนั้นขึ้นมา query คือเจตนาล้วน ๆ มันระบุชื่อ field แต่ไม่ได้บอกว่าค่ามาจากไหน ส่วน resolver คือ logic ที่ server รันทีละ field เพื่อเติมชื่อเหล่านั้นด้วยค่าจริง
+ในโมดูล foundations คุณได้เรียนรู้ว่า schema คือ contract และ query คือเส้นทางที่ลากผ่าน graph ของ type ต่าง ๆ โมดูลนี้พูดถึงสองส่วนที่ทำให้เส้นทางนั้นมีชีวิต คือ **query** ที่ร้องขอข้อมูล และ **resolver** ที่สร้างข้อมูลขึ้นมา ตัว query เป็นเจตนาล้วน ๆ ระบุแค่ชื่อ field แต่ไม่บอกว่าค่ามาจากไหน ส่วน resolver คือ logic ฝั่ง server ที่รันทีละ field เพื่อเติมค่าจริงให้ชื่อเหล่านั้น
 
 ## query อ่าน; resolver สร้าง
 
 แยกสองบทบาทนี้ออกจากกันให้ชัดในใจ แล้วทุกอย่างที่เหลือจะตามมาเอง
 
-- **query** คือ operation สำหรับอ่านที่ฝั่ง client เขียนขึ้น มันเลือก field และอาจส่ง argument ได้ แต่ไม่มี logic อยู่ในนั้น มันคือรายการของที่จะซื้อ
-- **resolver** คือ function ฝั่ง server ที่ผูกกับ field เพียงตัวเดียว เมื่อการ execute มาถึง field นั้น resolver จะรันและคืนค่ากลับมา มันคือพนักงานคลังสินค้าที่ไปหยิบของแต่ละชิ้นตามรายการ
+- **query** คือ operation สำหรับอ่านที่ฝั่ง client เขียนขึ้น เลือก field และส่ง argument ได้ แต่ไม่มี logic อยู่ข้างใน เทียบได้กับรายการของที่จะซื้อ
+- **resolver** คือ function ฝั่ง server ที่ผูกกับ field เพียงตัวเดียว เมื่อการ execute มาถึง field นั้น resolver จะรันและคืนค่ากลับมา เทียบได้กับพนักงานคลังสินค้าที่ไปหยิบของทีละชิ้นตามรายการ
 
-server ไม่เคยเดา สำหรับทุก field ใน query มันจะเรียก resolver ที่ตรงกัน รวบรวมสิ่งที่ได้กลับมา แล้วประกอบเป็น JSON response ที่มีรูปร่างเหมือนกับ query เป๊ะ
+server ไม่เคยเดา แต่จะเรียก resolver ที่ตรงกับทุก field ใน query รวบรวมค่าที่ได้ แล้วประกอบเป็น JSON response ที่มีรูปร่างเหมือน query เป๊ะ
 
 ## Query root
 
-ทุกการอ่านต้องเริ่มต้นจากที่ใดที่หนึ่ง และที่นั่นคือ root object type พิเศษชื่อ `Query` field ที่อยู่ใต้ `Query` โดยตรงคือ **จุดเข้า (entry points)** ของ API ซึ่งเป็นที่เดียวที่การอ่านสามารถเริ่มได้ จากนั้น field สามารถคืน object type ที่มี field ของตัวเองพาเราลึกเข้าไปใน graph ต่อได้
+ทุกการอ่านต้องเริ่มจากที่ใดที่หนึ่ง จุดเริ่มนั้นคือ root object type พิเศษชื่อ `Query` บรรดา field ที่อยู่ใต้ `Query` โดยตรงคือ **จุดเข้า (entry point)** ของ API และเป็นที่เดียวที่การอ่านเริ่มได้ ถัดจากนั้น field เหล่านี้คืน object type ที่มี field ของตัวเอง พาคุณลึกเข้าไปใน graph ต่อได้
 
 ```graphql
 type Query {
@@ -43,17 +43,17 @@ type Track {
 }
 ```
 
-client อาจเริ่มการอ่านด้วย `currentUser` หรือ `track` เพราะทั้งสองเป็น field ของ `Query` แต่จะเริ่มด้วย `title` ไม่ได้ เพราะ `title` อยู่บน `Track` ซึ่งอยู่ลึกเข้าไปใน graph คุณจะเข้าถึงมันได้ก็ต่อเมื่อก้าวผ่าน field ที่คืน `Track` มาก่อน
+client อาจเริ่มการอ่านด้วย `currentUser` หรือ `track` เพราะทั้งสองเป็น field ของ `Query` แต่จะเริ่มด้วย `title` ไม่ได้ เพราะ `title` อยู่บน `Track` ที่ลึกเข้าไปใน graph คุณจะเข้าถึง `title` ได้ก็ต่อเมื่อก้าวผ่าน field ที่คืน `Track` มาก่อน
 
 ## resolver chain
 
-การ resolve ไม่ใช่ function ก้อนใหญ่ก้อนเดียว แต่มันคือ **chain** ของ function เล็ก ๆ การ execute เริ่มที่ field ระดับบนสุดของ query (ที่ `Query` root) รัน resolver ของมัน แล้วลงลึกไปยังแต่ละ sub-field ที่ถูกเลือก รัน resolver *ของมัน* ไปเรื่อย ๆ จนทุก selection ไปจบที่ scalar ค่าที่ resolver ตัวพ่อ (parent) คืนมาจะกลายเป็น input ให้ resolver ของลูก ๆ นั่นคือเส้นด้ายที่ร้อย chain เข้าด้วยกัน
+การ resolve ไม่ใช่ function ก้อนใหญ่ก้อนเดียว แต่เป็น **chain** ของ function เล็ก ๆ การ execute เริ่มที่ field ระดับบนสุดของ query (ที่ `Query` root) รัน resolver ของ field นั้น แล้วลงลึกไปยัง sub-field ที่เลือกไว้ทีละตัว รัน resolver ของแต่ละตัวไปเรื่อย ๆ จนทุก selection จบที่ scalar ค่าที่ resolver ตัวแม่ (parent) คืนมาจะกลายเป็น input ของ resolver ตัวลูก และนั่นคือเส้นด้ายที่ร้อย chain เข้าด้วยกัน
 
 <Mermaid title="การ execute เดินจาก Query root ลงไปผ่าน resolver ของแต่ละ field" code={chainDiagram} />
 
-อ่าน diagram จากบนลงล่าง resolver ของ field `track` รันก่อนและคืน track object จากนั้น engine จะ resolve แต่ละ sub-field ที่ร้องขอของ object นั้น คือ `title` โดยตรง และ `artist` ซึ่ง resolver ของมันคืน artist object ที่ engine resolve ต่อลงไปอีกหนึ่งระดับเป็น `name` แต่ละกล่องคือการเรียก resolver หนึ่งครั้ง และแต่ละลูกศรคือค่าจาก parent ที่ไหลไปสู่ลูก
+อ่าน diagram จากบนลงล่าง เริ่มจาก resolver ของ field `track` ที่รันก่อนและคืน track object จากนั้น engine จะ resolve sub-field ที่ query ขอมาทีละตัว คือ `title` ที่ได้ค่าตรง ๆ และ `artist` ที่ resolver คืน artist object ออกมา แล้ว engine ก็ resolve ต่ออีกหนึ่งระดับเป็น `name` แต่ละกล่องในภาพคือการเรียก resolver หนึ่งครั้ง ส่วนแต่ละลูกศรคือค่าจาก parent ที่ไหลลงไปหาลูก
 
-## What This Module Covers
+## โมดูลนี้ครอบคลุมอะไรบ้าง
 
 เมื่อจบทั้งห้าบทเรียนนี้ คุณจะสามารถเขียน query ด้วยมือเองได้ และเขียน resolver ที่ตอบ query เหล่านั้นได้ บทเรียนมีดังนี้
 
@@ -65,7 +65,7 @@ client อาจเริ่มการอ่านด้วย `currentUser` �
 
 ## ดู chain ทำงานจริง
 
-ตัวอย่างด้านล่างนิยาม `Query` ที่มีจุดเข้าหนึ่งจุดคือ `track` ซึ่ง resolver ของมันคืน track object จากนั้น engine จะ resolve field `artist` ของ track และ `name` ของ artist กด **Run** แล้วดู query หนึ่งตัวเดินทางตลอดทั้ง chain
+ตัวอย่างด้านล่างนิยาม `Query` ที่มีจุดเข้าเดียวคือ `track` และ resolver ของ field นี้คืน track object ออกมา จากนั้น engine จะ resolve field `artist` ของ track ต่อ แล้วจึง resolve `name` ของ artist กด **Run** เพื่อดู query ตัวเดียววิ่งผ่าน chain ทั้งเส้น
 
 export const overviewCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -115,10 +115,10 @@ export const overviewCode = `(async () => {
 
 <NodeRunner client:visible code={overviewCode} />
 
-output สะท้อน query ออกมา `track` เก็บ `title` และ `artist` ที่ซ้อนอยู่ ส่วน `artist` เก็บ `name` ไม่มีอะไรใน response ที่อยู่ตรงนั้นโดยบังเอิญ ค่าทุกตัวถูกสร้างโดย resolver ที่ engine เรียกขณะเดินไปตาม chain จาก `Query` root ลงไปจนถึง leaf
+output สะท้อน query ออกมาตรง ๆ โดย `track` เก็บ `title` กับ `artist` ที่ซ้อนอยู่ ส่วน `artist` เก็บ `name` ไม่มีอะไรใน response ที่โผล่มาโดยบังเอิญ ทุกค่ามาจาก resolver ที่ engine เรียกระหว่างเดินตาม chain จาก `Query` root ลงไปจนถึง leaf
 
 <Callout title="แยกสองคำนี้ออกจากกัน">
-**query** คือเจตนาของ client เขียนเป็น tree ของชื่อ field ส่วน **resolver** คือ logic ของ server เขียนเป็น function ต่อหนึ่ง field งานทั้งหมดของ engine คือเดินไปตาม query tree และที่แต่ละ node ก็เรียก resolver ที่เติมค่าให้มัน เก็บคำว่า "ร้องขอ" กับ "สร้าง" แยกกันในใจ แล้วส่วนที่เหลือของโมดูลนี้ก็เป็นแค่รายละเอียด
+**query** คือเจตนาของฝั่ง client เขียนเป็น tree ของชื่อ field ส่วน **resolver** คือ logic ฝั่ง server เขียนเป็น function หนึ่งตัวต่อหนึ่ง field งานทั้งหมดของ engine คือเดินไปตาม query tree แล้วเรียก resolver ที่เติมค่าให้ node นั้น ๆ แยกคำว่า "ร้องขอ" กับ "สร้าง" ให้ขาดจากกันในใจ ที่เหลือของโมดูลนี้ก็เป็นแค่รายละเอียด
 </Callout>
 
 export const chainDiagram = `flowchart TD
@@ -129,9 +129,9 @@ export const chainDiagram = `flowchart TD
 
 export const quizIndex = [
   {
-    q: 'What is the difference between a query and a resolver?',
+    q: 'query กับ resolver ต่างกันอย่างไร?',
     options: [
-      'query รันบน server; resolver รันในเบราว์เซอร์',
+      'query รันบน server; resolver รันใน browser',
       'query คือการอ่านที่ client เขียนขึ้นเพื่อระบุชื่อ field; resolver คือ function ฝั่ง server ที่สร้างค่าของ field',
       'ทั้งสองเป็นชื่อเรียกของสิ่งเดียวกัน',
       'resolver เลือก field; query คืนค่า',
@@ -139,7 +139,7 @@ export const quizIndex = [
     answer: 1,
   },
   {
-    q: 'Where must every read operation begin?',
+    q: 'ทุก operation สำหรับอ่านต้องเริ่มที่ไหน?',
     options: [
       'ที่ field ใดก็ได้ใน schema',
       'ที่ field ของ root type พิเศษชื่อ Query',
@@ -149,10 +149,10 @@ export const quizIndex = [
     answer: 1,
   },
   {
-    q: 'In the resolver chain, what does a parent field’s resolver pass to its children’s resolvers?',
+    q: 'ใน resolver chain นั้น resolver ของ field ตัวแม่ส่งอะไรต่อให้ resolver ของ field ตัวลูก?',
     options: [
       'ไม่ส่งอะไรเลย — resolver แต่ละตัวเริ่มใหม่จากศูนย์',
-      'ค่าที่มันคืนมา ซึ่งจะกลายเป็น parent input ให้ resolver ของลูก',
+      'ค่าที่คืนออกมา ซึ่งจะกลายเป็น parent input ของ resolver ตัวลูก',
       'แค่ query string เท่านั้น',
       'JSON response สุดท้าย',
     ],

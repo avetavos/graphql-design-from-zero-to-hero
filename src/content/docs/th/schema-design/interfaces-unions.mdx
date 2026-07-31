@@ -39,11 +39,11 @@ type Movie implements Media {
 }
 ```
 
-ทั้ง `Episode` และ `Movie` ต่างเป็น `Media`: พวกมันใช้ `id`, `title` และ `durationSeconds` ร่วมกัน แต่แต่ละตัวเพิ่ม field ของตัวเอง ตอนนี้ field สามารถคืน interface ได้ — `media: [Media!]!` — และค่าจะเป็นหนึ่งใน type ที่ implement ไว้ ณ runtime
+ทั้ง `Episode` และ `Movie` ต่างเป็น `Media` คือใช้ `id`, `title` และ `durationSeconds` ร่วมกัน แต่ต่างก็เพิ่ม field ของตัวเองเข้าไป ตอนนี้ field คืน interface ได้แล้ว — `media: [Media!]!` — และค่าจะเป็นหนึ่งใน type ที่ implement ไว้ ณ runtime
 
 ## Unions — หนึ่งในหลาย type ที่ไม่เกี่ยวข้องกัน
 
-**union** บอกว่าค่าหนึ่งเป็น **หนึ่งใน** ชุดของ object type ที่ระบุไว้เป๊ะ ๆ โดย **ไม่มี field ที่ต้องใช้ร่วมกัน** ใช้ union เมื่อทางเลือกต่าง ๆ ไม่ได้ใช้ข้อมูลร่วมกันโดยธรรมชาติ — พวกมันแค่บังเอิญปรากฏในช่องเดียวกัน:
+**union** บอกว่าค่าหนึ่งเป็น **หนึ่งใน** ชุด object type ที่ระบุไว้เป๊ะ ๆ โดย **ไม่มี field ที่ต้องใช้ร่วมกัน** ใช้ union เมื่อทางเลือกต่าง ๆ ไม่ได้ใช้ข้อมูลร่วมกันโดยธรรมชาติ แค่บังเอิญมาปรากฏในช่องเดียวกัน:
 
 ```graphql
 union SearchResult = Episode | Movie | Person
@@ -64,7 +64,7 @@ type Query {
 
 ## __typename และ inline fragment
 
-เมื่อ field สามารถคืน type รูปธรรมได้มากกว่าหนึ่งตัว client ต้องมีวิธีถามว่า "นี่คือตัวไหน และขอ field เฉพาะของมันมาด้วย" GraphQL มี field `__typename` ในตัว — มันคืนชื่อของ type รูปธรรมในรูป string — และ **inline fragment** เพื่อเลือก field แบบมีเงื่อนไขต่อ type:
+เมื่อ field คืน type รูปธรรมได้มากกว่าหนึ่งตัว client ต้องมีวิธีถามว่า "นี่คือ type ไหน และขอ field เฉพาะของ type นั้นด้วย" GraphQL มี field `__typename` มาให้ในตัว ซึ่งคืนชื่อ type รูปธรรมเป็น string และมี **inline fragment** ไว้เลือก field แบบมีเงื่อนไขราย type:
 
 ```graphql
 {
@@ -85,7 +85,7 @@ type Query {
 }
 ```
 
-อ่าน `... on Movie` ว่า "หากผลลัพธ์นี้เป็น `Movie` ให้เลือก field เหล่านี้ด้วย" สำหรับ interface คุณสามารถเลือก field ที่ใช้ร่วมกันได้โดยตรง (ไม่ต้องใช้ fragment) และใช้ inline fragment เฉพาะกับส่วนเสริมที่เฉพาะของแต่ละ type เท่านั้น `__typename` แทบจะคุ้มค่าเสมอที่จะขอบน field ที่เป็น polymorphic — client ใช้มันเพื่อตัดสินว่าจะรันcodeสาขาไหนของตัวเอง
+อ่าน `... on Movie` ว่า "ถ้าผลลัพธ์นี้เป็น `Movie` ให้เลือก field เหล่านี้ด้วย" สำหรับ interface คุณเลือก field ที่ใช้ร่วมกันได้ตรง ๆ (ไม่ต้องใช้ fragment) แล้วใช้ inline fragment เฉพาะกับส่วนเสริมของแต่ละ type เท่านั้น `__typename` แทบจะคุ้มเสมอที่จะขอมาด้วยบน field ที่เป็น polymorphic เพราะ client ใช้ตัดสินว่าจะรัน code สาขาไหนของตัวเอง
 
 ## union พร้อม fragment รันได้จริง
 
@@ -138,7 +138,7 @@ export const unionCode = `(async () => {
 
 <NodeRunner client:visible code={unionCode} />
 
-แต่ละรายการในลิสต์คืนกลับมาพร้อมป้ายกำกับ `__typename` ของมัน และมีเฉพาะ inline fragment ที่ตรงกับ type นั้นเท่านั้นที่มีส่วนร่วมในการให้ field ตัว `Episode` พกพา `seasonNumber` มา ส่วน `Movie` พกพา `rating` มา หนึ่ง field สองรูปร่าง ปลอดภัยด้าน type อย่างเต็มที่
+แต่ละรายการใน list คืนกลับมาพร้อมป้าย `__typename` ของตัวเอง และมีเฉพาะ inline fragment ที่ตรงกับ type นั้นเท่านั้นที่ใส่ field เพิ่มเข้ามา ตัว `Episode` พา `seasonNumber` มา ส่วน `Movie` พา `rating` มา หนึ่ง field สองรูปร่าง และปลอดภัยด้าน type เต็มที่
 
 | | Interface | Union |
 |---|---|---|
@@ -147,7 +147,7 @@ export const unionCode = `(async () => {
 | client query | field จาก interface ได้ตรง | ต้องใช้ inline fragment ทุกครั้ง |
 | เพิ่ม type ใหม่ | type ใหม่ต้อง implement interface | เพิ่ม member ใน union ได้โดยตรง |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Interface เมื่อไม่มี Shared Field จริง**
 อาการ:
@@ -161,7 +161,7 @@ export const unionCode = `(async () => {
 - เพิ่ม indirection โดยไม่มีประโยชน์
 - ใช้ type ตรง ๆ หรือรอจนมี multiple member จริงก่อน
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - `Node` interface: ทุก object ที่มี `id` implement interface นี้
@@ -192,7 +192,7 @@ export const quizInterfacesUnions = [
     q: 'อะไรคือความแตกต่างที่นิยาม interface กับ union?',
     options: [
       'interface เร็วกว่า union',
-      'interface ประกาศ field ที่ใช้ร่วมกันซึ่ง type ของมันต้อง implement; union ลิสต์ทางเลือกที่ไม่มี field ที่ใช้ร่วมกัน',
+      'interface ประกาศ field ที่ใช้ร่วมกันซึ่งทุก type ต้อง implement ส่วน union แค่ไล่รายชื่อทางเลือกที่ไม่มี field ร่วมกัน',
       'union สามารถมีได้แค่สอง type เท่านั้น',
       'interface ไม่สามารถใช้กับ type Query ได้',
     ],

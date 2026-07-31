@@ -1,6 +1,6 @@
 ---
 title: Partial Results
-description: 'nullability ควบคุมการแพร่กระจายของ error อย่างไร: error ของ field แบบ non-null จะลอยขึ้นไปยัง parent ที่ nullable ที่ใกล้ที่สุด ในขณะที่ field แบบ nullable ทำให้ field พี่น้องยังมีชีวิตอยู่'
+description: 'nullability คุมการแพร่ของ error อย่างไร: error บน field แบบ non-null จะลอยขึ้นไปหา parent ที่ nullable ตัวใกล้ที่สุด ส่วน field แบบ nullable กักความล้มเหลวไว้กับตัวเองและปล่อยให้ field พี่น้องรอด'
 sidebar:
   order: 3
 ---
@@ -11,27 +11,27 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-เราจบบทเรียนก่อนด้วยเรื่อง field errors resolver throw, field กลายเป็น `null` และมี error entry อธิบายมัน แต่มีกฎที่ละเอียดอ่อนแอบซ่อนอยู่ที่นี่ จะเกิดอะไรขึ้นถ้า field ที่ throw ถูกประกาศเป็น **non-null** ด้วย `!`? field แบบ non-null ไม่มีทางเป็น `null` ได้เลย แล้ว server จะใส่อะไรลงไปตรงนั้น? คำตอบคือ **error propagation** และมันคือหนึ่งในพฤติกรรม runtime ที่สำคัญที่สุดใน GraphQL
+บทเรียนก่อนจบไว้ที่ field errors คือ resolver throw, field กลายเป็น `null` แล้วมี error entry อธิบายเหตุ แต่ยังมีกฎละเอียดอ่อนซ่อนอยู่ตรงนี้ ถ้า field ที่ throw ประกาศเป็น **non-null** ด้วย `!` ล่ะ? field แบบ non-null เป็น `null` ไม่ได้เลย แล้ว server จะใส่อะไรลงไปตรงนั้น? คำตอบคือ **error propagation** หนึ่งในพฤติกรรม runtime ที่สำคัญที่สุดของ GraphQL
 
 ## กฎการแพร่กระจาย
 
-เมื่อ field เกิด error server จะพยายามตั้งมันเป็น `null` ถ้า schema อนุญาตให้มี `null` ตรงนั้น คือ field เป็น nullable มันจะหยุด บันทึก error เอาไว้ แล้วเดินหน้าต่อ error อยู่เฉพาะที่ และทุก field พี่น้องก็ยัง resolve ต่อไป
+เมื่อ field เกิด error server จะพยายามตั้งค่าตรงนั้นเป็น `null` ก่อน ถ้า schema ยอมให้เป็น `null` ได้ คือ field นั้น nullable ทุกอย่างก็จบตรงนั้น server บันทึก error แล้วเดินหน้าต่อ ความล้มเหลวอยู่เฉพาะที่ และ field พี่น้องยัง resolve ต่อได้ตามปกติ
 
-แต่ถ้า field เป็น **non-null** การใส่ `null` ตรงนั้นเป็นเรื่องผิดกฎ server ปล่อยมันไว้ไม่ได้ ดังนั้น error จึง**ลอยขึ้น**ไปยัง parent ถ้า field ที่เป็น parent เป็น nullable มันจะกลายเป็น `null` และการแพร่กระจายหยุดตรงนั้น ถ้า parent เป็น non-null *เช่นกัน* error ก็จะปีนต่อขึ้นไป มันจะลอยขึ้นไปจนกระทั่งถึง **ancestor ที่เป็น nullable ที่ใกล้ที่สุด** และถ้าไม่มี field ที่เป็น nullable เลยตลอดทางขึ้นไปจนถึง root ทั้ง `data` ก็จะกลายเป็น `null`
+แต่ถ้า field เป็น **non-null** การใส่ `null` ตรงนั้นผิดกฎ server จึงปล่อยไว้เฉย ๆ ไม่ได้ error เลย**ลอยขึ้น**ไปหา parent ถ้า parent เป็น nullable ตัว parent จะกลายเป็น `null` แล้วการแพร่หยุดตรงนั้น แต่ถ้า parent เป็น non-null *ด้วย* error ก็ปีนต่อขึ้นไปอีก ไล่ขึ้นไปเรื่อย ๆ จนเจอ **ancestor ที่เป็น nullable ตัวใกล้ที่สุด** และถ้าไล่ขึ้นไปจนถึง root แล้วไม่เจอ field ที่ nullable เลย ตัว `data` ทั้งก้อนจะกลายเป็น `null`
 
 <Mermaid title="error ของ field แบบ non-null ลอยขึ้นไปจนกว่าจะเจอ parent ที่ nullable" code={propagation} />
 
-ไดอะแกรมไล่ให้ดู leaf แบบ non-null ตัวหนึ่ง throw, parent แบบ non-null ของมันถือ `null` ไว้ไม่ได้ error จึงปีนขึ้นไปยัง field nullable ตัวแรกที่อยู่เหนือมัน field นั้นคือกำแพงไฟ มันดูดซับ error และปกป้องส่วนที่เหลือของ response
+ไดอะแกรมไล่ให้ดูทีละขั้น leaf แบบ non-null ตัวหนึ่ง throw ส่วน parent ที่เป็น non-null ก็ถือ `null` ไว้ไม่ได้ error จึงปีนต่อขึ้นไปหา field nullable ตัวแรกที่อยู่เหนือขึ้นไป field ตัวนั้นทำหน้าที่เป็นกำแพงไฟ ดูดซับ error แล้วปกป้อง response ส่วนที่เหลือไว้
 
 ## ทำไมเรื่องนี้เปลี่ยนวิธีออกแบบ schema ของคุณ
 
-กฎนี้เปลี่ยน `!` ให้กลายเป็นการตัดสินใจเรื่องรัศมีการระเบิด field แบบ non-null คือคำสัญญา แต่มันก็เป็นภาระด้วย ถ้ามันล้มเหลว มันจะลาก non-null ancestor ของมันล่มลงไปด้วย ส่วน field แบบ nullable คือวาล์วนิรภัย มันกักความล้มเหลวไว้ที่ตัวมันเองและปล่อยให้ field พี่น้องรอด ทำให้เกิด **partial data**
+กฎนี้ทำให้ `!` กลายเป็นการตัดสินใจเรื่อง blast radius ไปเลย field แบบ non-null เป็นทั้งคำสัญญาและภาระในตัวเดียวกัน พอพังขึ้นมาก็ลาก non-null ancestor ล่มตามไปด้วย ส่วน field แบบ nullable เป็นวาล์วนิรภัย กักความล้มเหลวไว้กับตัวเอง ปล่อยให้ field พี่น้องรอด แล้วให้ **partial data** กลับไป
 
-ดังนั้น nullability จึงไม่ใช่แค่เรื่องว่าค่าหนึ่งสามารถหายไปได้หรือไม่ในเส้นทางที่ราบรื่น แต่ยังเป็นเรื่องว่าความล้มเหลวจะแพร่ไปไกลแค่ไหน ทำเครื่องหมาย field เป็น non-null เมื่อคุณมั่นใจว่า server ผลิตมันได้เสมอ และปล่อยให้เป็น nullable เมื่อคุณอยากให้มันค่อยๆ เสื่อมลงอย่างนุ่มนวลมากกว่าให้ทั้ง subtree ล่มลงไป
+ดังนั้น nullability ไม่ได้ตอบแค่ว่าค่านี้หายไปได้ไหมในทางปกติ แต่ตอบด้วยว่าความล้มเหลวจะลามไปไกลแค่ไหน ใส่ `!` ให้ field ที่คุณมั่นใจว่า server ผลิตได้ทุกครั้ง และปล่อยเป็น nullable เมื่ออยากให้ค่อย ๆ เสื่อมลงอย่างนุ่มนวล ดีกว่าปล่อยให้ subtree ทั้งก้อนล่ม
 
 ## ดู partial data ในการทำงานจริง
 
-runner ด้านล่างสร้าง `Profile` ที่มีพี่น้องสองตัว ได้แก่ `bio` แบบ nullable ที่ resolver ของมัน throw และ `displayName` แบบ non-null ที่ resolve ได้อย่างราบรื่น เพราะ `bio` เป็น nullable ความล้มเหลวของมันจึงถูกกักไว้ และ `displayName` ก็ยังกลับมา กด **Run** แล้วมองหา partial data ที่อยู่ข้างๆ error เพียงตัวเดียว
+ตัว runner ด้านล่างสร้าง `Profile` ที่มี field พี่น้องสองตัว คือ `bio` แบบ nullable ที่ resolver throw และ `displayName` แบบ non-null ที่ resolve ผ่านฉลุย เพราะ `bio` เป็น nullable ความล้มเหลวจึงถูกกักไว้แค่ตรงนั้น และ `displayName` ยังกลับมาครบ กด **Run** แล้วมองหา partial data ที่วางอยู่ข้าง ๆ error ตัวเดียว
 
 export const partialCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -74,16 +74,16 @@ export const partialCode = `(async () => {
 
 <NodeRunner client:visible code={partialCode} />
 
-อ่าน output เป็นเรื่องราวของการกักกัน `bio` เป็น nullable ดังนั้นเมื่อ resolver ของมัน throw server จึงตั้งมันเป็น `null` และบันทึก error หนึ่งตัวด้วย `path: ["profile", "bio"]` ที่สำคัญคือ `displayName` ไม่ถูกแตะต้อง คุณยังได้ `"Ada Lovelace"` อยู่ นั่นคือ **partial data** นั่นคือ response ที่ใช้ได้แม้จะมีความล้มเหลว ถ้า `bio` ถูกประกาศเป็น `bio: String!` error จะลอยขึ้นไปยัง `profile` (nullable) แล้ว null ทั้ง profile object แทนที่จะเป็นแค่ field เดียว
+อ่าน output เป็นเรื่องของการกักความเสียหาย ตัว `bio` เป็น nullable พอ resolver throw server จึงตั้งค่าเป็น `null` แล้วบันทึก error หนึ่งตัวพร้อม `path: ["profile", "bio"]` ที่สำคัญคือ `displayName` ไม่โดนกระทบ ยังได้ `"Ada Lovelace"` กลับมาเหมือนเดิม นี่แหละ **partial data** — response ที่ยังใช้งานได้ทั้งที่มีความล้มเหลวอยู่ข้างใน ถ้าประกาศเป็น `bio: String!` แทน error จะลอยขึ้นไปหา `profile` (nullable) แล้ว null ทั้ง profile object ไม่ใช่แค่ field เดียว
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | field บางตัว fail ไม่ทำให้ query ทั้งหมด fail | client ต้องจัดการ partial data + error พร้อมกัน |
 | user ยังเห็นข้อมูลที่ fetch ได้แม้บาง field error | null propagation อาจทำให้ field ที่ non-null null ได้ถ้า parent null |
 | resolver แต่ละตัวทำงาน independent | partial success ยาก track ใน monitoring |
 | เหมาะกับ non-critical field เช่น recommendation, analytics | client ที่ไม่ check error อาจแสดง incomplete data โดยไม่รู้ |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **ไม่ระบุว่า Field ไหน Non-critical**
 
@@ -99,7 +99,7 @@ export const partialCode = `(async () => {
 - ถ้า payment resolver fail → payment เป็น null → ทำให้ order เป็น null ทั้งหมด
 - ออกแบบ non-null อย่างระวัง — field ที่อาจ fail ควร nullable
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Netflix:**
 > - หน้า home แสดง recommendation section — ถ้า recommendation service ล้ม
@@ -111,7 +111,7 @@ export const partialCode = `(async () => {
 > - แต่ละ section resolver แยกกัน — section ที่ fail ไม่ block section อื่น
 
 <Callout title="nullability คือเครื่องมือกักกันความล้มเหลว">
-ทุก `!` ที่คุณเพิ่มเข้าไปคือการตัดสินใจเรื่องทั้งการมีอยู่และการแพร่กระจาย field แบบ non-null ให้การรับประกันที่แข็งแกร่งแก่ client แต่ก็เปลี่ยนความล้มเหลวของ resolver เพียงตัวเดียวให้กลายเป็นการล่มทั้ง subtree เมื่อมัน throw ส่วน field แบบ nullable ทำให้ client ต้องเสียการ์ดหนึ่งตัวแต่กักความล้มเหลวเอาไว้และเปิดทางให้เกิด partial responses ออกแบบเส้นแบ่งนี้อย่างจงใจ ทำให้ leaf ที่คุณผลิตได้เสมอเป็น non-null และเก็บ field ที่มีแนวโน้มล้มเหลวหรือเป็นทางเลือกไว้เป็น nullable เพื่อให้ dependency ที่ไม่เสถียรเพียงตัวเดียวไม่สามารถลบทั้ง query ให้ว่างเปล่าได้
+ทุก `!` ที่คุณเติมเข้าไปคือการตัดสินใจสองเรื่องพร้อมกัน ทั้งเรื่องค่าต้องมีจริงและเรื่องความล้มเหลวจะลามแค่ไหน field แบบ non-null ให้การรับประกันที่แข็งแรงกับ client แต่ก็เปลี่ยน resolver พังตัวเดียวให้กลายเป็น subtree ล่มทั้งก้อน ส่วน field แบบ nullable แลกการรับประกันนั้นไปกับความสามารถในการกักความล้มเหลวและส่ง partial response กลับไปได้ ขีดเส้นนี้อย่างตั้งใจ ให้ leaf ที่ผลิตได้ทุกครั้งเป็น non-null แล้วเก็บ field ที่เสี่ยงพังหรือมีก็ได้ไม่มีก็ได้ไว้เป็น nullable เพื่อไม่ให้ dependency ที่ไม่เสถียรตัวเดียวลบ query ทั้งอันจนว่างเปล่า
 </Callout>
 
 export const propagation = `flowchart TD
@@ -128,42 +128,42 @@ export const propagation = `flowchart TD
 
 export const quizPartialResults = [
   {
-    q: 'resolver ของ field แบบ nullable throw จะเกิดอะไรขึ้นกับ field พี่น้องของมัน?',
+    q: 'ถ้า resolver ของ field แบบ nullable throw จะเกิดอะไรขึ้นกับ field พี่น้อง?',
     options: [
-      'พวกมันทั้งหมดถูกตั้งเป็น null ด้วย',
-      'พวกมันยัง resolve ตามปกติ — ความล้มเหลวถูกกักไว้ที่ field ที่เป็น nullable',
-      'ทั้ง data tree กลายเป็น null',
-      'request ถูกปฏิเสธก่อนการ execute',
+      'กลายเป็น null ตามไปด้วยทั้งหมด',
+      'ยัง resolve ตามปกติ — ความล้มเหลวถูกกักไว้ที่ field ที่เป็น nullable',
+      'data tree ทั้งก้อนกลายเป็น null',
+      'ระบบปฏิเสธ request ตั้งแต่ก่อน execute',
     ],
     answer: 1,
   },
   {
-    q: 'เมื่อ field แบบ non-null เกิด error error แพร่กระจายไปที่ไหน?',
+    q: 'เมื่อ field แบบ non-null เกิด error ตัว error จะแพร่ไปที่ไหน?',
     options: [
-      'มันอยู่บน field non-null นั้นในรูปของ null',
-      'มันลอยขึ้นไปยัง ancestor ที่ nullable ที่ใกล้ที่สุด',
-      'มันถูกตัดทิ้งเงียบๆ',
-      'มันทำให้ทั้ง response เป็น null เสมอไม่ว่า ancestor จะเป็นอย่างไร',
+      'อยู่กับที่บน field non-null นั้นในรูปของ null',
+      'ลอยขึ้นไปหา ancestor ที่ nullable ตัวใกล้ที่สุด',
+      'โดนตัดทิ้งเงียบ ๆ',
+      'ทำให้ response ทั้งก้อนเป็น null เสมอ ไม่ว่า ancestor จะเป็นแบบไหน',
     ],
     answer: 1,
   },
   {
-    q: 'ถ้า field แบบ non-null เกิด error และไม่มี field ที่เป็น nullable เลยตลอดทางขึ้นไปจนถึง root ผลลัพธ์จะเป็นอย่างไร?',
+    q: 'ถ้า field แบบ non-null เกิด error และไล่ขึ้นไปถึง root แล้วไม่เจอ field ที่ nullable เลย ผลลัพธ์จะเป็นอย่างไร?',
     options: [
-      'data ถูกเติมไว้บางส่วน',
-      'ทั้ง data กลายเป็น null',
-      'server return field เป็นสตริงว่าง',
-      'การ execute เริ่มใหม่จาก root',
+      'data ยังมีข้อมูลอยู่บางส่วน',
+      'data ทั้งก้อนกลายเป็น null',
+      'server คืน field นั้นเป็น string ว่าง',
+      'ระบบเริ่ม execute ใหม่จาก root',
     ],
     answer: 1,
   },
   {
-    q: 'การทำเครื่องหมาย field เป็น non-null ด้วย ! บ่งบอกอะไรเกี่ยวกับความล้มเหลว?',
+    q: 'การใส่ ! ให้ field บ่งบอกอะไรเกี่ยวกับความล้มเหลว?',
     options: [
-      'ความล้มเหลวใน field นั้นถูกเพิกเฉย',
-      'ความล้มเหลวตรงนั้นสามารถลอยขึ้นไปและ null ออก non-null ancestor ได้ ทำให้รัศมีการระเบิดกว้างขึ้น',
-      'field นั้นไม่มีทางก่อให้เกิด error ได้',
-      'error ถูกแปลงเป็น list ว่างเปล่า',
+      'ความล้มเหลวบน field นั้นจะถูกมองข้าม',
+      'ความล้มเหลวตรงนั้นลอยขึ้นไป null ทับ non-null ancestor ได้ ทำให้ blast radius กว้างขึ้น',
+      'field นั้นไม่มีทางทำให้เกิด error',
+      'error จะกลายเป็น list ว่างเปล่าแทน',
     ],
     answer: 1,
   },

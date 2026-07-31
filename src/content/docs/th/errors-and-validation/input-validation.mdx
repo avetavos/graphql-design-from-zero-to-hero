@@ -15,7 +15,7 @@ Validation ใน GraphQL เกิดขึ้นในสองชั้นท
 
 ## สิ่งที่ schema validate ให้ฟรีๆ
 
-ประกาศ input แล้ว engine จะเฝ้าระวังมันให้คุณ ถ้า argument เป็น non-null การละไว้คือ request error ถ้ามันคาดหวัง `Int` การส่งสตริงไปคือ request error ถ้ามันเป็น enum ค่าที่อยู่นอก enum จะถูกปฏิเสธ ทั้งหมดนี้ถูกดักไว้ระหว่าง **validation phase** ก่อนการ execute ดังนั้นความล้มเหลวเหล่านี้จึงกลับมาเป็น request errors ที่ไม่มี `data` ตรงตามที่เราเห็นเมื่อสองบทเรียนก่อน
+ประกาศ input ไว้ แล้ว engine จะเฝ้าให้เอง ถ้า argument เป็น non-null การไม่ส่งมาคือ request error ถ้าประกาศเป็น `Int` แล้วส่ง string ไปก็คือ request error ถ้าเป็น enum แล้วส่งค่านอก enum ก็โดนปฏิเสธ ทั้งหมดนี้ถูกดักใน **validation phase** ก่อน execute ความล้มเหลวเหล่านี้จึงกลับมาเป็น request error ที่ไม่มี `data` ตรงกับที่เห็นเมื่อสองบทก่อน
 
 ```graphql
 input ReviewInput {
@@ -29,7 +29,7 @@ type Mutation {
 }
 ```
 
-ด้วย schema นี้ คุณไม่สามารถเรียก `addReview` โดยไม่มี `input` ได้ ไม่สามารถละ `trackId` หรือ `rating` ได้ และไม่สามารถส่ง `rating` ที่ไม่ใช่จำนวนเต็มได้ type system ปฏิเสธทั้งหมดนั้นโดยไม่ต้องมีcode resolver สักบรรทัด สิ่งที่มันไม่อาจรู้ได้คือ `rating` ต้องอยู่ระหว่าง 1 ถึง 5 หรือ `comment` ต้องสั้นกว่า 500 ตัวอักษร เพราะนั่นคือ business rules
+ด้วย schema นี้ คุณจะเรียก `addReview` โดยไม่มี `input` ไม่ได้ ละ `trackId` หรือ `rating` ไม่ได้ และส่ง `rating` ที่ไม่ใช่จำนวนเต็มก็ไม่ได้ type system ปฏิเสธทั้งหมดนี้โดยไม่ต้องเขียน code ใน resolver สักบรรทัด แต่สิ่งที่ type system ไม่มีทางรู้คือ `rating` ต้องอยู่ระหว่าง 1 ถึง 5 หรือ `comment` ต้องสั้นกว่า 500 ตัวอักษร เพราะนั่นคือ business rule
 
 ## สองวิธีในการรายงานความล้มเหลวของ business-rule
 
@@ -37,7 +37,7 @@ type Mutation {
 
 <Mermaid title="ความล้มเหลวของ business: throw error ระดับ top-level หรือ return userErrors ใน payload" code={validationFlow} />
 
-**Throw** throw `GraphQLError` พร้อม code อย่าง `BAD_USER_INPUT` ความล้มเหลวจะตกลงไปใน `errors` array ระดับ top-level และ `data` สำหรับ field นั้นจะเป็น `null` วิธีนี้เรียบง่ายและเป็นแบบแผนเดียวกัน แต่มันปนความผิดพลาดของ input ที่คาดไว้และกู้คืนได้เข้ากับ system error ที่แท้จริง และ client ต้องไปขุดหาใน `errors` เพื่อเจอมัน
+**Throw** โยน `GraphQLError` พร้อม code อย่าง `BAD_USER_INPUT` ความล้มเหลวจะตกไปอยู่ใน `errors` array ระดับ top-level และ `data` ของ field นั้นเป็น `null` วิธีนี้ง่ายและเป็นแบบแผนเดียวกัน แต่ปนความผิดพลาดของ input ที่คาดไว้และกู้คืนได้เข้ากับ system error ตัวจริง แล้ว client ก็ต้องไปขุดใน `errors` เพื่อหาให้เจอ
 
 **Return userErrors ใน payload** ออกแบบ return type ของ mutation ให้เป็น payload ที่บรรจุ *ทั้ง* ผลลัพธ์และรายการ typed user errors ความล้มเหลวของ validation จึงกลายเป็น `data` ธรรมดา ไม่ใช่ exception ดังนั้น client จึงอ่าน `data.addReview.userErrors` เหมือน field อื่นๆ นี่คือรูปแบบที่ schema ขนาดใหญ่จำนวนมากนำมาใช้ เพราะ error แบบฟอร์มที่กู้คืนได้กลายเป็นพลเมืองชั้นหนึ่ง มี type ที่แข็งแรง และไม่เคยไปพันกับช่องทาง `errors`
 
@@ -131,16 +131,16 @@ export const validationCode = `(async () => {
 
 <NodeRunner client:visible code={validationCode} />
 
-สังเกตสิ่งที่ *หายไป* จาก output ไม่มี `errors` array ระดับ top-level เลย rating ที่เป็น `9` ละเมิด business rule แต่เพราะเราออกแบบมันให้เป็น field `userErrors` ความล้มเหลวจึงมาถึงในรูปของ `data` ธรรมดา `data.addReview.review` เป็น `null` และ `data.addReview.userErrors` เก็บ entry ที่มี type ซึ่งชี้ไปยัง field `rating` client จัดการมันเหมือน selection อื่นๆ ลองเปลี่ยน `rating` เป็น `4` แล้วรันใหม่ `review` จะถูกเติมเข้ามาและ `userErrors` จะกลับมาว่างเปล่า
+สังเกตสิ่งที่ *หายไป* จาก output ไม่มี `errors` array ระดับ top-level เลย rating ที่เป็น `9` ผิด business rule ก็จริง แต่เพราะเราออกแบบให้ไปโผล่ที่ field `userErrors` ความล้มเหลวจึงมาถึงในรูป `data` ธรรมดา `data.addReview.review` เป็น `null` ส่วน `data.addReview.userErrors` เก็บ entry ที่มี type ซึ่งชี้ไปที่ field `rating` client จึงจัดการได้เหมือน selection ทั่วไป ลองเปลี่ยน `rating` เป็น `4` แล้วรันใหม่ `review` จะมีค่าขึ้นมาและ `userErrors` จะกลับมาว่าง
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | validate ก่อน resolver — ป้องกัน invalid data เข้า business logic | validation logic ซ้ำระหว่าง schema type system และ custom validator |
 | error message เฉพาะ field — client รู้ว่าต้องแก้ field ไหน | zod/yup validation ใน resolver เพิ่ม dependency |
 | type validation ฟรีจาก GraphQL type system | validation rule ที่ซับซ้อน (cross-field) ทำใน type system ยาก |
 | Input Type validation เกิดก่อน resolver execute | business rule validation ยังต้องทำใน service layer |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Validation ใน Resolver ที่ Throw GraphQL Error**
 
@@ -156,7 +156,7 @@ export const validationCode = `(async () => {
 - ไม่ validate ว่า email format ถูกต้องหรือ email ซ้ำในระบบ
 - type system validate format, service layer validate business rule
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Shopify:**
 > - mutation return `userErrors: [UserError!]!` สำหรับ business validation
@@ -168,7 +168,7 @@ export const validationCode = `(async () => {
 > - type-safe validation ที่ share schema ระหว่าง client และ server ได้
 
 <Callout title="validate สองชั้น รายงานอย่างมีจุดประสงค์">
-ให้ schema ทำงานเชิงโครงสร้าง เช่น argument ที่จำเป็น scalar type และ enum และอย่าไปตรวจซ้ำใน resolvers เพราะมันถูกดักเป็น request errors ก่อนที่codeของคุณจะรัน สงวนตรรกะใน resolver ไว้สำหรับ business rules ที่ type system แสดงออกไม่ได้ จากนั้นเลือกช่องทางของคุณอย่างจงใจ throw `GraphQLError` สำหรับสิ่งที่กู้คืนไม่ได้ และ return typed `userErrors` ใน payload สำหรับความผิดพลาดแบบฟอร์มที่กู้คืนได้ซึ่งคุณอยากให้ client จัดการได้อย่างนุ่มนวล
+ให้ schema รับงานเชิงโครงสร้างไป เช่น argument ที่จำเป็น scalar type และ enum แล้วอย่าไปตรวจซ้ำใน resolver เพราะของพวกนี้ถูกดักเป็น request error ตั้งแต่ก่อน code ของคุณจะรัน เก็บตรรกะใน resolver ไว้ให้ business rule ที่ type system เขียนแทนไม่ได้ จากนั้นเลือกช่องทางให้ชัด — throw `GraphQLError` สำหรับสิ่งที่กู้คืนไม่ได้ และคืน `userErrors` ที่มี type ใน payload สำหรับความผิดพลาดแบบฟอร์มที่กู้คืนได้ ซึ่งคุณอยากให้ client จัดการได้อย่างนุ่มนวล
 </Callout>
 
 export const validationFlow = `flowchart TD
@@ -199,19 +199,19 @@ export const quizInputValidation = [
     q: 'business rules อย่าง "rating ต้องอยู่ระหว่าง 1–5" ต้องถูกบังคับใช้ที่ไหน?',
     options: [
       'ในนิยาม type ของ SDL',
-      'ในตรรกะของ resolver — type system แสดงออกถึงมันไม่ได้',
+      'ในตรรกะของ resolver — type system เขียนกฎแบบนี้ไม่ได้',
       'ในชั้น HTTP',
-      'มันไม่สามารถถูกบังคับใช้ใน GraphQL ได้เลย',
+      'บังคับใช้ใน GraphQL ไม่ได้เลย',
     ],
     answer: 1,
   },
   {
     q: 'ข้อได้เปรียบของการ return userErrors ภายใน mutation payload คืออะไร?',
     options: [
-      'มันทำให้ input error ที่กู้คืนได้กลายเป็นข้อมูลพลเมืองชั้นหนึ่งที่มี type แทนที่จะเป็น errors ระดับ top-level',
-      'มันขจัดความจำเป็นในการมี schema',
-      'มันแปลง errors ให้เป็น HTTP 500 response',
-      'มันซ่อน error ทั้งหมดจาก client',
+      'ทำให้ input error ที่กู้คืนได้กลายเป็นข้อมูลที่มี type เต็มตัว แทนที่จะไปกองอยู่ใน errors ระดับ top-level',
+      'ตัดความจำเป็นที่ต้องมี schema ออก',
+      'แปลง errors ให้เป็น HTTP 500 response',
+      'ซ่อน error ทั้งหมดจาก client',
     ],
     answer: 0,
   },

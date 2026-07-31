@@ -1,6 +1,6 @@
 ---
 title: Depth & Complexity
-description: 'การป้องกัน query ที่ซ้อนลึกและใช้ alias ด้วย depth limiting, complexity (cost) analysis, และ execution timeout — รวมถึงการคำนวณ query depth ในเบราว์เซอร์'
+description: 'การป้องกัน query ที่ซ้อนลึกและใช้ alias ด้วย depth limiting, complexity (cost) analysis, และ execution timeout — รวมถึงการคำนวณ query depth ใน browser'
 sidebar:
   order: 4
 ---
@@ -36,13 +36,13 @@ query Abuse {
 }
 ```
 
-คุณแก้สิ่งนี้ด้วย authentication หรือ authorization ไม่ได้ — ผู้โจมตีอาจเป็น user ที่ถูกต้องตามกฎหมายและล็อกอินแล้ว คุณแก้มันด้วยการวัด cost และปฏิเสธสิ่งที่แพงเกินไป *ก่อน execution*
+คุณแก้เรื่องนี้ด้วย authentication หรือ authorization ไม่ได้ เพราะผู้โจมตีอาจเป็น user ที่ถูกต้องตามกฎหมายและล็อกอินแล้ว ทางแก้คือวัด cost แล้วปฏิเสธสิ่งที่แพงเกินไปตั้งแต่ *ก่อน execution*
 
 <Mermaid title="การตรวจ cost รันหลัง parsing และ validation แต่ก่อนที่ resolver จะแตะ data source ใด ๆ" code={costFlow} />
 
 ## สามแนวป้องกัน เริ่มจากที่ถูกที่สุด
 
-1. **Depth limiting** เดินผ่าน query ที่ parse แล้วและปฏิเสธมันหากการซ้อนเกินขีดสูงสุดที่กำหนด (เช่น 7) มันหยาบแต่ถูกและจับการโจมตีแบบซ้อนเรียกซ้ำได้ทันที นี่เป็นตัวควบคุมที่เพิ่มได้ง่ายที่สุดและเป็นตัวที่เราจะคำนวณสด ๆ ด้านล่าง
+1. **Depth limiting** เดินผ่าน query ที่ parse แล้ว และปฏิเสธถ้าการซ้อนเกินขีดสูงสุดที่กำหนด (เช่น 7) วิธีนี้หยาบแต่ถูก และจับการโจมตีแบบซ้อนเรียกซ้ำได้ทันที เป็นตัวควบคุมที่เพิ่มง่ายที่สุด และเป็นตัวที่เราจะคำนวณสด ๆ ด้านล่าง
 2. **Complexity (cost) analysis** กำหนด cost ให้แต่ละ field — ตัวเลขคงที่ หรือสูตรที่อิงกับ argument อย่าง `first: 100` สำหรับ list ที่ทำ pagination — รวม cost ทั้ง query, คูณผ่านการซ้อน, และปฏิเสธอะไรก็ตามที่เกินงบประมาณ วิธีนี้จัดการได้ทั้ง query ที่กว้าง *และ* ลึก และคำนึงถึง alias เพราะแต่ละ alias เป็น selection แยกต่างหากที่บวกเข้ากับยอดรวม
 3. **Timeout** เป็นกองหลังสำหรับอะไรก็ตามที่หลุดผ่าน static analysis: จำกัด wall-clock execution (และ call ต่อ data source) เพื่อให้ query ที่กลายเป็นว่าแพงตอน runtime ถูกยกเลิกแทนที่จะปล่อยให้รันไปตลอด
 
@@ -66,7 +66,7 @@ const complexityRule = createComplexityRule({
 
 ## คำนวณ depth จาก query ที่ parse แล้ว แบบสด ๆ
 
-Depth limiting เป็นสิ่งที่คุณ implement ได้ในไม่กี่บรรทัด และหัวใจของมันคือฟังก์ชัน `parse` ของ GraphQL — ตัวเดียวกับที่ server ใช้ มันเปลี่ยน query string ให้เป็น **AST** (abstract syntax tree) เดินผ่าน `selectionSet` ทั้งหลาย แล้วสายโซ่ของ selection ซ้อนที่ลึกที่สุดก็คือ depth ของ query demo ด้านล่าง parse สาม query แล้ววัดแต่ละตัว จากนั้นใช้ limit เท่ากับ 5 กด **Run**
+Depth limiting implement ได้ในไม่กี่บรรทัด หัวใจคือ function `parse` ของ GraphQL ตัวเดียวกับที่ server ใช้ ซึ่งเปลี่ยน query string ให้เป็น **AST** (abstract syntax tree) เดินผ่าน `selectionSet` ทั้งหมด แล้วสายโซ่ของ selection ซ้อนที่ลึกที่สุดก็คือ depth ของ query เดโมด้านล่าง parse สาม query แล้ววัดทีละตัว จากนั้นใช้ limit เท่ากับ 5 กด **Run**
 
 export const depthCode = `(async () => {
   const { parse } = await import('https://esm.sh/graphql@16');
@@ -116,16 +116,16 @@ export const depthCode = `(async () => {
 
 <NodeRunner client:visible code={depthCode} />
 
-output จัดอันดับสาม query ตาม depth และใช้ limit query ที่ตื้นและปานกลางผ่าน; ตัวที่ใช้ในทางที่ผิด — ลึกห้าชั้นของ `friends` — เกิน limit ที่ 5 และถูกปฏิเสธ สังเกตว่า *ไม่มี resolver ตัวใดรัน*: เราทำงานบน AST ที่ parse แล้วล้วน ๆ เหมือนที่ validation rule ทำพอดี ดังนั้น query ที่เป็นอันตรายจึงถูกโยนทิ้งก่อนที่มันจะกินค่าใช้จ่ายใด ๆ ไลบรารี depth-limit จริง ๆ ทำการเดินแบบเดียวกัน; complexity analysis ขยายมันต่อด้วยการให้น้ำหนักแต่ละ field แทนที่จะแค่นับชั้นการซ้อน
+output จัดอันดับสาม query ตาม depth แล้วใช้ limit query ที่ตื้นและปานกลางผ่าน ส่วนตัวที่ใช้ในทางที่ผิด — ซ้อน `friends` ลึกห้าชั้น — เกิน limit ที่ 5 จึงถูกปฏิเสธ สังเกตว่า *ไม่มี resolver ตัวไหนรันเลย* เพราะเราทำงานบน AST ที่ parse แล้วล้วน ๆ เหมือนที่ validation rule ทำ query ที่เป็นอันตรายจึงถูกโยนทิ้งก่อนกินค่าใช้จ่ายใด ๆ ไลบรารี depth-limit ตัวจริงก็เดินแบบเดียวกัน ส่วน complexity analysis ต่อยอดด้วยการให้น้ำหนักแต่ละ field แทนที่จะนับแค่ชั้นการซ้อน
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | ป้องกัน malicious query ที่ nested ลึกมาก | threshold ที่ผิดอาจ reject legitimate query |
 | complexity limit ป้องกัน expensive query ที่ fetch ข้อมูลมหาศาล | ต้องคำนวณ complexity weight ให้แม่นยำ |
 | เพิ่มก่อน production — ปัญหา performance ชัดหลัง launch | complexity score ที่ซับซ้อนเกินยากต่อการ maintain |
 | log rejected query เพื่อ tune limit | ต้อง communicate limit ให้ client รู้ล่วงหน้า |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **ไม่มี Depth หรือ Complexity Limit เลย**
 อาการ:
@@ -139,7 +139,7 @@ output จัดอันดับสาม query ตาม depth และใ�
 - ต้อง test real-world query ก่อนตั้ง limit
 - เริ่มจาก log + monitor ก่อน enforce hard limit
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
 > - GraphQL API มี rate limit ตาม complexity point
@@ -150,7 +150,7 @@ output จัดอันดับสาม query ตาม depth และใ�
 > - list field มี cost สูงกว่า scalar — `products(first: 100)` แพงกว่า `product { title }`
 
 <Callout title="วัด cost แล้วปฏิเสธก่อนที่คุณจะ execute">
-query หนึ่งอาจผ่าน authentication และ authorization และยังเป็นอาวุธ denial-of-service ได้ เพราะ client ควบคุมรูปทรงของงาน จงป้องกันเป็นชั้น ๆ: **depth limiting** หยุดการซ้อนที่ควบคุมไม่ได้, **complexity analysis** จัดงบประมาณ cost รวม (นับ argument และ alias), และ **timeout** จับอะไรก็ตามที่กลายเป็นว่าแพงตอน runtime สองตัวแรกเป็น static — มันอ่าน query ที่ parse แล้วและปฏิเสธระหว่าง validation ดังนั้น resolver จึงไม่เคยรัน จงตั้ง maximum depth และ complexity budget บนทุก public GraphQL endpoint เสมอ; endpoint ที่ไม่มีสิ่งเหล่านี้ก็อยู่ห่างจาก outage เพียง query ฉลาด ๆ หนึ่งตัวเท่านั้น
+query หนึ่งผ่าน authentication และ authorization ได้ แต่ยังเป็นอาวุธ denial-of-service ได้อยู่ดี เพราะ client เป็นคนคุมรูปทรงของงาน ให้ป้องกันเป็นชั้น ๆ — **depth limiting** หยุดการซ้อนที่ควบคุมไม่ได้ **complexity analysis** จัดงบ cost รวม (นับ argument และ alias ด้วย) และ **timeout** จับอะไรก็ตามที่กลายเป็นของแพงตอน runtime สองตัวแรกเป็นแบบ static คืออ่าน query ที่ parse แล้วและปฏิเสธตั้งแต่ตอน validation resolver จึงไม่เคยรัน ตั้ง maximum depth และ complexity budget บนทุก public GraphQL endpoint เสมอ เพราะ endpoint ที่ไม่มีสองอย่างนี้ อยู่ห่างจาก outage แค่ query ฉลาด ๆ ตัวเดียว
 </Callout>
 
 export const costFlow = `flowchart LR
@@ -197,10 +197,10 @@ export const quizDepth = [
   {
     q: 'ทำไม complexity (cost) analysis จึงทรงพลังกว่า depth limiting เพียงอย่างเดียว?',
     options: [
-      'มัน encrypt query',
-      'มันให้น้ำหนักแต่ละ field และคำนึงถึง argument อย่าง page size และ alias ที่ซ้ำ ทำให้จับ query ที่กว้างได้ด้วย',
-      'มันลบความจำเป็นในการ authentication',
-      'มัน cache ทุก response โดยอัตโนมัติ',
+      'encrypt query',
+      'ให้น้ำหนักแต่ละ field และคิดรวม argument อย่าง page size กับ alias ที่ซ้ำ จึงจับ query ที่กว้างได้ด้วย',
+      'ตัดความจำเป็นในการทำ authentication ออก',
+      'cache ทุก response โดยอัตโนมัติ',
     ],
     answer: 1,
   },

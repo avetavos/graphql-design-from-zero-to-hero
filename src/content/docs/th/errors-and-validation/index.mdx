@@ -11,35 +11,35 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-API ส่วนใหญ่มองความล้มเหลวเป็นช่องทางแยกต่างหาก ไม่ว่าจะเป็น `404`, `500` หรือ body ที่คุณต้องแกะข้อมูลคนละแบบเมื่อมีอะไรผิดพลาด แต่ GraphQL เลือกจุดยืนที่ต่างออกไป response เดียวสามารถอธิบายได้**ทั้ง**สิ่งที่สำเร็จและสิ่งที่ล้มเหลว ในรูปร่างเดียว และในเวลาเดียวกัน รูปร่างนี้แหละคือหัวใจของโมดูลนี้
+API ส่วนใหญ่มองความล้มเหลวเป็นช่องทางแยก ไม่ว่าจะเป็น `404`, `500` หรือ body ที่ต้องแกะคนละแบบตอนมีอะไรพัง แต่ GraphQL เลือกทางที่ต่างออกไป — response เดียวอธิบายได้**ทั้ง**สิ่งที่สำเร็จและสิ่งที่ล้มเหลว ในรูปร่างเดียว พร้อมกัน รูปร่างนี้แหละคือหัวใจของโมดูลนี้
 
-GraphQL response คือ JSON object ที่มี top-level key ได้มากสุดสามตัว ได้แก่ `data`, `errors`, และ `extensions` ตัวแรกเก็บทุกอย่างที่ server resolve ได้สำเร็จ ตัวที่สองคือรายการของทุกสิ่งที่ผิดพลาด ทั้งสองตัวไม่ได้ตัดกันออก เพราะ response หนึ่งสามารถพก `data` tree ที่เต็มเปี่ยม *พร้อมกับ* `errors` array ที่ไม่ว่างเปล่าได้ในคราวเดียว
+GraphQL response คือ JSON object ที่มี top-level key ได้มากสุดสามตัว ได้แก่ `data`, `errors` และ `extensions` ตัวแรกเก็บทุกอย่างที่ server resolve สำเร็จ ตัวที่สองคือรายการของทุกอย่างที่พัง สอง key นี้ไม่ได้เลือกได้อย่างใดอย่างหนึ่ง response หนึ่งพก `data` tree ที่มีข้อมูลเต็ม *พร้อมกับ* `errors` array ที่ไม่ว่างมาด้วยกันได้
 
 ## Errors เป็นส่วนหนึ่งของ contract
 
-ตลอดคอร์สนี้เราเรียก schema ว่าเป็น contract และ errors ก็ถูกเขียนเอาไว้ใน contract นั้นด้วย specification กำหนดรูปร่างของ error object ตายตัว กำหนดกฎว่า `null` จะปรากฏที่ไหนได้บ้างเมื่อ field หนึ่งล้มเหลว และรับประกันว่าความสำเร็จในระดับ transport (HTTP `200`) ยังสามารถห่อหุ้ม operation ที่ล้มเหลวเอาไว้ได้ client ถูกคาดหวังให้อ่าน `errors` ไม่ใช่แค่ `data`
+ตลอดคอร์สนี้เราเรียก schema ว่า contract และ errors ก็เขียนอยู่ใน contract นั้นด้วย ตัว spec กำหนดรูปร่างของ error object ไว้ตายตัว กำหนดกฎว่า `null` โผล่ที่ไหนได้บ้างเมื่อ field หนึ่งล้มเหลว และรับประกันว่าความสำเร็จระดับ transport (HTTP `200`) ยังห่อ operation ที่ล้มเหลวไว้ข้างในได้ ฝั่ง client จึงต้องอ่าน `errors` ไม่ใช่แค่ `data`
 
-เมื่อคุณซึมซับแนวคิดนี้ได้ มันจะปลดปล่อยคุณ คุณจะเลิกถามว่า "request สำเร็จหรือไม่" แบบใช่หรือไม่ใช่ และเริ่มคิดว่า "ส่วนไหนสำเร็จ ส่วนไหนล้มเหลว และความล้มเหลวแต่ละอันบอกให้ client ทำอะไร" GraphQL API ที่ดีตอบทั้งสามคำถามนี้ได้ในการเดินทางไปกลับเพียงครั้งเดียว
+พอซึมซับแนวคิดนี้ได้ มุมมองจะเปลี่ยนไปเลย คุณจะเลิกถามแบบใช่/ไม่ใช่ว่า "request สำเร็จไหม" แล้วหันมาถามว่า "ส่วนไหนสำเร็จ ส่วนไหนพัง และความพังแต่ละอันบอกให้ client ทำอะไรต่อ" GraphQL API ที่ดีตอบทั้งสามคำถามนี้ได้ใน round trip เดียว
 
 ## รูปร่างของทุก response
 
 <Mermaid title="GraphQL response แยกออกเป็น data, errors และ extensions ที่เป็นทางเลือก" code={responseShape} />
 
-ไดอะแกรมแสดงสามกิ่ง `data` สะท้อนรูปร่างของ query `errors` เป็นรายการแบนๆ โดยแต่ละ entry ชี้กลับเข้าไปใน `data` ผ่าน `path` ส่วน `extensions` เป็นถุงอิสระที่ server อาจใช้แนบรายละเอียดที่เครื่องอ่านได้ ซึ่งเราจะใช้เวลาทั้งบทเรียนหนึ่งกับมัน
+ไดอะแกรมแตกออกเป็นสามกิ่ง กิ่ง `data` สะท้อนรูปร่างของ query กิ่ง `errors` เป็นรายการแบน ๆ แต่ละ entry ชี้กลับเข้าไปใน `data` ผ่าน `path` ส่วน `extensions` เป็นถุงเปล่าที่ server แนบรายละเอียดแบบเครื่องอ่านได้เข้าไป และเรามีบทเรียนหนึ่งเต็ม ๆ ให้เรื่องนี้
 
-## What This Module Covers
+## โมดูลนี้ครอบคลุมอะไรบ้าง
 
 โมดูลนี้ว่าด้วยด้านความล้มเหลวของ contract ทั้งห้าบทเรียนได้แก่
 
-1. **Errors & Validation** (คุณอยู่ที่นี่) — รูปร่าง response แบบ `data`/`errors` และทำไม errors ถึงเป็นพลเมืองชั้นหนึ่ง
+1. **Errors & Validation** (คุณอยู่ที่นี่) — รูปร่าง response แบบ `data`/`errors` และทำไม errors ถึงเป็น first-class
 2. **GraphQL Errors** — เจาะลึก `errors` array ทั้ง `message`, `locations`, `path` และความต่างระหว่าง request errors กับ field errors
-3. **Partial Results** — nullability ควบคุมการแพร่กระจายของ error อย่างไร ปล่อยให้ field พี่น้องยัง resolve ได้ขณะที่ field หนึ่งล้มเหลว
-4. **Error Extensions** — typed errors ด้วย `extensions` การ throw `GraphQLError` และการปกปิดเรื่องภายในใน production
-5. **Input Validation** — สิ่งที่ schema validate ให้ฟรีๆ เทียบกับ business rules ที่คุณต้องบังคับใช้เองใน resolvers
+3. **Partial Results** — nullability คุมการแพร่ของ error อย่างไร และทำไม field พี่น้องยัง resolve ต่อได้แม้ field หนึ่งพัง
+4. **Error Extensions** — typed errors ด้วย `extensions` การ throw `GraphQLError` และการซ่อนรายละเอียดภายในบน production
+5. **Input Validation** — สิ่งที่ schema validate ให้ฟรี เทียบกับ business rule ที่คุณต้องบังคับเองใน resolver
 
 ## response ที่พก error มาด้วย
 
-ทฤษฎีพอแล้ว runner ด้านล่างนิยาม schema ที่มี field เดียวซึ่ง resolver ของมัน throw กด **Run** แล้วอ่านผลลัพธ์ สังเกตว่า `data` มีอยู่ (เป็น `null` สำหรับ field ที่ล้มเหลว) และ `errors` อธิบายสิ่งที่เกิดขึ้น
+ทฤษฎีพอแล้ว ตัว runner ด้านล่างนิยาม schema ที่มี field เดียว และ resolver ของ field นั้น throw กด **Run** แล้วอ่านผลลัพธ์ สังเกตว่า `data` ยังอยู่ (เป็น `null` ตรง field ที่พัง) และ `errors` อธิบายว่าเกิดอะไรขึ้น
 
 export const overviewCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -71,10 +71,10 @@ export const overviewCode = `(async () => {
 
 <NodeRunner client:visible code={overviewCode} />
 
-อ่าน output เป็น object เดียว `data.currentTrack` กลับมาเป็น `null` เพราะ resolver ของมัน throw และ field นั้นเป็น nullable ข้างๆ กันนั้น `errors` เก็บ entry เดียวที่อธิบายความล้มเหลว ไม่มี key ไหนหักล้างกันเลย การอยู่ร่วมกันนี้แหละคือสิ่งที่ทำให้การจัดการ error ของ GraphQL ต่างจาก HTTP status code ธรรมดา
+อ่าน output เป็น object เดียว ค่า `data.currentTrack` กลับมาเป็น `null` เพราะ resolver throw และ field นั้น nullable ถัดมา `errors` เก็บ entry เดียวที่อธิบายความล้มเหลว ไม่มี key ไหนหักล้างกันเลย การอยู่ร่วมกันแบบนี้แหละที่ทำให้การจัดการ error ของ GraphQL ต่างจาก HTTP status code ธรรมดา
 
 <Callout title="สอง key หนึ่ง response">
-ฝึกตัวเองให้มองทั้ง `data` และ `errors` เสมอ response ที่มี `data` tree เต็มๆ อาจยังมี errors สำหรับ field ที่ล้มเหลวได้ และ response ที่มี errors ก็อาจยังส่งข้อมูลที่ใช้ได้สำหรับทุกอย่างที่สำเร็จมาให้คุณ ส่วน transport status ซึ่งเกือบจะเป็น `200` เสมอสำหรับการ execute ที่ทำงานไปแล้ว บอกอะไรคุณได้น้อยมากในตัวมันเอง
+ฝึกตัวเองให้อ่านทั้ง `data` และ `errors` เสมอ response ที่มี `data` tree เต็มอาจยังมี errors ของ field ที่พังติดมาด้วย และ response ที่มี errors ก็ยังส่งข้อมูลที่ใช้ได้ของทุก field ที่สำเร็จกลับมา ส่วน transport status เกือบจะเป็น `200` เสมอเมื่อ execute เริ่มไปแล้ว จึงบอกอะไรได้น้อยมากเมื่อดูลำพัง
 </Callout>
 
 export const responseShape = `flowchart TD
@@ -91,17 +91,17 @@ export const quizErrorsIndex = [
   {
     q: 'top-level key ใดบ้างที่ GraphQL response เดียวสามารถมีได้?',
     options: [
-      'มีได้แค่ data หรือแค่ errors เท่านั้น ไม่มีทางมีทั้งคู่',
-      'data, errors และ key extensions ที่เป็นทางเลือก',
+      'มีได้แค่ data หรือแค่ errors อย่างใดอย่างหนึ่ง ไม่มีทางมีทั้งคู่',
+      'data, errors และ extensions ที่จะมีหรือไม่มีก็ได้',
       'status และ body',
       'result และ code',
     ],
     answer: 1,
   },
   {
-    q: 'response หนึ่งสามารถพก data tree ที่มีข้อมูลพร้อมกับ errors array ที่ไม่ว่างเปล่าได้หรือไม่?',
+    q: 'response หนึ่งพก data tree ที่มีข้อมูล พร้อมกับ errors array ที่ไม่ว่าง มาด้วยกันได้ไหม?',
     options: [
-      'ไม่ได้ ทั้งสองตัวตัดกันออก',
+      'ไม่ได้ มีได้อย่างใดอย่างหนึ่งเท่านั้น',
       'ได้ — ความสำเร็จบางส่วนคือผลลัพธ์ปกติของ GraphQL',
       'เฉพาะกับ subscriptions เท่านั้น',
       'เฉพาะเมื่อ HTTP status เป็น 500 เท่านั้น',
@@ -109,12 +109,12 @@ export const quizErrorsIndex = [
     answer: 1,
   },
   {
-    q: 'ใน contract นั้น errors อธิบายได้ดีที่สุดว่าเป็น:',
+    q: 'ใน contract นั้น errors อธิบายได้ดีที่สุดว่าเป็นอะไร?',
     options: [
-      'รายละเอียดการ implement ที่ client ควรเพิกเฉย',
-      'ส่วนชั้นหนึ่งของรูปร่าง response ที่ถูกกำหนดไว้ใน spec',
-      'สิ่งที่ถูกส่งมาเป็น HTTP request แยกต่างหากเสมอ',
-      'มีอยู่เฉพาะเมื่อ data เป็น null ทั้งหมดเท่านั้น',
+      'รายละเอียดการ implement ที่ client ควรมองข้าม',
+      'ส่วน first-class ของรูปร่าง response ที่ spec กำหนดไว้',
+      'สิ่งที่ส่งมาใน HTTP request แยกต่างหากเสมอ',
+      'มีเฉพาะตอนที่ data เป็น null ทั้งก้อนเท่านั้น',
     ],
     answer: 1,
   },

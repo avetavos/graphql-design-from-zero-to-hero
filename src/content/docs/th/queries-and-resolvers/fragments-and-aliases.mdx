@@ -11,11 +11,11 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-บทเรียนสุดท้ายของโมดูลนี้พูดถึงเครื่องมือสามอย่างที่ทำให้ query สะอาดขึ้นมากกว่าจะทรงพลังขึ้น **Fragment** ให้คุณตั้งชื่อและนำ selection set กลับมาใช้ซ้ำ **Inline fragment** ให้ selection แตกแขนงตาม type **Alias** ให้คุณเปลี่ยนชื่อ field ใน response ไม่มีตัวไหนเปลี่ยนสิ่งที่ server ทำได้ มันเปลี่ยนแค่ว่า query ของคุณอ่านง่ายและยืดหยุ่นแค่ไหน
+บทเรียนสุดท้ายของโมดูลนี้ว่าด้วยเครื่องมือสามอย่างที่ทำให้ query สะอาดขึ้น ไม่ใช่ทรงพลังขึ้น **Fragment** ให้ตั้งชื่อ selection set แล้วนำกลับมาใช้ซ้ำ **Inline fragment** ให้ selection แตกแขนงตาม type ส่วน **Alias** ให้เปลี่ยนชื่อ field ใน response ทั้งสามอย่างไม่เปลี่ยนสิ่งที่ server ทำเลย เปลี่ยนแค่ว่า query ของคุณอ่านง่ายและยืดหยุ่นแค่ไหน
 
 ## Fragment
 
-เมื่อชุด field ชุดเดียวกันโผล่ในมากกว่าหนึ่งที่ การคัดลอกมันไปทุกที่คือกับดักการ maintain **fragment** คือ selection set ที่มีชื่อ ซึ่งคุณนิยามครั้งเดียวแล้ว spread มันไปที่ไหนก็ได้ที่ต้องการ คุณประกาศมันด้วย keyword `fragment` ระบุ type ที่มันใช้ได้ด้วย `on`
+พอ field ชุดเดียวกันโผล่หลายที่ การก็อปไปวางทุกจุดคือกับดักตอน maintain ตัว **fragment** คือ selection set ที่มีชื่อ นิยามครั้งเดียวแล้ว spread ไปใช้ตรงไหนก็ได้ ประกาศด้วย keyword `fragment` และระบุ type ที่ใช้ได้ด้วย `on`
 
 ```graphql
 fragment TrackFields on Track {
@@ -25,7 +25,7 @@ fragment TrackFields on Track {
 }
 ```
 
-จากนั้นคุณ **spread** มันเข้าไปใน selection set ด้วย operator `...` ราวกับว่า field ของมันถูกเขียนไว้ตรงนั้นโดยตรง
+จากนั้น **spread** เข้าไปใน selection set ด้วย operator `...` ผลลัพธ์เหมือนเขียน field ชุดนั้นไว้ตรงนั้นเลย
 
 ```graphql
 {
@@ -38,11 +38,11 @@ fragment TrackFields on Track {
 }
 ```
 
-selection ทั้งสองดึง `id`, `title` และ `durationSeconds` เข้ามาโดยไม่ต้องเขียนซ้ำ เปลี่ยน fragment ที่เดียวแล้วทุกจุดที่ spread จะอัปเดตตามไปด้วย เป็นผลตอบแทนเดียวกับการแยกcodeที่ซ้ำกันออกมาเป็น function
+selection ทั้งสองชุดดึง `id`, `title` และ `durationSeconds` เข้ามาโดยไม่ต้องเขียนซ้ำ แก้ fragment ที่เดียว ทุกจุดที่ spread ก็อัปเดตตามหมด ได้ผลตอบแทนแบบเดียวกับการแยก code ที่ซ้ำกันออกมาเป็น function
 
 ## Inline fragment
 
-บางครั้ง field คืน type ที่อาจเป็นหนึ่งใน object type หลายตัว ซึ่งก็คือ interface หรือ union เพื่อเลือก field ที่มีอยู่เฉพาะบนหนึ่งในความเป็นไปได้เหล่านั้น คุณใช้ **inline fragment** คือ operator `...` ตามด้วย `on SomeType` และ selection set โดยไม่มีชื่อคั่นตรงกลาง
+บางที field ก็คืน type ที่เป็นได้หลาย object type คือ interface หรือ union นั่นเอง เวลาจะเลือก field ที่มีอยู่เฉพาะบน type ใด type หนึ่ง ให้ใช้ **inline fragment** เขียนเป็น operator `...` ตามด้วย `on SomeType` แล้วต่อด้วย selection set โดยไม่ต้องตั้งชื่อ
 
 ```graphql
 {
@@ -57,13 +57,13 @@ selection ทั้งสองดึง `id`, `title` และ `durationSecond
 }
 ```
 
-ในที่นี้ `searchResult` อาจ resolve เป็น `Track` หรือ `Artist` inline fragment บอกว่า "ถ้าเป็น `Track` ขอ `title` ให้หน่อย ถ้าเป็น `Artist` ขอ `name` ให้หน่อย" มีแค่แขนงที่ตรงกันเท่านั้นที่ร่วมอยู่ใน response inline fragment คือวิธีที่คุณจัดการการแตกแขนงตาม type ภายใน selection เดียว
+กรณีนี้ `searchResult` จะ resolve เป็น `Track` หรือ `Artist` ก็ได้ ตัว inline fragment จึงบอกว่า "ถ้าเป็น `Track` ขอ `title` ถ้าเป็น `Artist` ขอ `name`" แล้วมีเฉพาะแขนงที่ตรง type เท่านั้นที่โผล่ใน response นี่คือวิธีแตกแขนงตาม type ภายใน selection เดียว
 
 <Mermaid title="fragment ถูกนิยามครั้งเดียวและถูก spread เข้าไปในหลาย selection" code={fragmentDiagram} />
 
 ## Alias
 
-โดยปกติ field จะปรากฏใน response ภายใต้ชื่อของมันเอง **alias** ให้คุณเลือก key อื่นได้ เขียนในรูป `aliasName: fieldName` ก่อนหน้า field สิ่งนี้จำเป็นเมื่อคุณเลือก field เดียวกันสองครั้งด้วย argument ต่างกัน หากไม่มี alias ผลลัพธ์ทั้งสองจะชนกันที่ key เดียวกัน
+ปกติ field จะโผล่ใน response ด้วยชื่อของตัวเอง ส่วน **alias** ให้คุณเลือก key อื่นได้ เขียนเป็น `aliasName: fieldName` นำหน้า field ตัวนี้จำเป็นตอนที่เลือก field เดียวกันสองครั้งด้วย argument คนละชุด เพราะถ้าไม่มี alias ผลลัพธ์สองอันจะชนกันที่ key เดียวกัน
 
 ```graphql
 {
@@ -76,11 +76,11 @@ selection ทั้งสองดึง `id`, `title` และ `durationSecond
 }
 ```
 
-response จะมี key ที่แตกต่างกันสองตัวคือ `first` และ `second` แต่ละตัวเก็บ track ของตัวเอง alias เป็นเรื่องของ *รูปร่างของ response* ล้วน ๆ มันไม่เคยแตะต้อง schema หรือ resolver เลย และมันยังสะดวกสำหรับการปรับชื่อ field ให้เข้ากับสิ่งที่ client code ของคุณคาดหวัง
+response จะมีสอง key แยกกันคือ `first` และ `second` แต่ละตัวเก็บ track ของตัวเอง alias เป็นเรื่องของ *รูปร่าง response* ล้วน ๆ ไม่แตะ schema หรือ resolver เลยสักนิด และยังสะดวกเวลาต้องดัดชื่อ field ให้ตรงกับที่ client code รออยู่
 
 ## Fragment และ alias ทำงานร่วมกัน
 
-ตัวอย่างด้านล่างนิยาม fragment `TrackFields` spread มันเข้าไปในสอง selection ของ field `track` ตัวเดียวกัน และใช้ alias คือ `hit` และ `deepCut` เพื่อให้ผลลัพธ์ทั้งสองอยู่ภายใต้ key ที่แตกต่างกัน กด **Run** แล้วอ่าน key ของ response
+ตัวอย่างด้านล่างนิยาม fragment ชื่อ `TrackFields` แล้ว spread เข้าไปใน selection ของ field `track` สองชุด พร้อมใช้ alias `hit` กับ `deepCut` ให้ผลลัพธ์แยกคนละ key กด **Run** แล้วดู key ของ response
 
 export const fragmentCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -129,16 +129,16 @@ export const fragmentCode = `(async () => {
 
 <NodeRunner client:visible code={fragmentCode} />
 
-response มี key ระดับบนสุดสองตัวคือ `hit` และ `deepCut` แทนที่จะเป็น `track` ตัวเดียวที่ชนกัน นั่นคือ alias ทำงาน แต่ละตัวเก็บชุด field ครบถ้วนจาก `TrackFields` เขียนครั้งเดียวและใช้ซ้ำสองครั้ง นั่นคือ fragment ทำงาน ทั้งสองร่วมกันทำให้ query สั้นและ response มีรูปร่างที่ดี
+response มี key ระดับบนสุดสองตัวคือ `hit` และ `deepCut` แทนที่จะเป็น `track` ตัวเดียวที่ชนกัน นั่นคือผลงานของ alias และแต่ละตัวก็เก็บ field ครบชุดจาก `TrackFields` ที่เขียนครั้งเดียวแล้วใช้ซ้ำสองรอบ นั่นคือผลงานของ fragment สองอย่างรวมกันทำให้ query สั้นลงและ response มีรูปร่างที่ใช้งานง่าย
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | Fragment ลด duplication ของ field selection ข้าม query | fragment มากเกินทำให้ query อ่านยาก |
 | Alias ทำให้ query field เดียวกันสองครั้งด้วยชื่อต่างกัน | Fragment ที่ไม่ใช้สร้าง dead code ใน client |
 | Fragment ช่วยให้ component-driven query (Relay) | Alias ที่ไม่สื่อความหมายทำให้ response งงยิ่งขึ้น |
 | Inline fragment ช่วย handle Union และ Interface type | Fragment spread ลึกมากทำให้ query ขนาดใหญ่ |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Copy-paste Field แทนใช้ Fragment**
 อาการ:
@@ -152,7 +152,7 @@ response มี key ระดับบนสุดสองตัวคือ `h
 - response มี `data1` และ `data2` ที่ client ต้องรู้ว่าหมายถึงอะไร
 - ใช้ alias ที่สื่อ intent: `primaryUser: user(id: $id1)`, `secondaryUser: user(id: $id2)`
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Relay (Meta/Facebook):**
 > - บังคับ pattern "colocation" — component ประกาศ fragment ของตัวเองที่ต้องการ
@@ -162,7 +162,7 @@ response มี key ระดับบนสุดสองตัวคือ `h
 > - `useFragment` hook ทำให้ component subscribe เฉพาะ field ที่ตัวเองประกาศใน fragment
 
 <Callout title="สามเครื่องมือเพื่อ query ที่สะอาดขึ้น">
-**Fragment** แยก selection set ที่ซ้ำกันออกเป็นหน่วยมีชื่อหนึ่งหน่วยที่คุณ spread ด้วย `...` **Inline fragment** (`... on Type`) เลือก field ที่มีอยู่เฉพาะบน type หนึ่ง ๆ ที่อยู่เบื้องหลัง interface หรือ union **Alias** (`key: field`) เปลี่ยนชื่อ field ใน response ซึ่งเป็นสิ่งที่ทำให้คุณร้องขอ field เดียวกันสองครั้งด้วย argument ต่างกันได้ ทั้งสามอย่างปั้นรูปร่างของ query และ response ของมัน ไม่มีตัวไหนเปลี่ยน server
+**Fragment** ดึง selection set ที่ซ้ำกันออกมาเป็นหน่วยมีชื่อหนึ่งหน่วยที่ spread ด้วย `...` ได้ **Inline fragment** (`... on Type`) เลือก field ที่มีเฉพาะบน type หนึ่ง ๆ ที่ซ่อนอยู่หลัง interface หรือ union ส่วน **Alias** (`key: field`) เปลี่ยนชื่อ field ใน response และเป็นตัวที่ทำให้ขอ field เดียวกันสองครั้งด้วย argument คนละชุดได้ ทั้งสามอย่างปั้นแค่รูปร่างของ query กับ response ไม่มีตัวไหนเปลี่ยนพฤติกรรมของ server
 </Callout>
 
 export const fragmentDiagram = `flowchart TD
@@ -174,32 +174,32 @@ export const fragmentDiagram = `flowchart TD
 
 export const quizFragmentsAndAliases = [
   {
-    q: 'What problem does a fragment solve?',
+    q: 'fragment แก้ปัญหาอะไร?',
     options: [
-      'มันทำให้ server ข้าม resolver ได้',
-      'มันตั้งชื่อ selection set เพื่อให้ field ชุดเดียวกันนำกลับมาใช้ซ้ำได้ด้วยการ spread ... แทนที่จะเขียนซ้ำ',
-      'มันส่ง variable เข้า query',
-      'มันเปลี่ยนชื่อ field ใน response',
+      'ทำให้ server ข้าม resolver ได้',
+      'ตั้งชื่อให้ selection set เพื่อให้ field ชุดเดิมนำกลับมาใช้ซ้ำด้วยการ spread ... แทนการเขียนซ้ำ',
+      'ส่ง variable เข้า query',
+      'เปลี่ยนชื่อ field ใน response',
     ],
     answer: 1,
   },
   {
-    q: 'When is an inline fragment like "... on Track" needed?',
+    q: 'inline fragment อย่าง "... on Track" จำเป็นตอนไหน?',
     options: [
-      'เพื่อเปลี่ยนชื่อ field ใน response',
-      'เพื่อเลือก field ที่มีอยู่เฉพาะบน type หนึ่ง ๆ ที่อยู่เบื้องหลัง interface หรือ union',
-      'เพื่อประกาศ query variable',
-      'เพื่อ cache query string',
+      'ตอนต้องการเปลี่ยนชื่อ field ใน response',
+      'ตอนต้องการเลือก field ที่มีเฉพาะบน type หนึ่ง ๆ ที่อยู่หลัง interface หรือ union',
+      'ตอนต้องการประกาศ query variable',
+      'ตอนต้องการ cache query string',
     ],
     answer: 1,
   },
   {
-    q: 'Why are aliases required when selecting the same field twice with different arguments?',
+    q: 'ทำไมต้องใช้ alias เมื่อเลือก field เดียวกันสองครั้งด้วย argument คนละชุด?',
     options: [
       'alias ทำให้ query รันเร็วขึ้น',
-      'หากไม่มี alias key ที่แตกต่างกัน ผลลัพธ์ทั้งสองจะชนกันภายใต้ response key เดียวกัน',
-      'GraphQL ห้ามเรียก field ใด ๆ มากกว่าหนึ่งครั้ง',
-      'alias เปลี่ยนว่า resolver ตัวไหนจะรัน',
+      'ถ้าไม่มี alias ที่ต่างกัน ผลลัพธ์ทั้งสองจะชนกันใต้ response key เดียวกัน',
+      'GraphQL ห้ามเรียก field ใดซ้ำเกินหนึ่งครั้ง',
+      'alias เปลี่ยนว่า resolver ตัวไหนจะได้รัน',
     ],
     answer: 1,
   },

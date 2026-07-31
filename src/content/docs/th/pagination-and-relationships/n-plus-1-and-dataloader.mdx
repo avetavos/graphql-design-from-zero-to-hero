@@ -15,12 +15,12 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 ## ปัญหา N+1
 
-GraphQL resolve field อย่างเป็นอิสระต่อกัน เมื่อ query ขอ list ของ post และสำหรับแต่ละ post ขอ author ของมัน engine จะรัน resolver `author` **หนึ่งครั้งต่อหนึ่ง post** ดึง post มาหนึ่งหน้า 50 อัน server จะทำ:
+GraphQL resolve field แยกอิสระจากกัน เมื่อ query ขอ list ของ post แล้วขอ author ของแต่ละ post ด้วย engine จะรัน resolver `author` **หนึ่งครั้งต่อหนึ่ง post** ดึง post มาหนึ่งหน้า 50 อัน server จะทำ:
 
 - **1** query เพื่อโหลด 50 post จากนั้น
 - **N = 50** query แยกต่างหากเพื่อโหลด author ของแต่ละ post
 
-นั่นคือ 51 รอบของการวิ่งไปกลับ — *N + 1* — ในขณะที่ query ที่ออกแบบดี ๆ หนึ่งอันสามารถทำได้ใน 2 รอบ ต้นทุนนี้มองไม่เห็นตอน development ที่มีข้อมูล seed สามแถว แต่หายนะตอน production ที่มี traffic จริง มันไม่ใช่บั๊กใน resolver ของคุณ แต่เป็นผลที่ตามมาอย่างธรรมชาติของการ resolve แต่ละ field โดยอิสระ
+นั่นคือ 51 round trip — *N + 1* — ทั้งที่ query ที่ออกแบบดี ๆ ทำได้ใน 2 รอบ ต้นทุนนี้มองไม่เห็นตอน development ที่มีข้อมูล seed สามแถว แต่กลายเป็นหายนะตอน production ที่มี traffic จริง นี่ไม่ใช่บั๊กใน resolver ของคุณ แต่เป็นผลตามธรรมชาติของการ resolve แต่ละ field แยกกัน
 
 <Mermaid title="การ resolve author ทีละ post ทีละอันทำให้เกิดหนึ่ง query ต่อหนึ่ง post — การระเบิดแบบ N+1" code={nPlusOneDiagram} />
 
@@ -48,7 +48,7 @@ const author = (post) => authorLoader.load(post.authorId);
 
 ## นับจำนวนการเรียก รันจริง
 
-runner ด้านล่าง resolve query เดียวกันสองวิธีและ **นับว่า loader function ยิงไปกี่ครั้ง** เวอร์ชันที่ไม่ batch เรียก data source หนึ่งครั้งต่อหนึ่ง post ส่วนเวอร์ชันที่ batch รวบรวม key แล้วเรียกมันครั้งเดียว กดปุ่ม **Run** แล้วเปรียบเทียบจำนวนการเรียกทั้งสองในผลลัพธ์
+runner ด้านล่าง resolve query เดียวกันสองวิธีและ **นับว่า loader function ยิงไปกี่ครั้ง** เวอร์ชันที่ไม่ batch เรียก data source หนึ่งครั้งต่อหนึ่ง post ส่วนเวอร์ชันที่ batch รวบรวม key ทั้งหมดแล้วเรียกทีเดียว กด **Run** แล้วเทียบจำนวนการเรียกของทั้งสองแบบในผลลัพธ์
 
 export const loaderCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -144,16 +144,16 @@ export const loaderCode = `(async () => {
 
 <NodeRunner client:visible code={loaderCode} />
 
-ผลลัพธ์ทำให้ความต่างเป็นรูปธรรม: ด้วย post สี่อัน เส้นทางที่ไม่ batch เรียกการค้นหา author **4** ครั้ง ในขณะที่ `batchFn` ของ loader ที่ batch ยิงเพียง **ครั้งเดียว** — key ถูกรวบรวมระหว่างหนึ่ง tick และถูก resolve ไปพร้อมกัน ใน production batch function นั้นจะเป็น query `WHERE id IN (…)` เดียวแทนที่จะเป็นหลายสิบ query (package `dataloader` ตัวจริง ซึ่ง import ได้ด้วยวิธีเดียวกันผ่าน `await import('https://esm.sh/dataloader@2')` ทำสิ่งนี้พอดี พร้อม caching และการจัดการ edge case เพิ่มเติม; loader ด้านบนเป็นเวอร์ชันขั้นต่ำเพื่อแสดงกลไก)
+ผลลัพธ์ทำให้ความต่างชัดเป็นรูปธรรม ด้วย post สี่อัน เส้นทางที่ไม่ batch เรียกค้นหา author **4** ครั้ง ส่วน `batchFn` ของ loader ที่ batch ยิงแค่ **ครั้งเดียว** เพราะ key ถูกรวบรวมภายใน tick เดียวแล้ว resolve ไปพร้อมกัน ใน production ตัว batch function นั้นก็คือ query `WHERE id IN (…)` เดียว แทนที่จะเป็นหลายสิบ query (package `dataloader` ตัวจริงที่ import ได้ด้วยวิธีเดียวกันผ่าน `await import('https://esm.sh/dataloader@2')` ทำแบบนี้เป๊ะ ๆ พร้อม caching และการจัดการ edge case เพิ่มให้ ส่วน loader ด้านบนเป็นเวอร์ชันขั้นต่ำไว้แสดงกลไกเฉย ๆ)
 
-| Benefits (DataLoader) | Trade-offs |
+| ข้อดี (DataLoader) | ข้อแลกเปลี่ยน |
 |---|---|
 | batch N database query เป็น 1 query — ลด round trip | ต้องเพิ่ม DataLoader ทุก relationship — setup เพิ่ม |
 | per-request cache — ไม่ query ซ้ำสำหรับ key เดียวในครั้งเดียวกัน | DataLoader เป็น per-request — ไม่ cache ข้าม request |
 | transparent กับ resolver — resolver ไม่ต้องรู้ว่ามี batching | async nature ต้องระวัง race condition |
 | ลด database connection pressure ใน concurrent request | DataLoader หลายตัวใน schema ใหญ่ต้องจัดการอย่างดี |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Resolver ที่ Query Database ทุก field**
 อาการ:
@@ -167,7 +167,7 @@ export const loaderCode = `(async () => {
 - per-request cache ทำงานผิด — user A เห็นข้อมูลของ user B
 - สร้าง DataLoader ใหม่ทุก request ใน context factory
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Facebook (ผู้สร้าง DataLoader):**
 > - DataLoader เกิดจาก internal need ที่ Facebook ก่อนจะ open source
@@ -178,7 +178,7 @@ export const loaderCode = `(async () => {
 > - ประมวลผล request ที่มี product + variant + inventory ด้วย batch query
 
 <Callout title="หนึ่ง loader ต่อหนึ่ง request batch ด้วย key">
-ปัญหา N+1 เป็นเรื่องเชิงโครงสร้าง: GraphQL resolve แต่ละ field โดยอิสระ list ของ N item จึง trigger resolver ลูก N ตัว DataLoader แก้มันด้วยการเลื่อนการโหลดไปไว้ท้าย tick เรียก batch function ของคุณครั้งเดียวด้วย key ทั้งหมด และ cache รายการซ้ำภายใน request สร้าง loader ใหม่ต่อหนึ่ง request (เพื่อให้ cache ไม่รั่วระหว่างผู้ใช้) เขียน `batchFn` ที่คืนผลลัพธ์ในลำดับเดียวกับ key และเรียก `loader.load(key)` จาก resolver ของคุณ ทำเช่นนี้แล้ว query ที่ซ้อนกันลึก ๆ จะยังเป็น query ที่ batch ไว้ไม่กี่อันแทนที่จะเป็นหลายร้อย
+ปัญหา N+1 เป็นเรื่องเชิงโครงสร้าง เพราะ GraphQL resolve แต่ละ field แยกกัน list ของ N item จึง trigger resolver ลูก N ตัว DataLoader แก้ด้วยการเลื่อนการโหลดไปไว้ท้าย tick เรียก batch function ของคุณครั้งเดียวด้วย key ทั้งหมด แล้ว cache รายการซ้ำภายใน request สร้าง loader ใหม่ต่อหนึ่ง request (จะได้ไม่รั่ว cache ข้ามผู้ใช้) เขียน `batchFn` ที่คืนผลลัพธ์เรียงตามลำดับเดียวกับ key แล้วเรียก `loader.load(key)` จาก resolver ทำแบบนี้แล้ว query ที่ซ้อนลึก ๆ จะเหลือ query ที่ batch ไว้ไม่กี่อัน แทนที่จะเป็นหลายร้อย
 </Callout>
 
 export const nPlusOneDiagram = `flowchart TD

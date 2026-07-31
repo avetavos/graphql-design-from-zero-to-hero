@@ -11,11 +11,11 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-จนถึงตอนนี้ query ของเราแค่ *เลือก* field เท่านั้น แต่การอ่านมักต้องการ input ว่า track *ตัวไหน*, ผลลัพธ์ *กี่รายการ*, คำค้นหา *อะไร* GraphQL พกพา input นั้นในสองชั้น คือ **field argument** ที่ประกาศไว้บน field และ **query variable** ที่ป้อนค่าให้ argument เหล่านั้นจากภายนอก query string บทเรียนนี้เชื่อมสองสิ่งนี้เข้าด้วยกัน
+จนถึงตอนนี้ query ของเราแค่ *เลือก* field เท่านั้น แต่งานอ่านข้อมูลจริงมักต้องการ input ด้วย เช่น track *ตัวไหน*, เอาผลลัพธ์ *กี่รายการ*, ค้นด้วยคำ *อะไร* GraphQL รับ input นั้นเป็นสองชั้น ชั้นแรกคือ **field argument** ที่ประกาศไว้บน field ชั้นที่สองคือ **query variable** ที่ป้อนค่าให้ argument จากนอก query string บทเรียนนี้จะเชื่อมสองชั้นนี้เข้าด้วยกัน
 
 ## field argument
 
-field สามารถประกาศ **argument** ในนิยาม schema ของมัน เขียนในวงเล็บหลังชื่อ field แต่ละ argument มีชื่อและ type และอาจเป็น non-null ได้
+field ประกาศ **argument** ไว้ใน schema ได้ โดยเขียนในวงเล็บต่อท้ายชื่อ field แต่ละ argument มีชื่อและ type และจะเป็น non-null ก็ได้
 
 ```graphql
 type Query {
@@ -24,7 +24,7 @@ type Query {
 }
 ```
 
-`track` รับ `id` ที่บังคับต้องมี `search` รับ `term` ที่บังคับต้องมีและ `limit` ที่เป็นทางเลือก เมื่อ client เลือก field มันก็จัดหา argument มาให้แบบ inline
+field `track` รับ `id` ที่บังคับต้องมี ส่วน `search` รับ `term` ที่บังคับ และ `limit` ที่จะใส่หรือไม่ใส่ก็ได้ ตอน client เลือก field ก็ใส่ argument เข้าไปแบบ inline
 
 ```graphql
 {
@@ -34,13 +34,13 @@ type Query {
 }
 ```
 
-ภายใน resolver argument เหล่านั้นมาถึงในรูป object `args` ที่คุณได้พบในบทเรียนก่อน ในที่นี้ `args.id` ก็จะเป็น `"t1"` argument คือวิธีที่ client บังคับทิศทางว่า field จะคืนอะไรกลับมา
+ฝั่ง resolver จะได้ argument เหล่านี้มาในรูป object `args` ตัวเดียวกับที่เจอในบทเรียนก่อน กรณีนี้ `args.id` มีค่าเป็น `"t1"` พูดง่าย ๆ argument คือช่องทางที่ client ใช้บังคับทิศทางว่า field จะคืนอะไรกลับมา
 
 ## query variable
 
-การ hardcode `"t1"` ไว้ใน query string ก็ใช้ได้ แต่มันแข็งทื่อ ข้อความของ query เปลี่ยนทุกครั้งที่ค่าเปลี่ยน ซึ่งทำลายการ cache และเชื้อเชิญบั๊กจากการต่อ string **query variable** แก้ปัญหานี้ด้วยการประกาศ placeholder ที่มีชื่อและ type บน operation แล้วอ้างถึงมันตรงที่ค่าของ argument ควรอยู่
+การ hardcode `"t1"` ไว้ใน query string ก็ใช้ได้ แต่แข็งทื่อ ข้อความของ query จะเปลี่ยนทุกครั้งที่ค่าเปลี่ยน ทำให้ cache พังและเปิดช่องให้บั๊กจากการต่อ string ตัว **query variable** แก้ปัญหานี้ด้วยการประกาศ placeholder ที่มีชื่อและ type ไว้บน operation แล้วอ้างถึงตรงตำแหน่งที่ค่าของ argument ควรอยู่
 
-ชื่อ variable เริ่มด้วย `$` คุณประกาศมันใน signature ของ operation พร้อม type ของมัน แล้วใช้มันเป็นค่าของ argument
+ชื่อ variable ขึ้นต้นด้วย `$` ประกาศไว้ใน signature ของ operation พร้อม type แล้วนำไปใช้เป็นค่าของ argument
 
 ```graphql
 query GetTrack($id: ID!) {
@@ -50,29 +50,29 @@ query GetTrack($id: ID!) {
 }
 ```
 
-query ไม่มี id แบบ literal อยู่เลย ค่าจริงเดินทางแยกต่างหากในรูป JSON object เล็ก ๆ ที่ client ส่งไปพร้อมกับ query
+ใน query ไม่มี id แบบ literal อยู่เลย ค่าจริงเดินทางแยกมาเป็น JSON object เล็ก ๆ ที่ client ส่งไปพร้อม query
 
 ```json
 { "id": "t1" }
 ```
 
-<Mermaid title="variable ถูกประกาศบน operation, ถูกอ้างถึงที่ argument, และถูกจัดหามาในรูป JSON map แยกต่างหาก" code={variableDiagram} />
+<Mermaid title="ประกาศ variable บน operation อ้างถึงที่ argument แล้วป้อนค่าผ่าน JSON map แยกต่างหาก" code={variableDiagram} />
 
-อ่านการไหล operation ประกาศ `$id: ID!` field ใช้ `$id` เป็นค่าให้ argument `id` ของมัน และ variables map จัดหา `"t1"` ที่เป็นรูปธรรมมาให้ ข้อความของ query คงที่ในทุกการเรียก มีแค่ variables map ที่เปลี่ยน
+ไล่การไหลดู operation ประกาศ `$id: ID!` ตัว field เอา `$id` ไปเป็นค่าให้ argument `id` แล้ว variables map ป้อนค่าจริง `"t1"` เข้ามา ข้อความของ query คงที่ทุกครั้งที่เรียก มีแค่ variables map เท่านั้นที่เปลี่ยน
 
 ## ทำไม variable จึงสำคัญ
 
-การแยกค่าออกจาก query ไม่ใช่แค่เรื่องความเรียบร้อย แต่มันคือวิธีที่ GraphQL ระดับ production ควรทำงาน
+การแยกค่าออกจาก query ไม่ใช่แค่เรื่องความเรียบร้อย แต่คือวิธีที่ GraphQL ระดับ production ควรทำงาน
 
-- **การใช้ซ้ำและการ cache** query string ตัวเดียวกันรันได้กับทุก id ดังนั้น client และ server จึง cache และ pre-compile มันได้
-- **ความปลอดภัย** ค่าถูกส่งเป็นข้อมูลที่มี type ไม่ใช่ถูกแทรกเข้าไปใน string จึงไม่มีการเขียน query ใหม่แบบ injection
-- **การ validate** เพราะแต่ละ variable มี type (`$id: ID!`) server จึงปฏิเสธค่าที่ขาดหายหรือผิด type ก่อนที่ resolver ตัวใดจะได้รัน
+- **ใช้ซ้ำได้และ cache ได้** query string ตัวเดียวรันได้กับทุก id ทั้ง client และ server จึง cache และ pre-compile ไว้ล่วงหน้าได้
+- **ปลอดภัยกว่า** ค่าส่งไปเป็นข้อมูลที่มี type ไม่ได้แทรกเข้าไปใน string จึงไม่มีการเขียน query ใหม่แบบ injection
+- **validate ได้** เพราะทุก variable มี type (`$id: ID!`) server จึงปฏิเสธค่าที่ขาดหรือผิด type ตั้งแต่ก่อน resolver ตัวแรกจะได้รัน
 
-หลักคิด literal ก็โอเคขณะที่คุณสำรวจใน playground แต่อะไรก็ตามที่ app ส่งควรส่งค่าแบบ dynamic ในรูป variable
+หลักคิดคือ ใช้ literal ตอนลองเล่นใน playground ได้ แต่ค่าที่ app จริงส่งควรเป็น variable เสมอ
 
 ## argument และ variable ทำงานร่วมกัน
 
-ตัวอย่างด้านล่างประกาศ variable `$id: ID!` บน operation ใช้มันเป็น argument `id` ของ field `track` และจัดหาค่าผ่าน `variableValues` map ตรงตามที่ client จริง ๆ ส่งมันมา กด **Run** แล้วลองเปลี่ยนค่าใน variables map ดู
+ตัวอย่างด้านล่างประกาศ variable `$id: ID!` ไว้บน operation เอาไปใช้เป็น argument `id` ของ field `track` แล้วป้อนค่าผ่าน `variableValues` map เหมือนที่ client จริงส่งมาเป๊ะ ๆ กด **Run** แล้วลองเปลี่ยนค่าใน variables map ดู
 
 export const variablesCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -116,16 +116,16 @@ export const variablesCode = `(async () => {
 
 <NodeRunner client:visible code={variablesCode} />
 
-query string พูดถึงแค่ `$id` ส่วนค่า `"t2"` อยู่ใน `variableValues` resolver รับมันผ่าน `args` แล้วไปค้นหา track เปลี่ยน `variableValues` เป็น `{ id: 't1' }` แล้วรันอีกครั้ง ข้อความของ query ตัวเดียวกันคืน track ที่ต่างกัน ซึ่งนั่นคือประเด็นทั้งหมดของ variable
+ตัว query string พูดถึงแค่ `$id` ส่วนค่า `"t2"` อยู่ใน `variableValues` ฝั่ง resolver รับค่าผ่าน `args` แล้วไปค้น track ลองเปลี่ยน `variableValues` เป็น `{ id: 't1' }` แล้วรันใหม่ ข้อความของ query อันเดิมเป๊ะ แต่ได้ track คนละตัว นี่แหละคือประเด็นทั้งหมดของ variable
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | variable ป้องกัน query injection | schema ต้องประกาศ argument type อย่างชัดเจน |
 | query reuse ได้โดยไม่ต้อง rebuild string | argument ที่ซับซ้อนต้องใช้ Input Type |
 | client ส่ง variable แยกจาก query — cache ได้ดีกว่า | default value ต้องประกาศใน schema ไม่ใช่ใน resolver |
 | type validation ของ variable เกิดก่อน execution | argument จำนวนมากทำให้ resolver signature ยาว |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **ส่ง Argument เป็น String แทน Variable**
 อาการ:
@@ -139,7 +139,7 @@ query string พูดถึงแค่ `$id` ส่วนค่า `"t2"` อ�
 - เสีย type safety และ validation ที่ schema ให้ฟรี
 - ใช้ Input Type สำหรับ argument ที่มีหลาย field
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **GitHub API:**
 > - ทุก mutation ใช้ Input Type — `CreateIssueInput`, `AddCommentInput`
@@ -149,7 +149,7 @@ query string พูดถึงแค่ `$id` ส่วนค่า `"t2"` อ�
 > - enforce naming convention: mutation argument ต้องชื่อ `input` และเป็น Input Type เสมอ
 
 <Callout title="ประกาศ argument; ส่ง variable">
-field argument เป็นส่วนหนึ่งของ schema มันบอกว่า field รับ input อะไรได้บ้าง ส่วน query variable เป็นส่วนหนึ่งของ request มันพกพาค่าที่เป็นรูปธรรมเข้ามา มี type และแยกจากข้อความของ query เก็บ literal ไว้ใน playground และส่ง `$variables` จาก app จริง แล้ว query ของคุณจะนำกลับมาใช้ซ้ำได้ cache ได้ และปลอดภัยโดยโครงสร้าง
+field argument เป็นส่วนหนึ่งของ schema บอกว่า field รับ input อะไรได้บ้าง ส่วน query variable เป็นส่วนหนึ่งของ request ทำหน้าที่พกค่าจริงเข้ามา มี type และแยกออกจากข้อความของ query เก็บ literal ไว้ใช้ใน playground แล้วส่ง `$variables` จาก app จริง เท่านี้ query ของคุณก็ใช้ซ้ำได้ cache ได้ และปลอดภัยตั้งแต่โครงสร้าง
 </Callout>
 
 export const variableDiagram = `flowchart LR
@@ -159,32 +159,32 @@ export const variableDiagram = `flowchart LR
 
 export const quizArgumentsAndVariables = [
   {
-    q: 'Where are a field’s accepted arguments defined?',
+    q: 'argument ที่ field หนึ่งรับได้ ประกาศไว้ที่ไหน?',
     options: [
       'ใน variables map ที่ส่งมาพร้อม request',
       'ใน schema ในวงเล็บหลังชื่อ field',
-      'เฉพาะภายในตัว body ของ resolver function เท่านั้น',
+      'ในตัว body ของ resolver function เท่านั้น',
       'ใน operation name',
     ],
     answer: 1,
   },
   {
-    q: 'What does the "$" prefix denote in a query like query GetTrack($id: ID!)?',
+    q: 'ใน query อย่าง query GetTrack($id: ID!) เครื่องหมาย "$" นำหน้าหมายถึงอะไร?',
     options: [
       'comment',
-      'query variable ที่มี type — placeholder มีชื่อที่ถูกป้อนจาก values map แยกต่างหาก',
-      'field ที่ถูก deprecate',
+      'query variable ที่มี type — placeholder ที่มีชื่อ และรับค่าจาก values map แยกต่างหาก',
+      'field ที่ deprecate แล้ว',
       'directive',
     ],
     answer: 1,
   },
   {
-    q: 'Why prefer variables over hardcoding literal values into the query string?',
+    q: 'ทำไมถึงควรใช้ variable แทนการ hardcode ค่า literal ลงใน query string?',
     options: [
       'variable ทำให้ query รันเร็วขึ้นเฉพาะที่ชั้น network เท่านั้น',
-      'ข้อความของ query คงที่ (cache ได้), ค่ามี type และถูก validate, และไม่มีการต่อ string',
+      'ข้อความของ query คงที่ (cache ได้) ค่ามี type และผ่านการ validate อีกทั้งไม่ต้องต่อ string',
       'GraphQL spec บังคับให้ทุก field ต้องใช้ variable',
-      'GraphQL ไม่อนุญาตให้ใช้ literal ที่ไหนเลย',
+      'GraphQL ไม่ยอมให้ใช้ literal ที่ไหนเลย',
     ],
     answer: 1,
   },

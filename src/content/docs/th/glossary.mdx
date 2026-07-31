@@ -5,21 +5,21 @@ sidebar:
   order: 99
 ---
 
-## Core GraphQL Terms
+## ศัพท์หลักของ GraphQL
 
 | English | Thai Style | ความหมาย |
 |---|---|---|
-| Schema | Schema | สัญญาระหว่าง client และ server — กำหนดว่าข้อมูลใดขอได้และส่งกลับอะไร |
-| Resolver | Resolver | function ที่รับผิดชอบดึงข้อมูลสำหรับ field หนึ่ง ๆ |
+| Schema | Schema | contract ระหว่าง client กับ server — กำหนดว่าขอข้อมูลอะไรได้ และได้อะไรกลับมา |
+| Resolver | Resolver | function ที่ดึงข้อมูลให้ field หนึ่ง ๆ |
 | Query | Query | operation สำหรับอ่านข้อมูล |
 | Mutation | Mutation | operation สำหรับเปลี่ยนแปลงข้อมูล |
 | Subscription | Subscription | operation สำหรับรับข้อมูล real-time ผ่าน persistent connection |
-| Field | Field | property หนึ่งหน่วยบน type ที่ client สามารถขอได้ |
+| Field | Field | property หนึ่งตัวบน type ที่ client ขอได้ |
 | Type | Type | โครงสร้างข้อมูลใน schema (Object Type, Scalar, Enum, Interface, Union) |
 | Scalar | Scalar | type พื้นฐานที่ไม่มี sub-field: String, Int, Float, Boolean, ID |
 | Enum | Enum | set ของค่าที่เป็นไปได้ที่กำหนดใน schema |
-| Interface | Interface | contract ที่ type หลายตัวสามารถ implement |
-| Union | Union | type ที่อาจเป็น type ใดก็ได้จากกลุ่มที่กำหนด |
+| Interface | Interface | contract ที่ type หลายตัว implement ได้ |
+| Union | Union | type ที่เป็น type ใดก็ได้ในกลุ่มที่กำหนดไว้ |
 | Directive | Directive | คำสั่งพิเศษใน schema หรือ query เช่น `@deprecated`, `@include` |
 | Fragment | Fragment | ชุด field ที่ reuse ได้ข้าม query |
 | Operation | Operation | query, mutation, หรือ subscription หนึ่งชิ้น |
@@ -38,7 +38,7 @@ sidebar:
 | Node | Node | item หนึ่งชิ้นใน Connection |
 | Offset Pagination | Offset Pagination | pagination ด้วย skip + limit — ง่ายแต่มีปัญหากับ concurrent update |
 
-## Performance & Architecture
+## Performance และสถาปัตยกรรม
 
 | English | Thai Style | ความหมาย |
 |---|---|---|
@@ -60,7 +60,7 @@ sidebar:
 | Over-fetching | เกิดบ่อย | ไม่เกิด — client เลือก field เอง |
 | Under-fetching | เกิดบ่อย | ไม่เกิด — query nested ได้ครั้งเดียว |
 | Caching | ง่าย — HTTP cache per URL | ซับซ้อนกว่า — ต้องใช้ persisted query |
-| Type Safety | ขึ้นกับ OpenAPI/documentation | built-in — schema คือสัญญา |
+| Type Safety | ขึ้นกับ OpenAPI/documentation | built-in — schema คือ contract |
 
 ## เมื่อ **ไม่** ควรใช้ GraphQL
 

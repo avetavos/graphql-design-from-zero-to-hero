@@ -11,19 +11,19 @@ import Callout from '../../../../components/Callout.astro';
 import Quiz from '../../../../components/Quiz.tsx';
 import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
-นี่คือจุดที่ทุกอย่างมาลงตัว คุณได้ออกแบบ schema, เขียน resolvers, เพิ่ม mutations, จัดการ pagination และ errors, ทำให้กราฟปลอดภัย และเรียนรู้วิธีใส่ type, test และ federate มันมาแล้ว บทเรียนนี้ประกอบแนวคิดเหล่านั้นเข้าเป็น TypeScript service เล็ก ๆ ที่เป็นหนึ่งเดียวด้วย **GraphQL Yoga** — GraphQL server แบบ batteries-included ที่รันได้ทุกที่ที่ Node รันได้ — และมอบโปรเจกต์ที่รันได้จริงให้คุณนำติดตัวไป
+นี่คือจุดที่ทุกอย่างมาบรรจบกัน คุณได้ออกแบบ schema เขียน resolver เพิ่ม mutation จัดการ pagination กับ error ทำให้กราฟปลอดภัย และได้เรียนวิธีใส่ type เขียน test และ federate มาแล้ว บทนี้จะประกอบทุกแนวคิดเข้าเป็น TypeScript service เล็ก ๆ ตัวเดียวด้วย **GraphQL Yoga** — GraphQL server แบบ batteries-included ที่รันได้ทุกที่ที่ Node รันได้ — แล้วส่งโปรเจกต์ที่รันได้จริงให้คุณเอาไปต่อยอด
 
 ## สามชิ้นส่วนของ Yoga service
 
 Yoga server สร้างจากสามชิ้นส่วนแบบเดียวกับที่ GraphQL server ทุกตัวมี เพียงแต่ตอนนี้ผูกเข้าด้วยกันอย่างชัดเจน:
 
-- **typeDefs** — schema ในรูป SDL นี่คือ contract ของคุณ เขียนแบบ schema-first (บทเรียน [Schema-First vs Code-First](/graphql/th/tooling-federation-building/schema-first-vs-code-first/)) มันมี `Query` สำหรับการอ่านและ `Mutation` สำหรับการเขียน
-- **resolvers** — ฟังก์ชันที่ทำให้แต่ละ field เป็นจริง คุณได้พบพวกมันใน [Queries & Resolvers](/graphql/th/queries-and-resolvers/) และต่อยอดด้วยการเขียนในโมดูล mutations
-- **context** — object ต่อหนึ่ง request ที่ Yoga สร้างครั้งเดียวแล้วร้อยเข้าไปในทุก resolver เป็น argument ตัวที่สาม มันคือที่อยู่ของสิ่งที่มีขอบเขตต่อ request: ผู้ใช้ปัจจุบัน, handle ของ database, request id มันคือที่สะอาด ๆ สำหรับวางสิ่งที่ [Security & Performance](/graphql/th/security-and-performance/) ใส่ใจ
+- **typeDefs** — schema ในรูป SDL นี่คือ contract ของคุณ เขียนแบบ schema-first (ดูบท [Schema-First vs Code-First](/graphql/th/tooling-federation-building/schema-first-vs-code-first/)) ข้างในมี `Query` สำหรับอ่านและ `Mutation` สำหรับเขียน
+- **resolvers** — function ที่ทำให้แต่ละ field มีค่าจริง คุณเจอมาแล้วใน [Queries & Resolvers](/graphql/th/queries-and-resolvers/) และต่อยอดในโมดูล mutations
+- **context** — object ประจำ request ที่ Yoga สร้างครั้งเดียวแล้วส่งเข้าไปในทุก resolver เป็น argument ตัวที่สาม ใช้เก็บของที่มีขอบเขตแค่ request นั้น เช่น ผู้ใช้ปัจจุบัน handle ของ database และ request id เป็นที่วางของที่ [Security & Performance](/graphql/th/security-and-performance/) สนใจได้อย่างสะอาด
 
 Yoga นำสามชิ้นนั้นมาแปลงเป็น HTTP server ที่มี GraphiQL playground ในตัว, การจัดการ error ที่สมเหตุสมผล และรองรับ subscriptions — โดยคุณไม่ต้องเขียน boilerplate เองเลย
 
-<Mermaid title="typeDefs และ resolvers ก่อร่างเป็น schema; Yoga เพิ่ม context ต่อ request และเสิร์ฟมันผ่าน HTTP" code={yogaFlow} />
+<Mermaid title="typeDefs กับ resolvers ประกอบกันเป็น schema แล้ว Yoga เติม context ประจำ request และเสิร์ฟผ่าน HTTP" code={yogaFlow} />
 
 ## context ร้อยทะลุไปอย่างไร
 
@@ -44,11 +44,11 @@ const resolvers = {
 };
 ```
 
-นั่นทำให้ resolvers สะอาดจากงานท่อต่อ request: พวกมันถาม `ctx` เอาสิ่งที่ต้องการ และการ wire อยู่ที่เดียว
+แบบนี้ resolver จะไม่ต้องยุ่งกับงานท่อประจำ request เลย แค่ขอสิ่งที่ต้องการจาก `ctx` ส่วนการ wire ก็อยู่ที่เดียว
 
 ## Yoga server ที่รันได้จริง — query, mutation และ context
 
-โปรเจกต์ด้านล่างคือ `schema.ts` ที่สมบูรณ์: มัน export `typeDefs` (schema เล็ก ๆ ที่มีหนึ่ง query และหนึ่ง mutation) และ `resolvers` (พร้อม store ในหน่วยความจำและคำทักทายที่รับรู้ context) กด **Open in StackBlitz** เพื่อเปิด GraphQL Yoga server จริงขึ้นในเบราว์เซอร์ของคุณ จากนั้นเปิด GraphiQL playground ที่มันพิมพ์ออกมาแล้วลอง operation ต่าง ๆ
+โปรเจกต์ด้านล่างคือ `schema.ts` ฉบับเต็ม export ทั้ง `typeDefs` (schema เล็ก ๆ ที่มีหนึ่ง query และหนึ่ง mutation) และ `resolvers` (พร้อม store ในหน่วยความจำและคำทักทายที่อ่าน context) กด **Open in StackBlitz** เพื่อเปิด GraphQL Yoga server จริงใน browser แล้วเปิด GraphiQL playground ตาม URL ที่พิมพ์ออกมาเพื่อลอง operation ต่าง ๆ
 
 export const schemaCode = `// schema.ts — exports typeDefs (SDL) + resolvers for a GraphQL Yoga server.
 // The fixed index.ts wraps these with createSchema + createYoga over node http.
@@ -104,7 +104,7 @@ export const resolvers = {
 
 <NodeRunner node client:visible code={schemaCode} />
 
-เมื่อมันรันอยู่แล้ว ลองการอ่านก่อน:
+พอ server รันแล้ว ลองอ่านข้อมูลก่อน:
 
 ```graphql
 { greeting(name: "Graph") messages { id text } }
@@ -118,18 +118,18 @@ mutation { postMessage(text: "Built it end to end") { id text } }
 
 Query `messages` อีกครั้งแล้ว message ใหม่ของคุณก็จะอยู่ตรงนั้น ในไม่กี่บรรทัด คุณได้ออกกำลังให้ query หนึ่งอัน, mutation หนึ่งอัน, request context และ store ในหน่วยความจำ — รูปร่างแบบเดียวกับที่ Yoga service บน production ทุกตัวมี เพียงแต่เล็กกว่า
 
-## Where This Fits in the Course
+## บทนี้อยู่ตรงไหนของคอร์ส
 
-เซอร์วิสนี้คือจักรวาลย่อของหนังสือทั้งเล่ม `typeDefs` คือการออกแบบ schema resolvers คืองาน queries-and-resolvers และ mutations `context` คือที่ที่ security และ performance เข้ามาเกี่ยวข้อง เพิ่ม codegen และ test จากช่วงก่อนหน้าในโมดูลนี้ แล้วคุณก็ได้เซอร์วิสที่มี type ผ่านการ test แยกมันตาม domain แล้ววาง gateway ไว้ข้างหน้า แล้วคุณก็ได้บทเรียน federation ไฟล์เล็ก ๆ ไฟล์เดียว ทุกแนวคิด
+service ตัวนี้คือคอร์สทั้งคอร์สย่อส่วน `typeDefs` คือการออกแบบ schema, resolvers คืองานจากโมดูล queries-and-resolvers กับ mutations, `context` คือจุดที่ security และ performance เข้ามาเกี่ยว เติม codegen กับ test จากบทก่อนหน้าในโมดูลนี้ แล้วคุณจะได้ service ที่มี type และผ่านการ test จากนั้นแยกตาม domain แล้ววาง gateway ไว้ข้างหน้า ก็ได้บท federation ครบ ไฟล์เล็ก ๆ ไฟล์เดียว แต่มีทุกแนวคิด
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | envelop plugin system — composable middleware สำหรับทุก phase | plugin order สำคัญ — ผิดลำดับทำให้ behavior ผิด |
 | รองรับ Node.js, Deno, Bun, Cloudflare Workers | ecosystem เล็กกว่า Apollo Server |
 | built-in GraphiQL IDE — development ง่าย | ต้องเรียนรู้ envelop ถ้าต้องการ custom plugin |
 | lightweight กว่า Apollo Server — startup เร็วกว่า | community resource น้อยกว่า Apollo |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **ใช้ Yoga โดยไม่มี Envelop Plugin สำหรับ Production**
 อาการ:
@@ -142,7 +142,7 @@ Query `messages` อีกครั้งแล้ว message ใหม่ขอ
 - GraphiQL accessible ใน production — introspection ให้ข้อมูล schema ทั้งหมด
 - ปิด GraphiQL และ introspection ใน production หรือ protect ด้วย auth
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **The Guild (Yoga creators):**
 > - ใช้ Yoga ใน production สำหรับ client ขนาดใหญ่หลายราย
@@ -153,7 +153,7 @@ Query `messages` อีกครั้งแล้ว message ใหม่ขอ
 > - track schema usage, detect breaking change, monitor performance
 
 <Callout title="คุณสร้าง GraphQL service ได้แบบ end to end">
-GraphQL service เป็นเพียงสามสิ่งที่ผูกเข้าด้วยกัน: **typeDefs** สำหรับ contract, **resolvers** เพื่อทำให้มันเป็นจริง และ **context** เพื่อร้อย state ต่อ request GraphQL Yoga เปลี่ยนสิ่งเหล่านั้นให้เป็น HTTP server จริงที่มี playground และไม่มี boilerplate ทุกอย่างที่เหลือในคอร์สนี้ — design, codegen, testing, federation, security — แขวนอยู่บนโครงนี้ คุณเริ่มจากศูนย์ด้วย type เดียว ตอนนี้คุณตั้ง GraphQL service ที่มีเอกสาร มี type ทดสอบได้ และประกอบได้ขึ้นมาได้แล้ว นั่นแหละคือส่วน hero
+GraphQL service ก็คือสามอย่างที่ผูกกัน — **typeDefs** เป็น contract, **resolvers** ทำให้ contract นั้นเป็นจริง และ **context** ร้อย state ประจำ request เข้าไป GraphQL Yoga เปลี่ยนสามอย่างนี้ให้เป็น HTTP server จริงที่มี playground มาให้โดยไม่ต้องเขียน boilerplate ทุกอย่างที่เหลือในคอร์สนี้ — design, codegen, testing, federation, security — แขวนอยู่บนโครงนี้ คุณเริ่มจากศูนย์ด้วย type เดียว ตอนนี้ตั้ง GraphQL service ที่มีเอกสาร มี type ทดสอบได้ และประกอบขยายได้แล้ว นั่นแหละคือส่วน hero
 </Callout>
 
 export const yogaFlow = `flowchart TD
@@ -183,9 +183,9 @@ export const quizYoga = [
   {
     q: 'Yoga รัน createContext เมื่อใด และ resolvers รับค่าที่คืนกลับมาได้อย่างไร?',
     options: [
-      'ครั้งเดียวตอน startup; resolvers อ่านมันจาก global',
-      'ครั้งเดียวต่อหนึ่ง request; resolvers รับมันเป็น argument ตัวที่สาม',
-      'ครั้งเดียวต่อหนึ่ง field; resolvers รับมันเป็น argument ตัวแรก',
+      'ครั้งเดียวตอน startup แล้ว resolvers อ่านจาก global',
+      'ครั้งเดียวต่อหนึ่ง request แล้ว resolvers รับเป็น argument ตัวที่สาม',
+      'ครั้งเดียวต่อหนึ่ง field แล้ว resolvers รับเป็น argument ตัวแรก',
       'ไม่มีวันเลย — context เป็นทางเลือกและไม่ถูกใช้',
     ],
     answer: 1,
@@ -203,10 +203,10 @@ export const quizYoga = [
   {
     q: 'ทำไม Yoga service เล็ก ๆ นี้จึงถูกเรียกว่าจักรวาลย่อของคอร์สทั้งหมด?',
     options: [
-      'มันใช้ทุก npm package ที่มี',
-      'typeDefs ของมันคือการออกแบบ, resolvers คือ queries/mutations และ context คือที่ที่ security และ performance เข้ามาเกี่ยวข้อง',
-      'มันไม่สามารถ test หรือ federate ได้',
-      'มันทำงานได้กับ REST เท่านั้น',
+      'ใช้ npm package ทุกตัวที่มี',
+      'typeDefs คือการออกแบบ, resolvers คือ queries/mutations และ context คือจุดที่ security และ performance เข้ามาเกี่ยว',
+      'test หรือ federate ไม่ได้',
+      'ทำงานได้กับ REST เท่านั้น',
     ],
     answer: 1,
   },

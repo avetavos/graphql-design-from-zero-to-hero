@@ -19,19 +19,19 @@ import ProgressTracker from '../../../../components/ProgressTracker.tsx';
 
 ### 1. Parse
 
-server รับ query มาเป็นข้อความธรรมดา แล้วเปลี่ยนมันให้เป็น tree ที่มีโครงสร้างเรียกว่า **Abstract Syntax Tree (AST)** เฟสนี้ตรวจสอบเฉพาะ *ไวยากรณ์* — วงเล็บปีกกาสมดุลไหม syntax ถูกต้องตามรูปแบบหรือเปล่า วงเล็บปิดที่หายไปหรือ comma หลงทางจะล้มเหลวที่นี่ ก่อนที่จะปรึกษา schema ด้วยซ้ำ
+server รับ query มาเป็นข้อความธรรมดา แล้วแปลงเป็น tree ที่มีโครงสร้างเรียกว่า **Abstract Syntax Tree (AST)** เฟสนี้ตรวจเฉพาะ *ไวยากรณ์* ว่าวงเล็บปีกกาสมดุลไหม syntax ถูกรูปแบบหรือเปล่า วงเล็บปิดที่หายไปหรือ comma หลงทางจะล้มเหลวตรงนี้ ตั้งแต่ก่อนไปดู schema ด้วยซ้ำ
 
 ### 2. Validate
 
-ตอนนี้ server เทียบ AST กับ **schema** นี่คือจุดที่ type system ทำงานคุ้มค่า ตัว validator ยืนยันว่าทุก field ที่คุณเลือกมีอยู่จริงบน type ของมัน argument มี type ที่ถูกต้อง คุณไม่ได้ขอ scalar field พร้อม sub-selection และกฎอีกหลายสิบข้อ หาก validation ล้มเหลว server จะปฏิเสธ request และคืน array ของ `errors` — และที่สำคัญคือ **ไม่มี resolver ตัวใดรัน** query ไม่เคยแตะข้อมูลหรือ business logic ของคุณเลย
+ตอนนี้ server เทียบ AST กับ **schema** นี่คือจุดที่ type system ทำงานคุ้มค่า ตัว validator ยืนยันว่าทุก field ที่คุณเลือกมีอยู่จริงบน type นั้น argument มี type ถูกต้อง คุณไม่ได้ขอ scalar field พร้อม sub-selection และกฎอีกหลายสิบข้อ ถ้า validation ไม่ผ่าน server จะปฏิเสธ request แล้วคืน array ของ `errors` และที่สำคัญคือ **ไม่มี resolver ตัวไหนรันเลย** query ไม่เคยแตะข้อมูลหรือ business logic ของคุณ
 
 ### 3. Execute
 
-เมื่อ query ถูก parse และ validate แล้ว server จะ **execute** มันโดยเดินไปตาม AST และเรียก **resolver** สำหรับแต่ละ field การ execute เริ่มที่ root type (`Query`, `Mutation` หรือ `Subscription`) แล้วไล่ลงทีละ field resolver แต่ละตัวคืนค่า; หากค่านั้นเป็น object type engine จะ recurse เข้าไปใน sub-field ที่ถูกเลือก แล้วเรียก resolver ของมันตามลำดับ ค่าที่คืนมาจะถูกประกอบเป็น response ที่มีรูปร่างสะท้อน query
+เมื่อ query ผ่าน parse และ validate แล้ว server จะ **execute** โดยเดินไปตาม AST และเรียก **resolver** ของแต่ละ field การ execute เริ่มที่ root type (`Query`, `Mutation` หรือ `Subscription`) แล้วไล่ลงทีละ field resolver แต่ละตัวคืนค่ากลับมา ถ้าค่านั้นเป็น object type engine จะ recurse เข้าไปใน sub-field ที่ถูกเลือกแล้วเรียก resolver ต่อไปตามลำดับ ค่าที่คืนมาทั้งหมดจะถูกประกอบเป็น response ที่มีรูปร่างสะท้อน query
 
 ## validation ปฏิเสธ field ที่ไม่ถูกต้อง
 
-วิธีที่ดีที่สุดในการสัมผัสความต่างระหว่าง validation กับ execution คือดู validation จับ error ตัวรันด้านล่างส่ง query ที่ขอ field ชื่อ `colour` ซึ่งไม่มีอยู่บน `Book` type กด **Run**: schema ถูกต้องและ resolver พร้อมแล้ว แต่ request ไม่เคยไปถึงมัน แทนที่จะเป็นเช่นนั้น response กลับเป็น array ของ `errors` ที่อธิบายปัญหา
+วิธีที่ดีที่สุดในการเห็นความต่างระหว่าง validation กับ execution คือดูตอน validation จับ error ตัวรันด้านล่างส่ง query ที่ขอ field ชื่อ `colour` ซึ่งไม่มีอยู่บน type `Book` กด **Run** ดู schema ถูกต้องและ resolver พร้อมแล้ว แต่ request ไปไม่ถึง resolver เลย สิ่งที่ได้กลับมาคือ array ของ `errors` ที่อธิบายปัญหา
 
 export const lifecycleCode = `(async () => {
   const { graphql, buildSchema } = await import('https://esm.sh/graphql@16');
@@ -69,16 +69,16 @@ export const lifecycleCode = `(async () => {
 
 <NodeRunner client:visible code={lifecycleCode} />
 
-อ่านผลลัพธ์อย่างระมัดระวัง ไม่มี `data` สำหรับ book; แต่คุณได้ array ของ `errors` ที่มีข้อความบอกว่า `colour` ไม่สามารถถูก query บน type `Book` ได้ พร้อมบรรทัดและคอลัมน์ที่มันปรากฏ นี่คือเฟส validate ที่กำลังทำหน้าที่ของมัน แก้ query — เปลี่ยน `colour` เป็น `year` — แล้วรันอีกครั้งเพื่อดู request แล่นผ่าน validation เข้าสู่ execution และคืนข้อมูลจริง
+อ่านผลลัพธ์ให้ละเอียด ไม่มี `data` ของ book แต่ได้ array ของ `errors` ที่บอกว่า `colour` query บน type `Book` ไม่ได้ พร้อมบรรทัดและคอลัมน์ที่ปรากฏ นี่คือเฟส validate ที่กำลังทำหน้าที่ ลองแก้ query เปลี่ยน `colour` เป็น `year` แล้วรันอีกครั้ง จะเห็น request แล่นผ่าน validation เข้าสู่ execution และคืนข้อมูลจริง
 
-| Benefits | Trade-offs |
+| ข้อดี | ข้อแลกเปลี่ยน |
 |---|---|
 | parse และ validate เกิดก่อน execution — error ชัดเจนก่อนถึง resolver | validation overhead ทุก request (แก้ด้วย persisted query) |
 | execution pipeline ชัดเจน — debug ได้ตามขั้นตอน | resolver ที่ขนานกันอาจทำให้ trace ยาก |
 | middleware/plugin แต่ละ phase แยกกัน | error ใน resolver หนึ่งไม่หยุด resolver อื่น — partial result |
 | context injection ทำให้แชร์ auth, db connection ข้าม resolver | execution order ไม่ guaranteed สำหรับ parallel field |
 
-## Common Mistakes
+## ข้อผิดพลาดที่พบบ่อย
 
 **Business Logic ใน Resolver โดยตรง**
 อาการ:
@@ -92,7 +92,7 @@ export const lifecycleCode = `(async () => {
 - client ไม่รู้ว่า field ไหน fail และ field ไหนสำเร็จ
 - handle error ใน resolver อย่างตั้งใจ — return null หรือ throw GraphQL error
 
-> 💡 Real World Example
+> 💡 ตัวอย่างจากของจริง
 >
 > **Apollo Server:**
 > - lifecycle plugin ช่วย track ทุก phase: parse, validate, execute
@@ -103,7 +103,7 @@ export const lifecycleCode = `(async () => {
 > - ใช้สำหรับ tracing, auth, rate limiting ใน pipeline
 
 <Callout title="ประเด็นสำคัญ">
-Parse จับ *ไวยากรณ์ที่ผิด* Validate จับ *query ที่ schema ทำตามไม่ได้* — และหยุดมันก่อนที่ resolver ตัวใดจะรัน ซึ่งเป็นเหตุผลว่าทำไม schema ที่มี type กำกับจึงทำให้ GraphQL API ทั้งปลอดภัยกว่าและคาดเดาได้มากกว่า Execute คือเฟสเดียวที่แตะข้อมูลของคุณ เมื่อคุณเห็น array ของ `errors` โดยไม่มี `data` แทบทุกครั้ง request ล้มเหลวที่ parse หรือ validate ดังนั้นจงดูที่ query และ schema ก่อนที่จะสงสัย resolver ของคุณ
+Parse จับ *ไวยากรณ์ที่ผิด* ส่วน Validate จับ *query ที่ schema ทำตามไม่ได้* แล้วหยุดตั้งแต่ก่อน resolver ตัวไหนจะรัน นั่นคือเหตุผลที่ schema ที่มี type กำกับทำให้ GraphQL API ทั้งปลอดภัยกว่าและคาดเดาได้มากกว่า ส่วน Execute คือเฟสเดียวที่แตะข้อมูลของคุณ เวลาเห็น array ของ `errors` โดยไม่มี `data` แทบทุกครั้งแปลว่า request ล้มที่ parse หรือ validate ให้ไปดู query กับ schema ก่อนจะสงสัย resolver
 </Callout>
 
 export const lifecycleDiagram = `sequenceDiagram
