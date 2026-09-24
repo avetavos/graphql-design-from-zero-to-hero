@@ -152,6 +152,31 @@ export const typesFieldsCode = `(async () => {
 
 The query supplied `id` as an argument, received a single `Recipe`, then stepped into `author` and back out to that author's recipe list. One round trip, several types — that is the graph at work.
 
+## Common mistakes
+
+**A type that mirrors the database schema verbatim**
+
+Symptoms:
+- a GraphQL type named `users_table`, or a field named `user_id` instead of `userId`
+- database column names leak straight to the client
+- Fix: the schema should reflect the business domain, not the database implementation
+
+**A `JSON` scalar everywhere you're not sure what to do**
+
+Symptoms:
+- `metadata: JSON` instead of a properly designed type
+- the client has no idea what fields `metadata` contains — no type checking
+- Fix: `JSON` is fine as a stopgap while the shape is unknown, but plan a migration to a typed field
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - uses `@deprecated(reason: "...")`, a standard GraphQL spec directive, instead of deleting a field outright ([GraphQL spec: `@deprecated`](https://spec.graphql.org/October2021/#sec--deprecated))
+> - during the migration period the field keeps serving, but clients know to update
+>
+> **Shopify:**
+> - Shopify's own schema design guide says to design the schema around the business domain, not the database, REST, or legacy implementation ([Shopify GraphQL design tutorial](https://github.com/Shopify/graphql-design-tutorial/blob/master/TUTORIAL.md))
+
 <Callout title="Fields are the unit of design">
 Every decision you make in a schema lands on a field: its name, its type, the arguments it accepts, and the description that explains it. Name fields after domain properties, give arguments to the fields that need them, document anything non-obvious, and let object-typed fields express the relationships clients will actually traverse. Get the fields right and the rest of the schema follows.
 </Callout>

@@ -176,11 +176,11 @@ query ส่ง `id` เป็น argument ได้รับ `Recipe` หนึ
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - ใช้ `@deprecated(reason: "...")` แทนการลบ field
+> - ใช้ `@deprecated(reason: "...")` ซึ่งเป็น directive มาตรฐานใน GraphQL spec แทนการลบ field ทันที ([GraphQL spec: `@deprecated`](https://spec.graphql.org/October2021/#sec--deprecated))
 > - migration period — field ยังคง serve ต่อไป แต่ client รู้ว่าต้องอัปเดต
 >
 > **Shopify:**
-> - schema design ยึด "client first" — field ทุกตัวออกแบบจาก client use case ไม่ใช่ database
+> - เอกสาร schema design ของ Shopify เองระบุให้ออกแบบ schema ตาม business domain ไม่ใช่ตาม database/REST/implementation เดิม ([Shopify GraphQL design tutorial](https://github.com/Shopify/graphql-design-tutorial/blob/master/TUTORIAL.md))
 
 <Callout title="Field คือหน่วยของการออกแบบ">
 ทุกการตัดสินใจใน schema สุดท้ายมาลงที่ field ทั้งชื่อ type argument ที่รับ และ description ที่อธิบาย ตั้งชื่อ field ตามคุณสมบัติใน domain ใส่ argument ให้ field ที่ต้องใช้ เขียนเอกสารกำกับสิ่งที่ไม่ชัดเจนในตัวเอง และปล่อยให้ field ที่เป็น object type แสดงความสัมพันธ์ที่ client จะเดินผ่านจริง ๆ จัดการ field ให้ถูก แล้วที่เหลือของ schema จะตามมาเอง

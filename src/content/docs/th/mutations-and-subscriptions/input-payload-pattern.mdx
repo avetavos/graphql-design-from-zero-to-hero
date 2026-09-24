@@ -177,13 +177,12 @@ export const payloadCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub GraphQL API:**
-> - `CreateIssueInput` มี `repositoryId`, `title` (required) และ optional field เช่น `body`, `assigneeIds`
-> - `CreateIssuePayload` คืน `issue` + `clientMutationId` — ไม่คืนแค่ ID
-> - convention นี้ใช้กับทุก mutation ใน GitHub API — client code มี pattern เดียวสม่ำเสมอ
+> - `CreateIssueInput` มี `repositoryId`, `title` (required) และ optional field เช่น `body`, `assigneeIds` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/issues#mutation-createissue))
+> - `CreateIssuePayload` คืน `issue` เต็ม — ไม่คืนแค่ ID
 >
 > **Shopify Admin API:**
-> - `ProductInput` ที่ reuse ได้ใน `productCreate` และ `productUpdate`
-> - payload คืน `product` เต็ม + `userErrors` — UI อัปเดตได้ทันทีหลัง mutation
+> - เดิมใช้ `ProductInput` ตัวเดียว reuse ทั้ง `productCreate` และ `productUpdate` แต่ปัจจุบัน type นี้ deprecated แล้ว — แยกเป็น `ProductCreateInput` และ `ProductUpdateInput` โดยเฉพาะ ([`productCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate), [`productUpdate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/productUpdate)) — ตัวอย่างจริงว่าทำไม "god input" ตัวเดียวที่ครอบทุก operation ถึงมักถูกแยกออกเมื่อ API โตขึ้น
+> - ทั้งสอง payload ยังคืน `product` เต็ม + `userErrors` เหมือนเดิม — UI อัปเดตได้ทันทีหลัง mutation
 
 <Callout title="input เข้า, payload ออก">
 ให้ทุก mutation ที่ไม่ใช่เรื่องเล็ก ๆ มี argument `input: SomeInput!` เดียวและ type คืนค่า `SomePayload!` ตัว input ทำให้คุณเพิ่ม field แบบ optional ในภายหลังได้โดยไม่ทำลาย signature ส่วน payload ที่มี entity แบบ nullable และ list `userErrors` แบบ non-null ให้รูปร่างเดียวที่สม่ำเสมอกับ client เพื่อจัดการทุก mutation ด้วยกฎเดียว คือตรวจ `userErrors` ถ้าว่างก็ใช้ entity ได้เลย นี่คือธรรมเนียมที่ GraphQL API ขนาดใหญ่เกือบทุกตัวมาบรรจบกัน รับมาใช้ตั้งแต่ก่อนจะจำเป็น

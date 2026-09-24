@@ -133,6 +133,31 @@ export const connCode = `(async () => {
 
 The output gives two edges, each with a `node` and an opaque `cursor`, plus a `pageInfo` saying `hasNextPage: true` and handing back an `endCursor`. Pass that `endCursor` as `after` and you get the next two — and because the cursor names an *item*, not a position, inserting a new post at the top of the list would not make page two repeat or skip anything. That stability is the whole reason connections exist.
 
+## Common mistakes
+
+**A cursor that is secretly an offset**
+
+Symptoms:
+- the cursor is just `base64(offset)` — not stable
+- once an item is deleted, an old cursor points at the wrong position
+- Fix: build an opaque cursor from a unique identifier, e.g. `base64(id)` or `base64(createdAt:id)`
+
+**An edge type with no custom fields**
+
+Symptoms:
+- `Edge` only has `node` and `cursor` — the edge's own potential is unused
+- an edge could carry relationship metadata, like `joinedAt` for a user-in-group edge
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - every list uses the Relay connection spec: `repository.issues(first: 10, after: $cursor)` ([GitHub GraphQL pagination guide](https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api))
+> - pagination works consistently across issues, PRs, and comments
+>
+> **Shopify:**
+> - the Storefront API uses connections everywhere — products, orders, collections ([Shopify pagination guide](https://shopify.dev/docs/api/usage/pagination-graphql))
+> - the Hydrogen client library ships a `Pagination` component and `getPaginationVariables` helper that work with the connection spec automatically ([Hydrogen pagination docs](https://shopify.dev/docs/storefronts/headless/hydrogen/data-fetching/pagination))
+
 <Callout title="Use cursors for large or changing lists">
 The Relay connection shape — `edges { node cursor }` and `pageInfo { hasNextPage endCursor }`, paged with `first`/`after` — costs more boilerplate than `limit`/`offset`, but it earns it on lists that are large or change while users browse. Cursors address items rather than positions, so concurrent inserts and deletes do not corrupt page boundaries, and a database can seek directly to a cursor instead of counting past skipped rows. For feeds, search results, and any high-volume collection, reach for connections.
 </Callout>

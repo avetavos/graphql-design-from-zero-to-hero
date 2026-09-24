@@ -117,11 +117,11 @@ export const authContextCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Apollo Server:**
-> - `contextValue` factory รัน per-request — inject user จาก JWT ทุกครั้ง
+> - `contextValue` factory รัน per-request — inject user จาก JWT ทุกครั้ง ([Apollo Server context docs](https://www.apollographql.com/docs/apollo-server/data/context))
 > - `context.user` พร้อมใช้ใน resolver ทุกตัวโดยไม่ต้อง parse token ซ้ำ
 >
 > **GraphQL Yoga:**
-> - `context` factory รองรับ async — ทำ database lookup สำหรับ user ได้ใน context
+> - `context` factory รองรับ async — ทำ database lookup สำหรับ user ได้ใน context ([Yoga context docs](https://the-guild.dev/graphql/yoga-server/docs/features/context))
 
 <Callout title="Authenticate ใน context, authorize ใน resolver">
 แยกสองงานนี้ออกจากกัน **Authentication** — การ verify token และ resolve current user — เกิดขึ้นหนึ่งครั้งต่อคำขอใน context factory ไม่เคยอยู่ภายใน schema field **Authorization** — การตัดสินว่า user นั้นอาจเห็น field ใด field หนึ่งได้หรือไม่ — เกิดขึ้นทีหลังใน resolver context factory ที่สะอาดซึ่งคืน `{ user }` (และ `null` สำหรับผู้เรียกแบบ anonymous) ให้คำตอบที่ไว้ใจได้กับทุก resolver สำหรับคำถาม "ใครเป็นคนถาม?" โดยไม่ต้อง parse credential ซ้ำ และทิ้งคำถาม "เขาได้รับอนุญาตไหม?" ไว้ให้บทเรียนถัดไป

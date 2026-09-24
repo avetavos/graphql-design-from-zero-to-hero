@@ -187,14 +187,12 @@ export const resolvers = {
 
 > 💡 ตัวอย่างจากของจริง
 >
-> **Slack:**
-> - ใช้ WebSocket subscription สำหรับ message real-time ใน channel
-> - subscribe แยกต่อ channel เพื่อไม่ให้รับ event จาก workspace ทั้งหมด
-> - mutation `sendMessage` publish event — subscription resolver ส่งต่อให้ subscriber ที่ตรงกัน
+> **AWS AppSync:**
+> - subscription รับ argument ได้โดยตรง เช่น `updatedPost(id: ID!, author: String)` แล้ว client subscribe ด้วยค่าที่ต้องการ ([AWS AppSync real-time subscriptions](https://docs.aws.amazon.com/appsync/latest/devguide/aws-appsync-real-time-data.html)) เพื่อไม่ให้รับ event ที่ไม่เกี่ยวข้องจากทั้งระบบ
 >
-> **Figma:**
-> - subscription สำหรับ cursor position และ object selection ของ collaborator
-> - กรอง event ด้วย `documentId` + `userId` เพื่อลด noise
+> **Hasura:**
+> - live query subscription ส่งผลลัพธ์ใหม่เฉพาะเมื่อข้อมูลที่ subscribe ไว้เปลี่ยนจริง ๆ (insert/update/delete) ([Hasura subscriptions docs](https://hasura.io/docs/2.0/subscriptions/overview/))
+> - filter ผ่าน argument/`where` ตั้งแต่ subscription query เพื่อ scope เฉพาะข้อมูลที่ client สนใจ
 
 <Callout title="subscription คือช่องทางที่เปิดอยู่ ไม่ใช่การอ่านเพิ่ม">
 subscription คือ connection ที่เปิดค้างและมี state คือ `subscribe` ครั้งเดียว แล้วมี payload ถูก push ตามมาหลายครั้ง จนกว่า client จะตัด connection เวลา implement ให้แบ่งเป็นสองครึ่ง คือ `subscribe` ผลิตสตรีมของ event (ปกติมาจากบัส pub/sub ที่ mutation publish เข้าไป) ส่วน `resolve` จัดรูปร่างแต่ละ event ให้เป็น payload ส่งผ่าน SSE เป็นค่าเริ่มต้น หรือ WebSocket เมื่อจำเป็นต้องสื่อสารสองทาง และอย่าหลงไป subscribe ทุกอย่าง ถ้าการเปลี่ยนแปลงเกิดจาก mutation ของ client เอง ก็แค่คืนผลลัพธ์กลับไป เก็บ subscription ไว้ใช้กับ event ที่มาตามนาฬิกาของ server ไม่ใช่ของ client

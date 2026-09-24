@@ -125,6 +125,30 @@ export const authzCode = `(async () => {
 
 Read both outputs together. As the regular user (who *is* the owner), `email` returns the address but `auditLog` produces a `FORBIDDEN` error and its value is `null` — yet `me` and `email` still come back, because a thrown field error nulls only that field and preserves the rest. As the admin (who is *not* the owner), `auditLog` now returns data while `email` is silently `null`. The denial style was a deliberate per-field choice: silent `null` for the owner-private email, a loud error for the admin-only log.
 
+## Common mistakes
+
+**Authorization documented in the schema but not enforced in the resolver**
+
+Symptoms:
+- the schema implies a field is public, but the resolver still has to check permissions on its own
+- inconsistent — introspection may expose a field the client cannot actually access
+- Fix: the auth layer must actually enforce access, not just document it
+
+**Incomplete field-level auth**
+
+Symptoms:
+- auth is checked at the `Query` root but not in nested resolvers
+- `adminStats` on the `User` type is unprotected — anyone can query it through a user lookup
+- Fix: protect every sensitive field no matter how it's reached
+
+> 💡 Real-world examples
+>
+> **GraphQL Shield:**
+> - a rule-based authorization layer for GraphQL that composes rules like `and(isAuthenticated, isAdmin)` for an admin-only field ([graphql-shield on npm](https://www.npmjs.com/package/graphql-shield)) — it is currently in maintenance mode (no release in several years), so evaluate it carefully before adopting it for a new production system
+>
+> **A pattern seen across several GraphQL APIs (e.g. GitLab):**
+> - a field the caller lacks permission for typically returns `null` rather than throwing ([GitLab GraphQL API docs](https://docs.gitlab.com/api/graphql/)), so the client cannot distinguish "not permitted" from "does not exist" — preventing resource enumeration
+
 <Callout title="Authorize where the data is produced, and choose your denial on purpose">
 Authorization is not one gate at the door — it is a decision at every field. Put the check in the resolver (or factor it into a directive or middleware so it is declared once), and never trust the client to enforce it. When access is denied, pick the response deliberately: **return `null`** when even admitting the field exists would leak information, and **throw a `GraphQLError` with a `FORBIDDEN` code** when an honest client overstepped and deserves to be told. Both leave the rest of the response intact.
 </Callout>

@@ -105,12 +105,10 @@ function charge(context, queryCost: number) {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Apollo:**
-> - Apollo Persisted Queries — client ส่ง hash, server ค้นหา query จาก registry
-> - production traffic ลด query payload size 80-90%
+> - Automatic Persisted Queries — client ส่ง hash 64 byte แทน query string เต็ม ๆ (query จริงมักใหญ่กว่า 10KB) server ค้นหา query จาก registry ด้วย hash นั้น ([Apollo: Improve GraphQL Performance with APQ](https://www.apollographql.com/blog/improve-graphql-performance-with-automatic-persisted-queries)) — ขนาด payload ที่ลดได้จริงขึ้นกับขนาด query เดิม ไม่มีเปอร์เซ็นต์ตายตัว
 >
 > **Shopify:**
-> - Storefront API ใช้ GET + persisted query สำหรับ CDN caching
-> - product page cache ได้ที่ CDN — ลด latency สำหรับ read-heavy operation
+> - Storefront API รองรับ caching ผ่าน Cache-Control ที่ CDN/edge (Oxygen) ทำให้ product page บาง endpoint cache ได้ที่ CDN ลด latency สำหรับ read-heavy operation ([Hydrogen caching docs](https://shopify.dev/docs/storefronts/headless/hydrogen/caching))
 
 <Callout title="แช่แข็งสิ่งที่รัน, cache สิ่งที่ทำซ้ำ, จำกัดสิ่งที่เหลือ">
 endpoint ที่ยืดหยุ่นนั้นดีมากตอนพัฒนา แต่อันตรายบน production ให้คุมด้วยสามนิสัยนี้ **Allowlist operation** ด้วย persisted (trusted) query ให้รันได้เฉพาะ operation ที่แอปคุณส่งเอง และจำไว้ว่า APQ อย่างเดียวหด bandwidth ได้ แต่ไม่ใช่ allowlist **Cache** ทั้งระดับ response (key ด้วย viewer) และระดับ per-field (ด้วย `@cacheControl` TTL) แล้วเสิร์ฟ persisted query ผ่าน `GET` เพื่อให้ CDN ช่วยได้ **Rate limit** ด้วยการหักจาก complexity budget ไม่ใช่นับจำนวน request ทำครบสามอย่างแล้วคุณจะได้ความสะดวกของ GraphQL ไว้ พร้อมตัด footgun ด้าน security และ performance ส่วนใหญ่ออกไป

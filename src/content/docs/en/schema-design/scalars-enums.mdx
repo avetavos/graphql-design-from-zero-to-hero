@@ -135,6 +135,32 @@ export const enumCode = `(async () => {
 
 The `status` field returned `SHIPPED`. Had the resolver produced a value outside the enum — say `RETURNED` — GraphQL would have raised an error instead of silently passing bad data to the client. That is the guarantee an enum buys you.
 
+## Common mistakes
+
+**Using a String instead of an enum**
+
+Symptoms:
+- `status: String` instead of `status: OrderStatus`
+- a client can send `"PENDING"`, `"pending"`, or `"Pending"` — no validation at all
+- Fix: use an enum whenever there is a finite set of values
+
+**Adding an enum value without telling clients**
+
+Symptoms:
+- `CANCELLED` gets added to the `OrderStatus` enum
+- a client with an exhaustive switch has no case for it — a runtime error
+- Fix: communicate the breaking change and let clients update first
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - uses the custom `URI` scalar instead of `String` for URLs ([GitHub GraphQL scalar reference](https://docs.github.com/en/graphql/reference/scalars))
+> - the `DateTime` scalar enforces ISO 8601 — no guessing the format
+>
+> **Shopify:**
+> - the `CurrencyCode` enum covers every ISO 4217 currency a store supports ([Shopify `CurrencyCode`](https://shopify.dev/docs/api/admin-graphql/latest/enums/currencycode))
+> - enums for order financial status, like `OrderDisplayFinancialStatus`, keep client code exhaustive and type-safe ([Shopify `OrderDisplayFinancialStatus`](https://shopify.dev/docs/api/admin-graphql/latest/enums/orderdisplayfinancialstatus))
+
 <Callout title="Reach for an enum when the values are knowable">
 Scalars are the leaves of your schema, so spend a moment on each one. Prefer `ID` over `String` for identifiers, define a custom scalar when a format deserves shared validation, and choose an **enum** whenever a field's values form a small, fixed, meaningful set. The enum moves validation into the type system and turns the schema itself into the list of legal options — fewer bugs, better tooling, clearer contract.
 </Callout>

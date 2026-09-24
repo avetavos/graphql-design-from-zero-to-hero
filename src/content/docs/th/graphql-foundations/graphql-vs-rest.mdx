@@ -144,13 +144,12 @@ export const restCompareCode = `(async () => {
 
 > 💡 ตัวอย่างจากของจริง
 >
-> **Twitter:**
-> - ใช้ REST API มาตลอดและ serve ได้ดี — ไม่จำเป็นต้องเปลี่ยน
-> - พิสูจน์ว่า REST ยังเหมาะสำหรับ high-traffic public API
+> **Stripe:**
+> - public API หลักของ Stripe ยังเป็น REST มาจนถึงทุกวันนี้ ไม่ใช่ GraphQL ([Stripe API reference](https://docs.stripe.com/api))
+> - พิสูจน์ว่า REST ยังเหมาะสำหรับ public API ที่ต้องการ HTTP caching, versioning ที่เข้าใจง่าย และ client library ที่หลากหลาย
 >
 > **Airbnb:**
-> - ใช้ GraphQL Federation สำหรับ internal API ระหว่าง team
-> - แต่ยัง expose REST สำหรับ partner API ที่ต้องการ HTTP caching
+> - ใช้ Apollo Federation สำหรับ internal GraphQL platform ระหว่าง team ([Airbnb Engineering: Reconciling GraphQL and Thrift](https://medium.com/airbnb-engineering/reconciling-graphql-and-thrift-at-airbnb-a97e8d290712))
 
 <Callout title="GraphQL ไม่ใช่กระสุนเงิน">
 การเลือกใช้ GraphQL คือการแลก HTTP caching ที่ง่ายและ mental model ที่คุ้นเคย เพื่อให้ได้ query ที่ client กำหนดเองและ graph ที่มี type กำกับ พร้อมกันนั้นคุณก็รับเรื่องใหม่มาดูแลด้วย — ปัญหา N+1 query, การจำกัด query cost และ authorization ที่ต้องทำทีละ field เลือก GraphQL เพราะข้อแลกเปลี่ยนตรงกับปัญหาของคุณ ไม่ใช่เพราะใหม่กว่า

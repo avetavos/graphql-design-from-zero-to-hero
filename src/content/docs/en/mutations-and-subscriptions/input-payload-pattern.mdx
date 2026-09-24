@@ -152,6 +152,32 @@ export const payloadCode = `(async () => {
 
 Read both results side by side. The invalid call returns `review: null` and a `userErrors` entry pointing at the `rating` field — and crucially, the top-level `errors` array is absent, because nothing went *wrong* with the request; the user simply sent bad data. The valid call returns the review and an empty `userErrors: []`. A client can branch on a single rule — "is `userErrors` empty?" — regardless of which mutation it called.
 
+## Common mistakes
+
+**Too thin a payload — returning just an `id`**
+
+Symptoms:
+- the client only knows the mutation succeeded, not how state changed
+- it must send a follow-up query every time just to refresh the UI
+- optimistic updates cannot sync because server-generated fields are missing
+
+**A "god input" — one input type for everything**
+
+Symptoms:
+- an `UpdateUserInput` with every user field made optional
+- no way to tell which fields are required for which operation
+- validation logic balloons to cover every combination
+
+> 💡 Real-world examples
+>
+> **GitHub GraphQL API:**
+> - `CreateIssueInput` has `repositoryId`, `title` (required), and optional fields like `body` and `assigneeIds` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/issues#mutation-createissue))
+> - `CreateIssuePayload` returns the full `issue` — not just an ID
+>
+> **Shopify Admin API:**
+> - it used to share one `ProductInput` between `productCreate` and `productUpdate`, but that type is now deprecated in favor of dedicated `ProductCreateInput` and `ProductUpdateInput` types ([`productCreate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate), [`productUpdate`](https://shopify.dev/docs/api/admin-graphql/latest/mutations/productUpdate)) — a real example of why a single "god input" covering every operation tends to get split apart as an API grows
+> - both payloads still return the full `product` plus `userErrors`, so the UI can update immediately after the mutation
+
 <Callout title="Input in, payload out">
 Give every non-trivial mutation a single `input: SomeInput!` argument and a `SomePayload!` return type. The input lets you add optional fields later without breaking the signature. The payload, with a nullable entity and a non-null `userErrors` list, gives the client one consistent shape to handle every mutation: check `userErrors`, and if it is empty, use the entity. This is the convention nearly every large GraphQL API converges on — adopt it before you need it.
 </Callout>

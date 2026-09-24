@@ -160,12 +160,12 @@ export const typeSystemCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub GraphQL API:**
-> - ใช้ custom scalar เช่น `URI`, `DateTime`, `HTML` นอกเหนือจาก built-in
+> - ใช้ custom scalar เช่น `URI`, `DateTime`, `HTML` นอกเหนือจาก built-in ([GitHub GraphQL scalar reference](https://docs.github.com/en/graphql/reference/scalars))
 > - type system ทำให้ client รู้ว่า field ไหน return URL, รูปแบบวันที่, หรือ HTML string
 >
 > **Shopify:**
-> - ใช้ Interface สำหรับ Node (ทุก object ที่มี `id`) เพื่อให้ cache ง่าย
-> - ใช้ Union สำหรับ search result ที่อาจเป็น Product, Collection, หรือ Page
+> - ใช้ `Node` interface (ทุก object ที่มี `id` แบบ global) เพื่อให้ fetch ผ่าน `node`/`nodes` query ได้โดยตรง ([Shopify `Node` interface](https://shopify.dev/docs/api/storefront/latest/interfaces/Node))
+> - ใช้ `SearchResultItem` union สำหรับผลลัพธ์ search ที่อาจเป็น `Product`, `Page`, หรือ `Article` ([Shopify `SearchResultItem`](https://shopify.dev/docs/api/storefront/latest/unions/SearchResultItem))
 
 <Callout title="อ่าน schema ก่อนเป็นอันดับแรก">
 เมื่อคุณเจอ GraphQL API ตัวใหม่ schema คือเอกสารประกอบ ก่อนเขียน query สักตัว อ่าน type ก่อน: มี field อะไรบ้าง คืนค่าอะไร อะไรเป็น non-null และ object type เชื่อมโยงกันที่ไหน ซึมซับ `!` ว่า "server รับประกันสิ่งนี้" และ `[X!]!` ว่า "ลิสต์ non-null ของค่า non-null" แล้วคุณจะทำนายทุก response ที่ API ตัวนั้นผลิตได้

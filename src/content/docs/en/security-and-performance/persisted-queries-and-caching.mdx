@@ -81,6 +81,30 @@ function charge(context, queryCost: number) {
 
 Stacked with the earlier lessons, the full picture is reassuring. Authentication names the caller, authorization gates each field, depth and complexity analysis reject abusive shapes, persisted queries freeze the set of allowed operations, caching removes repeated work, and rate limiting caps what remains. Each layer is simple; together they make a single flexible endpoint genuinely safe and fast.
 
+## Common mistakes
+
+**Assuming GraphQL caches like REST for free**
+
+Symptoms:
+- no persisted queries and no GET requests implemented
+- every request is a POST — CDN and HTTP caching cannot work
+- if caching matters a lot, a REST endpoint may genuinely be the better fit
+
+**Inconsistent field-level cache lifetimes**
+
+Symptoms:
+- different fields in the same response need different cache TTLs
+- a response bundles a user profile (rarely changes) with a notification count (changes constantly)
+- Fix: split queries with different cache requirements, or use a `@cacheControl` directive
+
+> 💡 Real-world examples
+>
+> **Apollo:**
+> - Automatic Persisted Queries: the client sends a 64-byte hash instead of the full query string (real queries often run well above 10KB), and the server looks it up in a registry ([Apollo: Improve GraphQL Performance with APQ](https://www.apollographql.com/blog/improve-graphql-performance-with-automatic-persisted-queries)) — how much payload that actually saves depends on the original query's size; there is no fixed percentage
+>
+> **Shopify:**
+> - the Storefront API supports Cache-Control-based caching at the CDN/edge (Oxygen), so some product-page requests get cached at the CDN, cutting latency for read-heavy operations ([Hydrogen caching docs](https://shopify.dev/docs/storefronts/headless/hydrogen/caching))
+
 <Callout title="Freeze what runs, cache what repeats, cap what is left">
 The endpoint's flexibility is wonderful in development and dangerous in production. Tame it with three habits. **Allowlist operations** with persisted (trusted) queries so only the operations your own apps shipped can execute — and remember APQ alone shrinks bandwidth but does not allowlist. **Cache** at the response level (keyed by viewer) and the per-field level (with `@cacheControl` TTLs), and serve persisted queries over `GET` so a CDN can help. **Rate limit** by spending the complexity budget, not raw request counts. Do all three and you keep GraphQL's ergonomics while removing most of its security and performance footguns.
 </Callout>

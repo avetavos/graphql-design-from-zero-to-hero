@@ -104,6 +104,39 @@ export const extensionsCode = `(async () => {
 
 In the output, `data.track` is `null` because the field is nullable, and the single error entry now carries `extensions.code === "NOT_FOUND"` plus the `argument` hint we attached. A client can read that code and render "track not found" without ever parsing the English message — exactly the programmatic contract a plain `Error` could not give us.
 
+| Pros | Trade-offs |
+|---|---|
+| Error codes let clients handle errors programmatically | Excessive extensions bloat the error response |
+| A timestamp or requestId in extensions helps debugging | Sensitive information in extensions can leak |
+| Custom extensions carry domain-specific error detail | No standard format for extensions — teams must agree on one |
+| Stack traces in extensions help local development | Stack traces in production are a security risk |
+
+## Common mistakes
+
+**Stack trace in the production response**
+
+Symptoms:
+- `extensions` still carries a `stacktrace` array in production
+- this exposes internal code paths and file structure to an attacker
+- Fix: strip the stack trace when `NODE_ENV === 'production'` — a `formatError` hook, or Apollo Server's `includeStacktraceInErrorResponses: false`
+
+**Undocumented error codes**
+
+Symptoms:
+- the client receives `"code": "ERR_42"` with no idea what it means
+- developers have to ask around or read the source to learn what a code means
+- Fix: document every error code in the schema description or your API reference
+
+> 💡 Real-world examples
+>
+> **Apollo Server:**
+> - error extensions carry a `code` plus an `http.status` for a custom HTTP status ([Apollo Server error docs](https://www.apollographql.com/docs/apollo-server/data/errors))
+> - production builds omit `stacktrace` by default via `includeStacktraceInErrorResponses` ([same docs](https://www.apollographql.com/docs/apollo-server/data/errors))
+>
+> **Stripe:**
+> - error codes are machine-readable strings such as `card_declined` and `insufficient_funds` ([Stripe error codes](https://docs.stripe.com/error-codes), [decline codes](https://docs.stripe.com/declines/codes))
+> - clients branch on each code without parsing the human-readable message
+
 <Callout title="Code for machines, message for humans">
 Treat `extensions.code` as a stable enum that clients depend on, and `message` as human-facing prose you are free to reword. Throw `GraphQLError` for the failures you anticipate — not found, unauthenticated, bad input — and give each a deliberate code. For everything unexpected, catch and mask: log the real cause server-side, return a generic `INTERNAL_SERVER_ERROR` to the client. Typed where it helps, opaque where it protects.
 </Callout>

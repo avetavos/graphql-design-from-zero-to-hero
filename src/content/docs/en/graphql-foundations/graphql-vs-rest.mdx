@@ -114,6 +114,29 @@ Reach for **REST** when your API is resource-shaped and cache-heavy (think publi
 
 Reach for **GraphQL** when many different clients need different slices of the same data, when views aggregate several related resources, when product teams iterate fast and want to add fields without coordinating endpoint releases, or when strong typing and introspection across the API surface bring real leverage.
 
+## Common mistakes
+
+**Reaching for GraphQL because of hype, not a problem**
+
+Symptoms:
+- an API has 5 clear endpoints, but the team switches to GraphQL because it is "modern"
+- the team spends time setting up GraphQL instead of shipping features
+
+**Assuming GraphQL is always faster than REST**
+
+Symptoms:
+- no DataLoader — N+1 makes GraphQL much slower than REST
+- no query depth limit — a client sends a deeply nested query and overloads the server
+
+> 💡 Real-world examples
+>
+> **Stripe:**
+> - Stripe's main public API is still REST today, not GraphQL ([Stripe API reference](https://docs.stripe.com/api))
+> - proof that REST still fits a public API that needs HTTP caching, easy-to-reason-about versioning, and broad client-library support
+>
+> **Airbnb:**
+> - uses Apollo Federation for its internal GraphQL platform across teams ([Airbnb Engineering: Reconciling GraphQL and Thrift](https://medium.com/airbnb-engineering/reconciling-graphql-and-thrift-at-airbnb-a97e8d290712))
+
 <Callout title="GraphQL is not a silver bullet">
 Adopting GraphQL trades easy HTTP caching and a familiar mental model for client-driven queries and a typed graph. You also inherit new concerns — the N+1 query problem, query-cost limits, and authorization that must run per field. Choose it because its trade-offs match your problem, not because it is newer.
 </Callout>

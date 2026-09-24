@@ -159,12 +159,12 @@ field `status` คืนค่า `SHIPPED` หาก resolver ผลิตค�
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - ใช้ custom scalar `URI` แทน `String` สำหรับ URL
+> - ใช้ custom scalar `URI` แทน `String` สำหรับ URL ([GitHub GraphQL scalar reference](https://docs.github.com/en/graphql/reference/scalars))
 > - `DateTime` scalar บังคับ ISO 8601 format — ไม่ต้องเดาว่า format คืออะไร
 >
-> **Stripe GraphQL API (internal):**
-> - enum สำหรับ currency, payment status, webhook event type
-> - ทำให้ client code เป็น exhaustive และ type-safe
+> **Shopify:**
+> - `CurrencyCode` enum ครอบคลุมสกุลเงินตาม ISO 4217 ทั้งหมดที่ store รองรับ ([Shopify `CurrencyCode`](https://shopify.dev/docs/api/admin-graphql/latest/enums/currencycode))
+> - enum สำหรับ order financial status เช่น `OrderDisplayFinancialStatus` ทำให้ client code เป็น exhaustive และ type-safe ([Shopify `OrderDisplayFinancialStatus`](https://shopify.dev/docs/api/admin-graphql/latest/enums/orderdisplayfinancialstatus))
 
 <Callout title="หยิบ enum มาใช้เมื่อค่าสามารถรู้ได้">
 scalar คือใบของ schema ของคุณ ดังนั้นจงใช้เวลาสักครู่กับแต่ละตัว เลือก `ID` แทน `String` สำหรับตัวระบุ นิยาม custom scalar เมื่อรูปแบบหนึ่งสมควรได้รับการตรวจสอบร่วมกัน และเลือก **enum** เมื่อใดก็ตามที่ค่าของ field ก่อเกิดเป็นชุดที่เล็ก ตายตัว และมีความหมาย enum ย้ายการตรวจสอบเข้าไปในระบบ type และเปลี่ยนตัว schema เองให้กลายเป็นรายการของตัวเลือกที่ถูกต้องตามกฎ — บั๊กน้อยลง เครื่องมือดีขึ้น สัญญาชัดเจนขึ้น

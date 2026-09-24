@@ -133,6 +133,40 @@ export const validationCode = `(async () => {
 
 Notice what is *missing* from the output: there is no top-level `errors` array. The rating of `9` broke a business rule, but because we modeled it as a `userErrors` field, the failure arrives as ordinary `data` — `data.addReview.review` is `null` and `data.addReview.userErrors` holds a typed entry pointing at the `rating` field. The client treats it like any other selection. Try changing `rating` to `4` and rerunning: `review` fills in and `userErrors` comes back empty.
 
+| Pros | Trade-offs |
+|---|---|
+| Validating before the resolver keeps invalid data out of business logic | Validation logic ends up split between the schema type system and a custom validator |
+| Field-specific error messages tell the client exactly what to fix | Adding Zod/Yup validation in a resolver is one more dependency |
+| Type validation is free from the GraphQL type system | Complex, cross-field validation rules are awkward to express in the type system |
+| Input type validation happens before the resolver runs | Business-rule validation still has to live in a service layer |
+
+## Common mistakes
+
+**Validating in a resolver by throwing a GraphQL error**
+
+Symptoms:
+- a resolver validates input and throws — the client sees the error in the top-level `errors` array
+- validation errors should live in the payload, not as a top-level error
+- Fix: separate system errors (throw) from business validation errors (`payload.userErrors`)
+
+**Validating only the type, not the business rule**
+
+Symptoms:
+- an email field is `String!` — that only validates it is non-null
+- there's no check that the email is correctly formatted or already taken
+- Fix: let the type system validate shape, and a service layer validate business rules
+
+> 💡 Real-world examples
+>
+> **Shopify:**
+> - mutations return `userErrors: [UserError!]!` for business validation ([Shopify `UserError` docs](https://shopify.dev/docs/api/admin-graphql/latest/objects/UserError))
+> - `UserError` carries a `field` (an array giving the field path) and a `message`
+> - the client knows exactly which field is wrong and can surface the error there
+>
+> **Zod + GraphQL (a general pattern, not tied to one product):**
+> - validate input with Zod inside the resolver, then convert the `ZodError` into a GraphQL payload error
+> - type-safe validation whose schema can be shared between client and server
+
 <Callout title="Validate in two layers, report on purpose">
 Let the schema do the structural work — required arguments, scalar types, enums — and never re-check those in resolvers; they are caught as request errors before your code runs. Reserve resolver logic for business rules the type system cannot express. Then choose your channel deliberately: throw a `GraphQLError` for the unrecoverable, and return typed `userErrors` in a payload for the recoverable, form-style mistakes you want clients to handle gracefully.
 </Callout>

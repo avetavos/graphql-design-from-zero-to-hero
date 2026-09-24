@@ -115,6 +115,32 @@ export const bestCode = `(async () => {
 
 The final line is the proof: after a create, a retry, and a rejected call, the store holds exactly **one** review. The retry returned the original review unchanged — idempotency in action — and the invalid call came back as a `userError` in the payload with `review: null`, never touching the store and never raising a top-level error. That is every best practice from this lesson visible in one output.
 
+## Common mistakes
+
+**Sending user errors through the top-level `errors` array instead of the payload**
+
+Symptoms:
+- the client has to parse `errors[0].message` to show a validation message under a form field
+- there is no way to distinguish "invalid rating" from "session expired" on the same channel
+- optimistic UI cannot tell whether to roll back or retry
+
+**Returning just a `Boolean` or an `id` from a mutation**
+
+Symptoms:
+- the client has to send a follow-up query every time to learn what changed
+- two round trips instead of one
+- optimistic UI cannot sync because server-assigned fields like `updatedAt` or `slug` are missing
+
+> 💡 Real-world examples
+>
+> **Relay:**
+> - Relay Classic (the older version) used to require every mutation to accept an `input` with a `clientMutationId` for client-side deduplication — Relay Modern (the current version) **no longer requires it** ([the facebook/relay PR that dropped the requirement](https://github.com/facebook/relay/pull/2349)), though many public APIs (GitHub included) still keep the field for backward compatibility
+> - returning a payload object with a `userErrors` array instead of top-level errors for validation is still a popular pattern today
+>
+> **Apollo Client:**
+> - the `optimisticResponse` option needs an object whose shape matches the server payload ([Apollo Client optimistic UI docs](https://www.apollographql.com/docs/react/performance/optimistic-ui))
+> - if a mutation returns only an `id` with no other fields, an optimistic update is not possible
+
 <Callout title="The mutation checklist">
 Before you ship a mutation, run the list. Is it safe to retry — and if not, does it accept an idempotency key? Do recoverable, per-field problems land in the payload's `userErrors` while only protocol and unexpected failures throw to the top-level `errors`? Does one user action map to one round trip, with enough data returned to skip a follow-up read? And does the payload give an optimistic client what it needs to reconcile or roll back? Tick those four boxes and your mutation will behave the same on a flaky train connection as it does in a clean demo.
 </Callout>

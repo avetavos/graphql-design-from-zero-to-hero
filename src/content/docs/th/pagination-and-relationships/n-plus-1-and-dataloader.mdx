@@ -170,12 +170,12 @@ export const loaderCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Facebook (ผู้สร้าง DataLoader):**
-> - DataLoader เกิดจาก internal need ที่ Facebook ก่อนจะ open source
-> - batch loading ช่วยลด database round trip จากหลักร้อยเหลือหลักสิบต่อ request
+> - DataLoader มาจาก "Loader" API ภายในของ Facebook (เขียนขึ้นตั้งแต่ปี 2010) ที่กลายมาเป็นส่วนหนึ่งของ Ent framework ก่อนจะถูก open source เป็น `dataloader` package ที่ใช้กับ graphql-js ทุกวันนี้ ([graphql/dataloader README](https://github.com/graphql/dataloader))
+> - หลักการคือ batch หลาย `load()` ในหนึ่ง event loop tick ให้เป็น query เดียว จำนวน round trip ที่ลดได้จริงขึ้นกับรูปร่างของ query — ไม่มีตัวเลขสากลตายตัว
 >
-> **Shopify:**
-> - ใช้ DataLoader สำหรับทุก relationship ใน GraphQL schema
-> - ประมวลผล request ที่มี product + variant + inventory ด้วย batch query
+> **แพตเทิร์นทั่วไปที่พบได้บ่อยในทีมที่ใช้ GraphQL (ไม่ผูกกับบริษัทใดบริษัทหนึ่ง):**
+> - ใช้ DataLoader สำหรับแทบทุก relationship field ใน schema
+> - request ที่ query product + variant + inventory พร้อมกันก็ยังจบด้วย batch query ต่อ type อย่างละหนึ่งครั้ง
 
 <Callout title="หนึ่ง loader ต่อหนึ่ง request batch ด้วย key">
 ปัญหา N+1 เป็นเรื่องเชิงโครงสร้าง เพราะ GraphQL resolve แต่ละ field แยกกัน list ของ N item จึง trigger resolver ลูก N ตัว DataLoader แก้ด้วยการเลื่อนการโหลดไปไว้ท้าย tick เรียก batch function ของคุณครั้งเดียวด้วย key ทั้งหมด แล้ว cache รายการซ้ำภายใน request สร้าง loader ใหม่ต่อหนึ่ง request (จะได้ไม่รั่ว cache ข้ามผู้ใช้) เขียน `batchFn` ที่คืนผลลัพธ์เรียงตามลำดับเดียวกับ key แล้วเรียก `loader.load(key)` จาก resolver ทำแบบนี้แล้ว query ที่ซ้อนลึก ๆ จะเหลือ query ที่ batch ไว้ไม่กี่อัน แทนที่จะเป็นหลายร้อย

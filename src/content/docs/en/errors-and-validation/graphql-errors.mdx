@@ -81,6 +81,31 @@ export const errorsCode = `(async () => {
 
 Look at the first block: there is no `data` key, only `errors`, and the entry carries `locations` pointing at where `ghostField` appeared in the query. Now the second block: `data` is present with `nowPlaying` set to `null`, and the matching error carries a `path` of `["nowPlaying"]` so a client knows exactly which field went missing. Same `errors` array, two very different situations — and you can tell them apart by whether `data` exists.
 
+## Common mistakes
+
+**Throwing a generic Error everywhere**
+
+Symptoms:
+- `throw new Error("Something went wrong")` at every error site in a resolver
+- the client has no idea what happened — no error code, no detail
+- Fix: use specific error types (`UserNotFoundError`, `ValidationError`) with a code in `extensions`
+
+**Not checking the errors array on the client**
+
+Symptoms:
+- the client only checks whether `data` is present
+- the request partially failed but the client renders as if it fully succeeded
+- Fix: always check the `errors` array, even when `data` is present
+
+> 💡 Real-world examples
+>
+> **Apollo Server (current, v4+):**
+> - the old `AuthenticationError` / `ForbiddenError` / `UserInputError` classes were removed — throw `GraphQLError` with an `extensions.code` instead ([migration guide](https://github.com/apollographql/apollo-server/blob/main/docs/source/migration-from-v3.mdx))
+>
+> **GitHub:**
+> - error entries carry `message`, `type`, and `path` ([example response](https://github.com/orgs/community/discussions/24737))
+> - the client knows exactly which field in the query failed and why
+
 <Callout title="A 200 can still carry errors">
 The HTTP status of a GraphQL response is mostly about the transport, not the operation. An operation that parsed, validated, and executed will typically return HTTP `200` even when half its fields threw. Never treat `200` as "everything worked." The truth lives in the `errors` array and in whether `data` is present — read those, not the status line.
 </Callout>

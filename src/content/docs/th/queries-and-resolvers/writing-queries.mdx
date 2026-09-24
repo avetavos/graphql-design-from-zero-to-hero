@@ -157,12 +157,12 @@ response เป็น object ที่ซ้อนกัน โดย `currentUs
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - ทุก query ใน GitHub documentation มีชื่อ operation ชัดเจน
-> - ช่วยให้ rate limiting และ monitoring ทำงานได้แม่นยำ
+> - ตัวอย่าง query ใน GitHub GraphQL documentation ตั้งชื่อ operation ชัดเจนแทบทุกจุด ([GitHub GraphQL docs](https://docs.github.com/en/graphql))
+> - operation name ช่วยให้ monitoring และ debugging log ทำงานได้แม่นยำขึ้น
 >
 > **Apollo Client:**
-> - operation name ใช้เป็น cache key
-> - named query ทำให้ Apollo Studio tracking ทำงานได้
+> - cache key จริง ๆ มาจาก `__typename` + `id` ของ object ไม่ใช่ operation name แต่ operation name ยังสำคัญมากสำหรับ DevTools และ Apollo Studio ([Apollo Client caching docs](https://www.apollographql.com/docs/react/caching/overview))
+> - named query ทำให้เห็น operation แยกกันชัดเจนใน Apollo Studio tracking
 
 <Callout title="query คือรูปร่างของ response">
 GraphQL query กับ response มีโครงสร้างเหมือนกัน ตัว scalar เป็น leaf ที่จบกิ่ง ส่วน object type เปิด selection set ใหม่แล้วเดินต่อ เมื่อคุณเขียน query คุณกำลังวาด tree ที่ server จะเติมให้พอดีเป๊ะ ตั้งชื่อ operation ให้เรียบร้อย แล้วซ้อนเฉพาะใน object type เท่านั้น สุดท้าย response จะไม่มีวันทำให้คุณประหลาดใจ

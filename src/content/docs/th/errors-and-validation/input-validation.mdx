@@ -159,11 +159,11 @@ export const validationCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Shopify:**
-> - mutation return `userErrors: [UserError!]!` สำหรับ business validation
+> - mutation return `userErrors: [UserError!]!` สำหรับ business validation ([Shopify `UserError` docs](https://shopify.dev/docs/api/admin-graphql/latest/objects/UserError))
 > - `UserError` มี `field` (array ของ field path) และ `message`
 > - client รู้ว่า field ไหนผิดและแสดง error ที่ field นั้นได้
 >
-> **Zod + GraphQL:**
+> **Zod + GraphQL (แพตเทิร์นทั่วไป ไม่ผูกกับผลิตภัณฑ์ใดผลิตภัณฑ์หนึ่ง):**
 > - ใช้ Zod validate input ใน resolver แล้วแปลง ZodError เป็น GraphQL payload error
 > - type-safe validation ที่ share schema ระหว่าง client และ server ได้
 

@@ -102,13 +102,11 @@ export const partialCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Netflix:**
-> - หน้า home แสดง recommendation section — ถ้า recommendation service ล้ม
-> - section นั้น null แต่ส่วนอื่น (hero, trending) ยังแสดงได้
-> - partial result ทำให้ degraded experience ดีกว่า full error
+> - GraphQL Federation gateway ของ Netflix ออกแบบให้ downstream service ที่ล้มคืน `null` เฉพาะส่วนของตัวเองพร้อม error entry แทนที่จะทำให้ทั้ง query fail — ส่วนที่เหลือของหน้ายังทำงานได้ตามปกติ ([Netflix TechBlog: GraphQL Federation part 1](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-1-ae3557c187e2), [part 2](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-2-bbe71aaec44a))
 >
-> **Airbnb:**
-> - listing page มีหลาย section (price, reviews, host, amenities)
-> - แต่ละ section resolver แยกกัน — section ที่ fail ไม่ block section อื่น
+> **แพตเทิร์นทั่วไปที่พบได้บ่อย (ไม่ผูกกับบริษัทใดบริษัทหนึ่ง):**
+> - หน้าที่มีหลาย section อิสระ (ราคา รีวิว โฮสต์ สิ่งอำนวยความสะดวก) มักให้แต่ละ section มี resolver ของตัวเองและเป็น nullable
+> - section ที่ fail ไม่ block section อื่น เพราะ error ถูกกักไว้ที่ nullable field ของ section นั้น
 
 <Callout title="nullability คือเครื่องมือกักกันความล้มเหลว">
 ทุก `!` ที่คุณเติมเข้าไปคือการตัดสินใจสองเรื่องพร้อมกัน ทั้งเรื่องค่าต้องมีจริงและเรื่องความล้มเหลวจะลามแค่ไหน field แบบ non-null ให้การรับประกันที่แข็งแรงกับ client แต่ก็เปลี่ยน resolver พังตัวเดียวให้กลายเป็น subtree ล่มทั้งก้อน ส่วน field แบบ nullable แลกการรับประกันนั้นไปกับความสามารถในการกักความล้มเหลวและส่ง partial response กลับไปได้ ขีดเส้นนี้อย่างตั้งใจ ให้ leaf ที่ผลิตได้ทุกครั้งเป็น non-null แล้วเก็บ field ที่เสี่ยงพังหรือมีก็ได้ไม่มีก็ได้ไว้เป็น nullable เพื่อไม่ให้ dependency ที่ไม่เสถียรตัวเดียวลบ query ทั้งอันจนว่างเปล่า

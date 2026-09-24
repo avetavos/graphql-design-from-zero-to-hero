@@ -164,11 +164,11 @@ export const unionCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - `Node` interface: ทุก object ที่มี `id` implement interface นี้
+> - `Node` interface: ทุก object ที่มี `id` implement interface นี้ ([GitHub: Using global node IDs](https://docs.github.com/en/graphql/guides/using-global-node-ids))
 > - ทำให้ client ใช้ `node(id: ID!)` query เพื่อ fetch object ใด ๆ ด้วย global ID
 >
 > **Shopify:**
-> - `SearchResult` Union รวม `Product`, `Collection`, `Page`, `Article`
+> - `SearchResultItem` Union รวม `Article`, `Page`, `Product` ([Shopify `SearchResultItem`](https://shopify.dev/docs/api/storefront/latest/unions/SearchResultItem))
 > - client ใช้ inline fragment เลือก field ตาม `__typename`
 
 <Callout title="interface = field ที่ใช้ร่วมกัน; union = ทางเลือกที่ไม่เกี่ยวข้องกัน">

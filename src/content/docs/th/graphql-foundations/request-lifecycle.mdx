@@ -95,11 +95,10 @@ export const lifecycleCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Apollo Server:**
-> - lifecycle plugin ช่วย track ทุก phase: parse, validate, execute
-> - ใช้ใน production monitoring ที่ Apollo Studio
+> - plugin hook `parsingDidStart`, `validationDidStart`, `executionDidStart` ให้ track ได้ทุก phase ([Apollo Server plugin event reference](https://www.apollographql.com/docs/apollo-server/integrations/plugins-event-reference))
 >
 > **Yoga (GraphQL Yoga):**
-> - envelop plugin system ที่ intercept ทุก phase ของ lifecycle
+> - ใช้ Envelop plugin system ที่ intercept ทุก phase ของ lifecycle ([Yoga docs](https://the-guild.dev/graphql/yoga-server))
 > - ใช้สำหรับ tracing, auth, rate limiting ใน pipeline
 
 <Callout title="ประเด็นสำคัญ">

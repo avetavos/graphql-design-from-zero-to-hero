@@ -108,6 +108,31 @@ export const selectCode = `(async () => {
 
 The resolver returns a rich object with `year`, `pages`, and the author's `country`, yet none of those appear in the result. The query asked for `title` and the nested `author` `name`, so that — and only that — comes back. Add `year` to the selection and run again to see the response grow to match.
 
+## Common mistakes
+
+**Assuming GraphQL replaces REST in every case**
+
+Symptoms:
+- GraphQL gets used for a simple CRUD API that three endpoints would have handled
+- added complexity with no benefit from flexible querying
+- REST is still better for a public API that wants HTTP caching
+
+**Teaching the syntax before the problem**
+
+Symptoms:
+- a developer learns the SDL but does not understand what problem it solves
+- if a developer has never felt over-fetching pain, GraphQL's benefit will not click
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - opened the GraphQL API v4 in early access in September 2016 as an *additional* API alongside REST API v3, not a replacement ([GitHub blog: The GitHub GraphQL API](https://github.blog/developer-skills/github/the-github-graphql-api/))
+> - developers can specify exactly which fields they need, cutting round trips compared to stitching together several REST endpoints for the same data (the exact reduction depends on the use case — there is no universal fixed number)
+>
+> **Shopify Storefront API:**
+> - lets frontend teams fetch product, variant, and collection data in a single round trip ([Shopify Storefront API](https://shopify.dev/docs/api/storefront))
+> - reduces the over-fetching that came from REST endpoints returning every product field
+
 <Callout title="Why this matters">
 The schema is a promise about *what is possible*; the query is a request for *what is needed right now*. Separating those two concerns is the heart of GraphQL. The same API can serve a data-hungry desktop dashboard and a frugal mobile screen without either one compromising for the other.
 </Callout>

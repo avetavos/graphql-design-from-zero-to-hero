@@ -135,6 +135,32 @@ export const designCode = `(async () => {
 
 The output tells the story: `createReview` returns a brand-new review with `published: false`, and the separate `publishReview` flips that one field. Two intents, two mutations, each returning the affected object. A reader scanning the schema can guess exactly what each does — which is the whole point of naming by intent.
 
+## Common mistakes
+
+**Naming a mutation after CRUD instead of intent**
+
+Symptoms:
+- `updateUser(id, fields)` accepts anything and changes anything
+- the server cannot tell whether the client is publishing, archiving, or just fixing a typo in the name
+- no way to run different validation or side effects per intent
+
+**Bundling several intents into one mutation to save a round trip**
+
+Symptoms:
+- `createAndPublishReview` does two things at once
+- a failure halfway through leaves data inconsistent
+- hard to unit test because one test has to cover multiple behaviors
+
+> 💡 Real-world examples
+>
+> **GitHub GraphQL API:**
+> - keeps `createIssue`, `updateIssue`, `closeIssue`, and `reopenIssue` genuinely separate ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
+> - the audit log can tell exactly who did what straight from the mutation name
+>
+> **Shopify Storefront API:**
+> - `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove` keep intent distinct ([Shopify Storefront `cartLinesAdd`](https://shopify.dev/docs/api/storefront/latest/mutations/cartLinesAdd))
+> - each always returns the full `Cart` object so the client can sync its UI in a single round trip
+
 <Callout title="Mutations are verbs, not rows">
 Design mutations around the actions your product exposes, not the tables underneath them. Start each name with a verb that states the intent (`createReview`, `publishReview`, `archiveTrack`), keep each mutation to one logical change so a partial failure can never leave data half-updated, and always return the affected object so the client can refresh without a second request. If you find yourself writing one `updateX` that can do five different things, you have five mutations hiding in one.
 </Callout>

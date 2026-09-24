@@ -163,6 +163,31 @@ export const resolvers = {
 
 To see it stream: open the project, then in one GraphiQL tab run `subscription { reviewAdded(trackId: "t1") { id rating } }` and leave it running. In a second tab run the `addReview` mutation for `trackId: "t1"`. The subscription tab updates the instant the mutation publishes — that is the whole value of the stream, and no amount of polling matches its latency.
 
+## Common mistakes
+
+**Using a subscription for everything instead of a query**
+
+Symptoms:
+- subscribing to `userProfile` to watch data that barely ever changes
+- the server carries far more open connections than it needs to
+- a plain query would be faster and cacheable
+
+**Not filtering events by argument**
+
+Symptoms:
+- `subscription { reviewAdded }` delivers every review for every track, not just the one the client cares about
+- the client has to filter client-side every time — needless extra traffic
+- Fix: the resolver should take an argument like `trackId` to scope the subscription from the start
+
+> 💡 Real-world examples
+>
+> **AWS AppSync:**
+> - subscriptions accept arguments directly, e.g. `updatedPost(id: ID!, author: String)`, and the client subscribes with the values it wants ([AWS AppSync real-time subscriptions](https://docs.aws.amazon.com/appsync/latest/devguide/aws-appsync-real-time-data.html)), so it never receives events it doesn't care about
+>
+> **Hasura:**
+> - a live-query subscription only emits a new result when the subscribed data actually changes (insert/update/delete) ([Hasura subscriptions docs](https://hasura.io/docs/2.0/subscriptions/overview/))
+> - filtering through arguments/`where` on the subscription query itself scopes it to exactly the data a client cares about
+
 <Callout title="Subscriptions are open channels, not extra reads">
 A subscription is a long-lived, stateful connection: one `subscribe` call, many pushed payloads, until the client disconnects. Implement it as two halves — `subscribe` produces the event stream (usually from a pub/sub bus a mutation publishes to), and `resolve` shapes each event into the payload. Carry it over SSE by default, or WebSocket when you need two-way. And resist the temptation to subscribe to everything: if a change is driven by the client's own mutation, just return the result. Save subscriptions for events that arrive on the server's clock, not the client's.
 </Callout>

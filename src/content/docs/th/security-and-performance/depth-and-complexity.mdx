@@ -142,11 +142,11 @@ output จัดอันดับสาม query ตาม depth แล้ว�
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - GraphQL API มี rate limit ตาม complexity point
+> - GraphQL API มี rate limit ตาม complexity point ([GitHub rate limits and query limits](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api))
 > - `rateLimit { cost, remaining, resetAt }` ใน response บอก client ว่าใช้ไปเท่าไร
 >
 > **Shopify:**
-> - query cost limit ตาม "cost" ของแต่ละ field
+> - query cost limit ตาม "cost" ของแต่ละ field คำนวณด้วย static analysis ก่อน execute จริง ([Shopify Engineering: Rate Limiting GraphQL APIs by Calculating Query Complexity](https://shopify.engineering/rate-limiting-graphql-apis-calculating-query-complexity))
 > - list field มี cost สูงกว่า scalar — `products(first: 100)` แพงกว่า `product { title }`
 
 <Callout title="วัด cost แล้วปฏิเสธก่อนที่คุณจะ execute">

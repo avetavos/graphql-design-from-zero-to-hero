@@ -140,12 +140,12 @@ export const bestCode = `(async () => {
 
 > 💡 ตัวอย่างจากของจริง
 >
-> **Relay (Facebook's GraphQL client):**
-> - กำหนด convention ว่า mutation ทุกตัวต้องมี `clientMutationId` สำหรับ idempotency
-> - คืน payload object ที่มี `userErrors` array เสมอ — ไม่ใช้ top-level errors สำหรับ validation
+> **Relay:**
+> - Relay Classic (เวอร์ชันเก่า) เคยบังคับให้ mutation ทุกตัวรับ `input` ที่มี `clientMutationId` สำหรับ deduplicate ฝั่ง client — Relay Modern (ปัจจุบัน) **ไม่บังคับแล้ว** ([facebook/relay PR ที่ถอด requirement นี้ออก](https://github.com/facebook/relay/pull/2349)) แต่หลาย API สาธารณะ (เช่น GitHub) ยังคง field นี้ไว้เพื่อ backward compatibility
+> - payload object ที่มี `userErrors` array แทน top-level errors สำหรับ validation ยังเป็น pattern ที่นิยมอยู่ในปัจจุบัน
 >
 > **Apollo Client:**
-> - `optimisticResponse` option ต้องการ object ที่มี shape ตรงกับ server payload
+> - `optimisticResponse` option ต้องการ object ที่มี shape ตรงกับ server payload ([Apollo Client optimistic UI docs](https://www.apollographql.com/docs/react/performance/optimistic-ui))
 > - ถ้า mutation คืนแค่ `id` โดยไม่มี field อื่น optimistic update ทำไม่ได้
 
 <Callout title="เช็กลิสต์สำหรับ mutation">

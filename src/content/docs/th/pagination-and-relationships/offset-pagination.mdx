@@ -132,11 +132,10 @@ export const offsetCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Stack Overflow:**
-> - ใช้ offset pagination สำหรับ question list — เหมาะเพราะ content ไม่เปลี่ยนบ่อย
-> - page URL มี `?page=2` — shareable และ bookmarkable
+> - หน้ารายการคำถามใช้ offset pagination ผ่าน URL param `?page=2` ให้เห็นได้จริงจาก URL ของเว็บไซต์ ([ตัวอย่าง: stackoverflow.com/questions?page=2](https://stackoverflow.com/questions?page=2)) — shareable และ bookmarkable
 >
-> **Admin dashboards:**
-> - offset pagination เหมาะสำหรับ admin table ที่ต้องการ random access และ page number
+> **แพตเทิร์นทั่วไปในหน้า admin (ไม่ผูกกับผลิตภัณฑ์ใดผลิตภัณฑ์หนึ่ง):**
+> - offset pagination เหมาะสำหรับ admin table ที่ต้องการ random access และเลขหน้า
 
 <Callout title="หยิบ offset มาใช้เมื่อ list เล็กและเสถียร">
 offset pagination เป็นค่า default ที่ถูกต้องสำหรับ list ที่สั้นและค่อนข้างนิ่ง เช่น ตารางในหน้า admin, การตั้งค่า หรือไม่กี่หน้าที่ผู้ใช้คาดหวังการนำทางด้วยเลขหน้า implement ง่ายมากและจับคู่ลงบน SQL ได้ตรง ๆ แต่ต้องจ่ายต้นทุนที่เพิ่มขึ้นในหน้าลึก ๆ และอาจทำให้ item ซ้ำหรือถูกข้ามได้เมื่อ list เบื้องล่างเปลี่ยนระหว่าง request สำหรับ collection ที่ใหญ่หรือเคลื่อนไหวเร็ว pagination แบบ cursor ปลอดภัยกว่า

@@ -108,6 +108,30 @@ export const offsetCode = `(async () => {
 
 The result returns items 3–4 (`offset: 2`, `limit: 2`), plus a `totalCount` and a `hasMore` flag the client can use to render a pager. This is offset pagination working well — a small, stable list where deep offsets and concurrent edits are not a concern. The moment your list is large or actively changing, the two leaks above start to bite, which is exactly what the next lesson on cursor connections is designed to solve.
 
+## Common mistakes
+
+**Offset pagination on a real-time feed**
+
+Symptoms:
+- a feed that gets new items frequently — a user pages to page 2 but sees the same item as page 1
+- offset pagination is not stable against frequently-changing data
+- Fix: use cursor pagination (a Relay connection) for feeds
+
+**A separate count query on every request**
+
+Symptoms:
+- every page request runs an extra `COUNT(*)`
+- expensive on a large table — PostgreSQL has to do a sequential scan
+- Fix: cache the total count, or use an estimated count instead of an exact one
+
+> 💡 Real-world examples
+>
+> **Stack Overflow:**
+> - the question list uses offset pagination via the `?page=2` URL parameter, visible directly in the site's own URLs ([example: stackoverflow.com/questions?page=2](https://stackoverflow.com/questions?page=2)) — shareable and bookmarkable
+>
+> **A common admin-page pattern (not tied to one product):**
+> - offset pagination fits admin tables that need random access and page numbers
+
 <Callout title="Reach for offset when the list is small and stable">
 Offset pagination is the right default for short, mostly static lists — admin tables, settings, a handful of pages where users expect numbered navigation. It is trivial to implement and maps directly onto SQL. But it pays a growing cost on deep pages, and it can duplicate or skip items when the underlying list changes between requests. For large or fast-moving collections, cursor-based pagination is the safer choice.
 </Callout>

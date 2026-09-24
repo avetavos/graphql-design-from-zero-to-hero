@@ -71,6 +71,31 @@ export const lifecycleCode = `(async () => {
 
 Read the output carefully. There is no `data` for the book; instead you get an `errors` array whose message says that `colour` cannot be queried on type `Book`, complete with the line and column where it appears. This is the validate phase doing its job. Fix the query — change `colour` to `year` — and run it again to watch the request sail through validation and into execution, returning real data.
 
+## Common mistakes
+
+**Business logic directly in the resolver**
+
+Symptoms:
+- a resolver mixes SQL queries, validation, auth checks, and business rules together
+- hard to test — a resolver's unit test has to mock the database
+- Fix: separate data fetching from business logic — keep resolvers thin
+
+**No error boundary in the resolver**
+
+Symptoms:
+- a resolver throws an unhandled error and fails the whole query
+- the client cannot tell which field failed and which succeeded
+- Fix: handle errors deliberately in the resolver — return null or throw a GraphQL error
+
+> 💡 Real-world examples
+>
+> **Apollo Server:**
+> - plugin hooks (`parsingDidStart`, `validationDidStart`, `executionDidStart`) let you track every phase ([Apollo Server plugin event reference](https://www.apollographql.com/docs/apollo-server/integrations/plugins-event-reference))
+>
+> **GraphQL Yoga:**
+> - uses the Envelop plugin system, which intercepts every phase of the lifecycle ([Yoga docs](https://the-guild.dev/graphql/yoga-server))
+> - used for tracing, auth, and rate limiting in the pipeline
+
 <Callout title="The takeaway">
 Parse catches *bad grammar*. Validate catches *queries the schema cannot honour* — and stops them before any resolver runs, which is why a typed schema makes a GraphQL API both safer and more predictable. Execute is the only phase that touches your data. When you see an `errors` array with no `data`, the request almost always failed at parse or validate, so look at the query and schema before you suspect your resolvers.
 </Callout>

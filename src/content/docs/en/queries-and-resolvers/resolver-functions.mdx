@@ -120,6 +120,31 @@ export const resolverCode = `(async () => {
 
 Notice that `id` and `title` have no explicit `resolve` function — the default resolver reads them straight off the parent object the `track` resolver returned. The `artist` resolver simply forwards `parent.artist`, which then becomes the parent for `name`. Each resolver only ever looks one level up and one field across.
 
+## Common mistakes
+
+**Heavy business logic in the resolver**
+
+Symptoms:
+- a resolver mixes validation, authorization, database queries, and transformation in one function
+- hard to test because of all the side effects
+- Fix: keep resolvers to 1-2 lines that call a service or repository
+
+**No DataLoader for a relationship**
+
+Symptoms:
+- `Post.author`'s resolver runs `db.findUser(post.authorId)` for every post
+- 100 posts means 100 database queries (N+1)
+- Fix: use DataLoader to batch them into a single request
+
+> 💡 Real-world examples
+>
+> **GraphQL Yoga:**
+> - a spec-compliant GraphQL server that does not tie resolvers to any particular data source — one resolver can call a database, a REST API, or a cache ([Yoga docs](https://the-guild.dev/graphql/yoga-server))
+>
+> **Prisma:**
+> - a popular ORM for database-backed resolvers ([Prisma Client docs](https://www.prisma.io/docs/orm/prisma-client))
+> - `prisma.user.findUnique()` inside a resolver keeps the code short and type-safe
+
 <Callout title="Resolve one field, one level at a time">
 A resolver answers exactly one question: "given my `parent` and `args`, what is this field's value?" It never reaches down into children — the engine handles descent by passing each return value as the next `parent`. Lean on default resolvers for plain property reads, share per-request state through `context`, and write explicit resolvers only where real work happens.
 </Callout>

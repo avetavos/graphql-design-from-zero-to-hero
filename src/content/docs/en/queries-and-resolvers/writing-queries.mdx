@@ -133,6 +133,32 @@ export const nestedCode = `(async () => {
 
 The response is a nested object: `currentUser` holds a `name` and a `favoriteTrack`, and `favoriteTrack` holds a `title`. Every brace you opened in the query produced one level of nesting in the result. Try removing the inner `title` line — the server will reject the query, because a field returning the `Track` object type must have a selection set.
 
+## Common mistakes
+
+**Building the query string dynamically instead of using variables**
+
+Symptoms:
+- `` `query { user(id: "${userId}") { name } }` `` — string interpolation inside a query
+- risks injection and defeats query caching
+- Fix: always use a variable: `query GetUser($id: ID!) { user(id: $id) { name } }`
+
+**Leaving operations unnamed**
+
+Symptoms:
+- sending an anonymous query like `query { ... }` instead of `query GetUserProfile { ... }`
+- monitoring tools just show "anonymous", making traces hard to follow
+- Fix: name every operation for tracing and debugging
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - almost every example query in the GitHub GraphQL docs names its operation ([GitHub GraphQL docs](https://docs.github.com/en/graphql))
+> - operation names make monitoring and debug logs far easier to follow
+>
+> **Apollo Client:**
+> - the actual cache key comes from an object's `__typename` plus `id`, not the operation name — but the operation name still matters a great deal for DevTools and Apollo Studio ([Apollo Client caching docs](https://www.apollographql.com/docs/react/caching/overview))
+> - naming queries lets Apollo Studio track each operation distinctly
+
 <Callout title="The query is the response shape">
 A GraphQL query and its response have the same structure. Scalars are leaves and end a branch; object types open a new selection set and continue it. When you write a query, you are drawing the exact tree the server will fill in. Name your operations, nest only into object types, and the response will never surprise you.
 </Callout>

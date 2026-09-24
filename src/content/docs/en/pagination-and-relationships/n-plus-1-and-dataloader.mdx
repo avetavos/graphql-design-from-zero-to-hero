@@ -146,6 +146,32 @@ export const loaderCode = `(async () => {
 
 The output makes the difference concrete: with four posts the unbatched path calls the author lookup **4** times, while the batched loader's `batchFn` fires **once** — the keys were collected during a single tick and resolved together. In production that batch function would be one `WHERE id IN (…)` query instead of dozens. (The real `dataloader` package, importable the same way via `await import('https://esm.sh/dataloader@2')`, does exactly this with added caching and edge-case handling; the loader above is a minimal version to show the mechanism.)
 
+## Common mistakes
+
+**A resolver that queries the database per field**
+
+Symptoms:
+- `Post.author` resolver runs `db.findUser(post.authorId)` every time
+- 100 posts means 100 separate database queries
+- Fix: `DataLoader.load(post.authorId)` — batched into a single query
+
+**A DataLoader shared across requests**
+
+Symptoms:
+- one DataLoader is created at server startup and reused for every request
+- the per-request cache breaks — user A sees user B's data
+- Fix: create a fresh DataLoader per request, inside the context factory
+
+> 💡 Real-world examples
+>
+> **Facebook (DataLoader's creator):**
+> - DataLoader traces back to Facebook's internal "Loader" API (written in 2010), which became part of the Ent framework before being open-sourced as the `dataloader` package used with graphql-js today ([graphql/dataloader README](https://github.com/graphql/dataloader))
+> - the idea is batching many `load()` calls within one event-loop tick into a single query; how many round trips that actually saves depends on the query shape — there is no universal fixed number
+>
+> **A common pattern across GraphQL teams (not tied to one company):**
+> - DataLoader gets used for nearly every relationship field in a schema
+> - a request that queries product, variant, and inventory together still ends up with one batched query per type
+
 <Callout title="One loader per request, batching by key">
 The N+1 problem is structural: GraphQL resolves each field on its own, so a list of N items triggers N child resolvers. DataLoader fixes it by deferring loads to the end of the tick, calling your batch function once with all the keys, and caching repeats within the request. Create a fresh loader per request (so caches never leak between users), write a `batchFn` that returns results in the same order as the keys, and call `loader.load(key)` from your resolvers. Do this and a deeply nested query stays a handful of batched queries instead of hundreds.
 </Callout>

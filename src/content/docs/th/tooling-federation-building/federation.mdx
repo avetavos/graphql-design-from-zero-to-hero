@@ -104,12 +104,11 @@ gateway ไม่ได้รวม schema แบบมั่ว ๆ แต่�
 > 💡 ตัวอย่างจากของจริง
 >
 > **Airbnb:**
-> - ใช้ Apollo Federation สำหรับ internal GraphQL platform
-> - แต่ละ team ดูแล subgraph: listing, booking, user, review
-> - schema gateway รวม subgraph สำหรับ mobile และ web client
+> - ใช้ Apollo Federation สำหรับ internal GraphQL platform ระหว่าง team ต่าง ๆ ([Airbnb Engineering: Reconciling GraphQL and Thrift](https://medium.com/airbnb-engineering/reconciling-graphql-and-thrift-at-airbnb-a97e8d290712))
+> - schema gateway รวม subgraph ของแต่ละ team เข้าด้วยกันสำหรับ mobile และ web client
 >
 > **Netflix:**
-> - Federated GraphQL ช่วยให้ 100+ team ทำงานอิสระ
+> - Federated GraphQL รองรับ Domain Graph Service (DGS) มากกว่า 70 ตัวและนักพัฒนาหลายร้อยคนที่ทำงานอิสระต่อกัน ([Netflix TechBlog: GraphQL Federation part 1](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-1-ae3557c187e2), [part 2](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-2-bbe71aaec44a))
 > - schema registry ติดตาม breaking change ก่อน deploy
 
 <Callout title="federate ตาม domain และเฉพาะเมื่อจำเป็นเท่านั้น">

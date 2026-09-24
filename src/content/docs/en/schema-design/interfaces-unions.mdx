@@ -140,6 +140,32 @@ export const unionCode = `(async () => {
 
 Each item in the list came back tagged with its `__typename`, and only the inline fragment matching that type contributed fields. The `Episode` carried `seasonNumber`; the `Movie` carried `rating`. One field, two shapes, fully type-safe.
 
+## Common mistakes
+
+**An interface with no real shared field**
+
+Symptoms:
+- an interface `Node` is created with only `id: ID!` and no shared behavior
+- every type implements it but polymorphism is never actually used
+- Fix: an interface earns its keep only when there is real shared behavior
+
+**A union with just one member**
+
+Symptoms:
+- `union UserResult = User` — a union with a single type
+- adds indirection with no benefit
+- Fix: use the type directly, or wait until there are genuinely multiple members
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - the `Node` interface: every object with an `id` implements it ([GitHub: Using global node IDs](https://docs.github.com/en/graphql/guides/using-global-node-ids))
+> - this lets a client fetch any object by its global ID via `node(id: ID!)`
+>
+> **Shopify:**
+> - the `SearchResultItem` union combines `Article`, `Page`, and `Product` ([Shopify `SearchResultItem`](https://shopify.dev/docs/api/storefront/latest/unions/SearchResultItem))
+> - clients use inline fragments to select fields based on `__typename`
+
 <Callout title="Interface = shared fields; union = unrelated alternatives">
 Reach for an **interface** when several types are variations of one concept and share fields you want to query together — the shared fields live on the interface and you select per-type extras with inline fragments. Reach for a **union** when the alternatives have nothing in common and merely occupy the same slot — there are no shared fields, so every selection happens inside a `... on Type` fragment. In both cases request `__typename` so clients know which concrete type they received.
 </Callout>

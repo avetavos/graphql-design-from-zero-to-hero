@@ -136,6 +136,30 @@ export const sameSchemaCode = `(async () => {
 
 Notice that `printSchema` returns the same SDL for both, and both queries return the same data. The destination — a typed, runnable schema — is identical. All that differs is which artifact you hand-write and which one the machine derives. That is the whole essence of the schema-first versus code-first decision.
 
+## Common mistakes
+
+**SDL that drifts from the resolvers**
+
+Symptoms:
+- the SDL schema says `name: String!` but the resolver returns null
+- there is no type check between the SDL and the resolver
+- Fix: generate resolver types from the SDL with codegen — TypeScript will catch the mismatch
+
+**Code-first with no real type safety**
+
+Symptoms:
+- `t.field('name', { type: 'String', resolve: (parent) => parent.fullName })` — no type check on `parent`
+- Fix: use a library like Pothos or TypeGraphQL that enforces the type of `parent`, `args`, and `context`
+
+> 💡 Real-world examples
+>
+> **Shopify:**
+> - Shopify's own schema design guide takes an SDL-first approach — the schema is a source of truth the whole team can read ([Shopify GraphQL design tutorial](https://github.com/Shopify/graphql-design-tutorial/blob/master/TUTORIAL.md))
+>
+> **Pothos + Prisma:**
+> - Pothos (code-first) ships an official Prisma plugin that generates GraphQL types directly from Prisma models ([Pothos Prisma plugin docs](https://pothos-graphql.dev/docs/plugins/prisma))
+> - type-safe all the way from the database to the GraphQL field, with no hand-written sync code
+
 <Callout title="Pick by what you optimise for">
 Choose **schema-first** when the contract's readability and shareability matter most — a clean SDL file your whole org can read — and plan to add code generation for safety. Choose **code-first** when end-to-end type safety with zero extra build step matters most, and you accept that the contract lives in code. Whatever you pick, make one of them the single source of truth and never hand-edit the other.
 </Callout>

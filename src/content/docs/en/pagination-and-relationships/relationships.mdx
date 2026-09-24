@@ -151,6 +151,32 @@ export const relCode = `(async () => {
 
 Trace the output: from one `author` we resolved the one-to-many `posts`, and inside each post we resolved the many-to-many `tags`. Each relationship field had its own resolver that looked up the connected records by id. Notice we never wrote a SQL `JOIN` — the graph *is* the join, expressed as nested field selections.
 
+## Common mistakes
+
+**A circular relationship with no depth limit**
+
+Symptoms:
+- `User.posts.author.posts.author.posts...` — the query can loop indefinitely
+- a malicious client sends a deeply nested query and overloads the server
+- Fix: enforce a query depth limit (see the depth-and-complexity lesson)
+
+**A relationship that returns the whole collection with no pagination**
+
+Symptoms:
+- `user { posts { title } }` returns every post a user has ever made
+- a user with ten thousand posts makes the query extremely slow
+- Fix: relationship collections should always take a pagination argument: `posts(first: 10)`
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - relationship collections use the Relay connection spec everywhere: `user { repositories(first: 20) { ... } }` ([GitHub GraphQL pagination guide](https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api))
+> - no relationship returns an unbounded list
+>
+> **Prisma:**
+> - a popular ORM paired with GraphQL — relation queries go through `include` and `select` ([Prisma relation queries docs](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries))
+> - often combined with DataLoader in resolvers to prevent N+1
+
 <Callout title="Relationships are just typed fields">
 There is no separate "relationship" concept to learn in GraphQL — a link is a field whose type is another type (to-one) or a list of another type (to-many), and many-to-many is simply a list field on both ends. Model the direction your clients actually traverse, give each relationship field a resolver that fetches the other side, and the type system turns your data into a graph for free.
 </Callout>

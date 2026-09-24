@@ -160,12 +160,11 @@ export const sameSchemaCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Shopify:**
-> - ใช้ SDL-first — schema เป็น source of truth ที่ทั้ง team ดูได้
-> - schema review เป็นส่วนหนึ่งของ code review process
+> - เอกสาร schema design ของ Shopify เองใช้แนวทาง SDL-first — schema เป็น source of truth ที่ทั้ง team ดูได้ ([Shopify GraphQL design tutorial](https://github.com/Shopify/graphql-design-tutorial/blob/master/TUTORIAL.md))
 >
-> **Prisma:**
-> - Pothos (code-first) + Prisma integration ทำให้ schema generate ตาม database model
-> - type-safe ตั้งแต่ database ถึง GraphQL field โดยไม่ต้องเขียน sync code
+> **Pothos + Prisma:**
+> - Pothos (code-first) มี official Prisma plugin ที่ generate GraphQL type จาก Prisma model โดยตรง ([Pothos Prisma plugin docs](https://pothos-graphql.dev/docs/plugins/prisma))
+> - type-safe ตั้งแต่ database ถึง GraphQL field โดยไม่ต้องเขียน sync code เอง
 
 <Callout title="เลือกตามสิ่งที่คุณให้ความสำคัญ">
 เลือก **schema-first** เมื่อความอ่านง่ายและการแชร์ได้ของ contract สำคัญที่สุด — ไฟล์ SDL ที่สะอาดซึ่งทั้งองค์กรอ่านได้ — และวางแผนเพิ่ม code generation เพื่อความปลอดภัย เลือก **code-first** เมื่อ type safety แบบ end-to-end ที่ไม่ต้องเพิ่มขั้นตอน build สำคัญที่สุด และคุณยอมรับว่า contract อยู่ในcode ไม่ว่าคุณจะเลือกแบบใด ให้ทำให้อันใดอันหนึ่งเป็น source of truth เดียว และอย่าแก้ไขอีกอันด้วยมือเด็ดขาด

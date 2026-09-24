@@ -144,10 +144,10 @@ export const resolverCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GraphQL Yoga:**
-> - ใช้ resolver chain ต่อกับ database, REST API, cache ได้ใน resolver เดียว
+> - เป็น spec-compliant GraphQL server ที่ไม่ผูก resolver กับ data source ใดเป็นพิเศษ — resolver เดียวเรียก database, REST API, หรือ cache ก็ได้ ([Yoga docs](https://the-guild.dev/graphql/yoga-server))
 >
 > **Prisma:**
-> - ORM ยอดนิยมสำหรับ GraphQL resolver
+> - ORM ยอดนิยมสำหรับ resolver ที่ต่อกับฐานข้อมูล ([Prisma Client docs](https://www.prisma.io/docs/orm/prisma-client))
 > - `prisma.user.findUnique()` ใน resolver ทำให้ code สั้นและ type-safe
 
 <Callout title="resolve ทีละ field ทีละหนึ่งระดับ">

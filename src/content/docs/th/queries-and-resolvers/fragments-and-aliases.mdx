@@ -155,11 +155,11 @@ response มี key ระดับบนสุดสองตัวคือ `h
 > 💡 ตัวอย่างจากของจริง
 >
 > **Relay (Meta/Facebook):**
-> - บังคับ pattern "colocation" — component ประกาศ fragment ของตัวเองที่ต้องการ
-> - query ระดับ page รวม fragment จาก component ทั้งหมดอัตโนมัติ
+> - บังคับ pattern "colocation" — component ประกาศ fragment ของตัวเองที่ต้องการ ([Relay docs: Thinking in GraphQL](https://relay.dev/docs/tutorial/fragments-1/))
+> - query ระดับ page รวม fragment จาก component ทั้งหมดอัตโนมัติผ่าน compiler ของ Relay
 >
 > **Apollo Client:**
-> - `useFragment` hook ทำให้ component subscribe เฉพาะ field ที่ตัวเองประกาศใน fragment
+> - `useFragment` hook (stable ตั้งแต่ v3.8) ทำให้ component subscribe เฉพาะ field ที่ตัวเองประกาศใน fragment โดยไม่ trigger network request เพิ่ม ([`useFragment` docs](https://www.apollographql.com/docs/react/api/react/useFragment))
 
 <Callout title="สามเครื่องมือเพื่อ query ที่สะอาดขึ้น">
 **Fragment** ดึง selection set ที่ซ้ำกันออกมาเป็นหน่วยมีชื่อหนึ่งหน่วยที่ spread ด้วย `...` ได้ **Inline fragment** (`... on Type`) เลือก field ที่มีเฉพาะบน type หนึ่ง ๆ ที่ซ่อนอยู่หลัง interface หรือ union ส่วน **Alias** (`key: field`) เปลี่ยนชื่อ field ใน response และเป็นตัวที่ทำให้ขอ field เดียวกันสองครั้งด้วย argument คนละชุดได้ ทั้งสามอย่างปั้นแค่รูปร่างของ query กับ response ไม่มีตัวไหนเปลี่ยนพฤติกรรมของ server

@@ -130,6 +130,28 @@ export const testDemoCode = `(async () => {
 
 Read the output as a test report. Each `PASS` line is one `expect` that held. The `id` assertion is the interesting one: it proves the argument `"t1"` actually reached the resolver and came back in the data. Swap the expected `214` for `999` and re-run to watch a `FAIL` line appear — that red line is exactly what catches a regression before it ships.
 
+## Common mistakes
+
+**Codegen not wired into CI/CD**
+
+Symptoms:
+- a developer forgets to run codegen after a schema change
+- TypeScript types drift out of sync with the real schema — a false sense of type safety
+- Fix: run codegen in CI and fail the build if the generated code is out of date
+
+**Tests that mock everything**
+
+Symptoms:
+- every unit test mocks the database, the context, and the resolver
+- everything passes, yet production still breaks because the real resolver has a bug
+- Fix: add integration tests that exercise the real schema and resolvers against a test database
+
+> 💡 Real-world examples
+>
+> **GraphQL Code Generator (The Guild):**
+> - plugin-based: generates resolver types, React hooks, and Zod schemas from a GraphQL schema ([GraphQL Code Generator docs](https://the-guild.dev/graphql/codegen))
+> - Apollo's own legacy codegen tool (`apollo-tooling`) is no longer maintained, and the current Apollo Client docs recommend using GraphQL Code Generator instead ([Apollo Client codegen docs](https://www.apollographql.com/docs/react/development-testing/graphql-codegen))
+
 <Callout title="Generate the types, test the behaviour">
 Codegen and tests are not competitors — they cover different failures. Code generation catches **shape** errors at compile time, so a resolver can never quietly return the wrong type. Tests catch **behaviour** errors at run time — wrong logic, a missed argument, an unexpected `null`. Write both: regenerate types on every schema change, unit-test the tricky resolvers, and keep at least one integration test that runs the real operations a client will send.
 </Callout>

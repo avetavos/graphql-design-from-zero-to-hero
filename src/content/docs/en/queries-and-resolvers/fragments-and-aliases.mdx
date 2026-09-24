@@ -131,6 +131,31 @@ export const fragmentCode = `(async () => {
 
 The response has two top-level keys, `hit` and `deepCut`, instead of one colliding `track` — that is the alias at work. Each holds the full set of fields from `TrackFields`, written once and reused twice — that is the fragment at work. Together they keep the query short and the response well-shaped.
 
+## Common mistakes
+
+**Copy-pasting fields instead of using a fragment**
+
+Symptoms:
+- five queries repeat the same field set (`id`, `name`, `avatar`) everywhere
+- changing one field means editing five queries
+- Fix: define a `UserBasicInfo` fragment and spread it into every query
+
+**Aliases that don't communicate intent**
+
+Symptoms:
+- `data1: user(id: 1) { name }` and `data2: user(id: 2) { name }`
+- the response has `data1` and `data2` that the client has to decode
+- Fix: use aliases that communicate intent, e.g. `primaryUser: user(id: $id1)`, `secondaryUser: user(id: $id2)`
+
+> 💡 Real-world examples
+>
+> **Relay (Meta/Facebook):**
+> - enforces a "colocation" pattern — each component declares the fragment it needs ([Relay docs: Thinking in GraphQL](https://relay.dev/docs/tutorial/fragments-1/))
+> - the page-level query automatically combines fragments from every component via Relay's compiler
+>
+> **Apollo Client:**
+> - the `useFragment` hook (stable since v3.8) lets a component subscribe to only the fields it declared in its own fragment, without triggering an extra network request ([`useFragment` docs](https://www.apollographql.com/docs/react/api/react/useFragment))
+
 <Callout title="Three tools for cleaner queries">
 **Fragments** factor a repeated selection set into one named unit you spread with `...`. **Inline fragments** (`... on Type`) pick fields that exist only on a specific type behind an interface or union. **Aliases** (`key: field`) rename a field in the response, which is what lets you request the same field twice with different arguments. All three shape the query and its response — none change the server.
 </Callout>

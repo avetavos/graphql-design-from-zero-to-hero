@@ -149,12 +149,10 @@ export const authzCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GraphQL Shield:**
-> - rule-based authorization layer สำหรับ GraphQL
-> - compose rule: `and(isAuthenticated, isAdmin)` สำหรับ admin-only field
+> - rule-based authorization layer สำหรับ GraphQL ที่ compose rule ได้ เช่น `and(isAuthenticated, isAdmin)` สำหรับ admin-only field ([graphql-shield บน npm](https://www.npmjs.com/package/graphql-shield)) — ปัจจุบันอยู่ใน maintenance mode (เวอร์ชันล่าสุดไม่ได้อัปเดตมาหลายปีแล้ว) ควรประเมินก่อนใช้ใน production ใหม่
 >
-> **GitHub:**
-> - field บาง field จะ return `null` แทน error เมื่อไม่มี permission
-> - ทำให้ partial result แสดงข้อมูลที่ได้รับอนุญาต โดยซ่อน field ที่ไม่ได้รับ
+> **แพตเทิร์นที่พบได้ในหลาย GraphQL API (เช่น GitLab):**
+> - field ที่ผู้ใช้ไม่มีสิทธิ์เข้าถึง มักจะ return `null` แทนการ throw error ([GitLab GraphQL API docs](https://docs.gitlab.com/api/graphql/)) เพื่อไม่ให้ client แยกความแตกต่างระหว่าง "ไม่มีสิทธิ์" กับ "ไม่มีอยู่จริง" ได้ ป้องกันการ enumerate resource
 
 <Callout title="Authorize ตรงที่ข้อมูลถูกผลิต และเลือกการปฏิเสธอย่างตั้งใจ">
 Authorization ไม่ใช่ประตูบานเดียวที่ทางเข้า แต่เป็นการตัดสินที่เกิดขึ้นทุก field วางการตรวจสอบไว้ใน resolver (หรือแยกออกเป็น directive หรือ middleware เพื่อประกาศครั้งเดียว) และอย่าไว้ใจให้ client บังคับใช้ เมื่อ access ถูกปฏิเสธ ให้เลือก response อย่างตั้งใจ — **คืน `null`** เมื่อแค่ยอมรับว่า field มีอยู่ก็เป็นการรั่วข้อมูลแล้ว และ **throw `GraphQLError` พร้อม code `FORBIDDEN`** เมื่อ client ที่ซื่อตรงล้ำเส้นและสมควรได้รับคำบอก ทั้งสองทางยังคงส่วนที่เหลือของ response ไว้ครบ

@@ -118,6 +118,32 @@ export const depthCode = `(async () => {
 
 The output ranks the three queries by depth and applies the limit. The shallow and medium queries pass; the abusive one — five levels of `friends` deep — exceeds the limit of 5 and is rejected. Note that *no resolver ran*: we worked purely on the parsed AST, exactly as a validation rule does, so a malicious query is thrown out before it can cost anything. Real depth-limit libraries do the same walk; complexity analysis extends it by weighting each field instead of just counting nesting levels.
 
+## Common mistakes
+
+**No depth or complexity limit at all**
+
+Symptoms:
+- a client can send `{ users { posts { author { posts { author { posts { ... } } } } } } }`
+- server CPU spikes and response times balloon
+- Fix: add `graphql-depth-limit` or `graphql-query-complexity` before going to production
+
+**A limit set too strict without testing**
+
+Symptoms:
+- a depth limit of 3 breaks the client's normal queries
+- you have to test real-world queries before setting a limit
+- Fix: start by logging and monitoring before enforcing a hard limit
+
+> 💡 Real-world examples
+>
+> **GitHub:**
+> - the GraphQL API rate-limits by complexity point ([GitHub rate limits and query limits](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api))
+> - `rateLimit { cost, remaining, resetAt }` in the response tells the client exactly how much it used
+>
+> **Shopify:**
+> - limits queries by a per-field "cost", computed via static analysis before the query actually runs ([Shopify Engineering: Rate Limiting GraphQL APIs by Calculating Query Complexity](https://shopify.engineering/rate-limiting-graphql-apis-calculating-query-complexity))
+> - list fields cost more than scalars — `products(first: 100)` is pricier than `product { title }`
+
 <Callout title="Measure cost, then reject before you execute">
 A query can pass authentication and authorization and still be a denial-of-service weapon, because the client controls the shape of the work. Defend in layers: **depth limiting** stops runaway nesting, **complexity analysis** budgets total cost (counting arguments and aliases), and **timeouts** catch whatever proves expensive at runtime. The first two are static — they read the parsed query and reject it during validation, so resolvers never run. Always set a maximum depth and a complexity budget on any public GraphQL endpoint; an endpoint without them is one clever query away from an outage.
 </Callout>

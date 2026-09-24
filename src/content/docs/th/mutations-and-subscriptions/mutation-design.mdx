@@ -160,12 +160,11 @@ export const designCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub GraphQL API:**
-> - แยก `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue` ออกจากกัน
-> - แต่ละ mutation คืน `Issue` object พร้อม field ที่ได้รับผลกระทบทั้งหมด
+> - แยก `createIssue`, `updateIssue`, `closeIssue`, `reopenIssue` ออกจากกันจริง ๆ ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
 > - audit log บอกได้ว่าใครทำอะไรจาก mutation name โดยตรง
 >
 > **Shopify Storefront API:**
-> - `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove` — แยก intent ชัดเจน
+> - `cartCreate`, `cartLinesAdd`, `cartLinesUpdate`, `cartLinesRemove` — แยก intent ชัดเจน ([Shopify Storefront `cartLinesAdd`](https://shopify.dev/docs/api/storefront/latest/mutations/cartLinesAdd))
 > - คืน `Cart` object เต็มทุกครั้ง เพื่อให้ client sync UI ได้ใน round-trip เดียว
 
 <Callout title="mutation คือกริยา ไม่ใช่แถวข้อมูล">

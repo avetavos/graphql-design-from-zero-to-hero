@@ -144,6 +144,32 @@ export const inputsCode = `(async () => {
 
 The mutation sent only the two required fields. Because `pageCount` was nullable in the input, omitting it was legal, and the resolver filled it with `null`. The `tags` field came back as `[]` — a non-null list, just empty — exactly as `[String!]!` promised. The type system validated the whole input before the resolver ever ran.
 
+## Common mistakes
+
+**One input type shared between create and update**
+
+Symptoms:
+- `BookInput` is used by both `createBook` and `updateBook`
+- create needs `title!` but update needs `title?`
+- Fix: split it into `CreateBookInput` and `UpdateBookInput`
+
+**Making every field non-null**
+
+Symptoms:
+- `UpdateBookInput { title: String!, authorId: ID!, pageCount: Int! }`
+- the client must send every field even to update just one
+- Fix: a partial update should use nullable fields, where "not sent" means "unchanged"
+
+> 💡 Real-world examples
+>
+> **Relay Convention:**
+> - the Relay Input Object Mutations Specification requires every mutation to take a single `input: XxxInput!` argument ([the spec](https://chentsulin.github.io/relay/graphql/mutations.htm))
+> - this lets the schema evolve without changing the mutation's signature
+>
+> **GitHub:**
+> - uses the naming convention `CreateIssueInput`, `UpdateIssueInput`, `CloseIssueInput` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
+> - each operation has its own dedicated input type — none are shared
+
 <Callout title="Inputs and nullability are how the contract validates itself">
 Bundle related arguments into an `input` object type — especially for mutations — and let nullability do your validation: `!` for what is required, plain for what is optional, and `[T!]!` for a guaranteed list of guaranteed values. Add default values so the common call stays short. Designed this way, your arguments document exactly what clients may send and reject the rest automatically, with no hand-written validation in your resolvers.
 </Callout>

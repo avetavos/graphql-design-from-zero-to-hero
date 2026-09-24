@@ -80,6 +80,32 @@ The gateway does not blindly merge schemas. It **validates composition**: two su
 
 The most common federation mistake is splitting by *technical layer* — a "database subgraph", a "validation subgraph". That recreates the bottleneck, because every feature still touches every layer. Split by **domain** instead: accounts, catalog, reviews, billing. Each subgraph then maps to a team that can own a whole vertical slice end to end, and the `@key`/reference seams fall on natural domain boundaries (a review *has an* author; a product *has* reviews).
 
+## Common mistakes
+
+**Adopting federation before there are multiple teams**
+
+Symptoms:
+- one team owns every subgraph
+- more complex than a monolithic schema, with none of the benefit
+- Fix: start with a monolithic schema, and federate once teams are genuinely separate
+
+**Circular entity references**
+
+Symptoms:
+- the `User` subgraph references `Order`, and the `Order` subgraph references `User`, circularly
+- the gateway has to make redundant round trips to resolve them
+- Fix: design clear entity ownership — decide who owns whom
+
+> 💡 Real-world examples
+>
+> **Airbnb:**
+> - uses Apollo Federation for its internal GraphQL platform across teams ([Airbnb Engineering: Reconciling GraphQL and Thrift](https://medium.com/airbnb-engineering/reconciling-graphql-and-thrift-at-airbnb-a97e8d290712))
+> - a schema gateway combines each team's subgraph for mobile and web clients
+>
+> **Netflix:**
+> - federated GraphQL supports 70+ Domain Graph Services (DGSes) and hundreds of developers working independently ([Netflix TechBlog: GraphQL Federation part 1](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-1-ae3557c187e2), [part 2](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-2-bbe71aaec44a))
+> - a schema registry catches breaking changes before deploy
+
 <Callout title="Federate by domain, and only when you need to">
 Reach for federation when one schema and one team has become the bottleneck — not before. A single service is simpler to build, test, and reason about, and most products never outgrow it. When you do split, split by **domain** so each subgraph maps to a team and a bounded slice of the business. Let entities and `@key` carry the cross-domain links, keep `__resolveReference` as the only seam, and trust composition validation to refuse any change that would break the unified graph.
 </Callout>

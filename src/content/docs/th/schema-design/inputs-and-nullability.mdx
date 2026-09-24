@@ -168,11 +168,11 @@ mutation ส่งมาแค่สอง field ที่จำเป็น เ
 > 💡 ตัวอย่างจากของจริง
 >
 > **Relay Convention:**
-> - mutation ทุกตัวรับ `input: XxxInput!` argument เดียว
+> - Relay Input Object Mutations Specification กำหนดให้ mutation ทุกตัวรับ `input: XxxInput!` argument เดียว ([สเปก](https://chentsulin.github.io/relay/graphql/mutations.htm))
 > - pattern นี้ทำให้ schema evolve ได้โดยไม่เปลี่ยน mutation signature
 >
 > **GitHub:**
-> - ใช้ naming convention `CreateIssueInput`, `UpdateIssueInput`, `CloseIssueInput`
+> - ใช้ naming convention `CreateIssueInput`, `UpdateIssueInput`, `CloseIssueInput` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
 > - แต่ละ operation มี input type เฉพาะตัว — ไม่ใช้ร่วมกัน
 
 <Callout title="Input และ nullability คือวิธีที่สัญญาตรวจสอบตัวเอง">

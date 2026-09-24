@@ -153,13 +153,9 @@ export const testDemoCode = `(async () => {
 
 > 💡 ตัวอย่างจากของจริง
 >
-> **Apollo Codegen:**
-> - generate TypeScript type จาก schema และ client query
-> - ใช้แพร่หลายใน large TypeScript + GraphQL codebase
->
 > **GraphQL Code Generator (The Guild):**
-> - plugin-based: generate resolver type, React hooks, Zod schema จาก GraphQL schema
-> - ใช้ใน production ที่ Klarna, Airbnb, และบริษัทใหญ่อื่น ๆ
+> - plugin-based: generate resolver type, React hooks, Zod schema จาก GraphQL schema ([GraphQL Code Generator docs](https://the-guild.dev/graphql/codegen))
+> - Apollo เองมี legacy codegen tool (`apollo-tooling`) ที่เลิกดูแลแล้ว และเอกสาร Apollo Client ปัจจุบันแนะนำให้ใช้ GraphQL Code Generator แทน ([Apollo Client codegen docs](https://www.apollographql.com/docs/react/development-testing/graphql-codegen))
 
 <Callout title="generate types แล้ว test พฤติกรรม">
 codegen กับ test ไม่ใช่คู่แข่งกัน แต่ครอบคลุมความล้มเหลวคนละแบบ code generation จับ error เรื่อง **รูปร่าง** ตั้งแต่ compile time ทำให้ resolver คืน type ผิดแบบเงียบ ๆ ไม่ได้ ส่วน test จับ error เรื่อง **พฤติกรรม** ตอน run time ทั้งตรรกะผิด argument ที่หลุดหาย และ `null` ที่ไม่คาดคิด เขียนทั้งสองอย่าง — regenerate type ทุกครั้งที่ schema เปลี่ยน unit-test resolver ที่ซับซ้อน และเก็บ integration test ไว้อย่างน้อยหนึ่งตัวที่รัน operation จริงแบบที่ client จะส่งมา

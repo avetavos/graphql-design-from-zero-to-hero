@@ -93,6 +93,31 @@ export const authContextCode = `(async () => {
 
 Look at the two outputs. With a verified user on the context, `me` returns `"Ada Lovelace"`. With `user: null`, `me` comes back as `null` while `serverTime` still works — the public field does not care who is asking. The resolvers stayed identical between the two runs; only the context changed. That is the whole point: identity is established once, outside the resolvers, and the schema reads it like any other request-scoped fact.
 
+## Common mistakes
+
+**Auth logic duplicated in every resolver**
+
+Symptoms:
+- every resolver checks `if (!token) throw new AuthenticationError()`
+- duplicated code and inconsistent enforcement
+- Fix: do the auth check in the context factory or middleware — resolvers don't need to know
+
+**Context that leaks across requests**
+
+Symptoms:
+- the context object is a singleton shared across requests
+- user A can end up seeing user B's data
+- Fix: create a fresh context object per request inside the `contextValue` factory
+
+> 💡 Real-world examples
+>
+> **Apollo Server:**
+> - the `contextValue` factory runs per-request — inject the user from a JWT every time ([Apollo Server context docs](https://www.apollographql.com/docs/apollo-server/data/context))
+> - `context.user` is ready to use in every resolver without re-parsing the token
+>
+> **GraphQL Yoga:**
+> - the `context` factory supports async, so a user lookup can hit the database right inside context creation ([Yoga context docs](https://the-guild.dev/graphql/yoga-server/docs/features/context))
+
 <Callout title="Authenticate in the context, authorize in resolvers">
 Keep the two jobs separate. **Authentication** — verifying a token and resolving the current user — happens once per request in the context factory, never inside a schema field. **Authorization** — deciding whether that user may see a particular field — happens later, in the resolvers. A clean context factory that returns `{ user }` (and `null` for anonymous callers) gives every resolver a trustworthy answer to "who is asking?" without re-parsing credentials, and leaves the "are they allowed?" question for the next lesson.
 </Callout>

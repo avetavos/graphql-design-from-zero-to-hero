@@ -142,11 +142,11 @@ export const variablesCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub API:**
-> - ทุก mutation ใช้ Input Type — `CreateIssueInput`, `AddCommentInput`
+> - ทุก mutation ใช้ Input Type — `CreateIssueInput`, `AddCommentInput` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
 > - ทำให้ schema evolution ง่าย — เพิ่ม optional field ใน Input ได้โดยไม่ break client
 >
 > **Relay:**
-> - enforce naming convention: mutation argument ต้องชื่อ `input` และเป็น Input Type เสมอ
+> - Relay Input Object Mutations Specification (สเปกดั้งเดิม) กำหนดว่า mutation ทุกตัวต้องมี argument ชื่อ `input` ที่เป็น Input Type เดียว ([สเปก](https://chentsulin.github.io/relay/graphql/mutations.htm)) — แม้ Relay Modern จะไม่บังคับ runtime แล้ว แต่ naming convention นี้ยังใช้กันแพร่หลาย
 
 <Callout title="ประกาศ argument; ส่ง variable">
 field argument เป็นส่วนหนึ่งของ schema บอกว่า field รับ input อะไรได้บ้าง ส่วน query variable เป็นส่วนหนึ่งของ request ทำหน้าที่พกค่าจริงเข้ามา มี type และแยกออกจากข้อความของ query เก็บ literal ไว้ใช้ใน playground แล้วส่ง `$variables` จาก app จริง เท่านี้ query ของคุณก็ใช้ซ้ำได้ cache ได้ และปลอดภัยตั้งแต่โครงสร้าง

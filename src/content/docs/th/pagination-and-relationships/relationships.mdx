@@ -181,12 +181,12 @@ export const relCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - ทุก relationship collection paginated: `user { repositories(first: 20) { ... } }`
+> - relationship collection ใช้ Relay Connection spec ทุกจุด: `user { repositories(first: 20) { ... } }` ([GitHub GraphQL pagination guide](https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api))
 > - ไม่มี relationship ที่ return unbounded list
 >
 > **Prisma:**
-> - ORM ที่ใช้คู่กับ GraphQL — relationship query ทำผ่าน `include` และ `select`
-> - ใช้ร่วมกับ DataLoader เพื่อป้องกัน N+1
+> - ORM ที่ใช้คู่กับ GraphQL บ่อย — relationship query ทำผ่าน `include` และ `select` ([Prisma relation queries docs](https://www.prisma.io/docs/orm/prisma-client/queries/relation-queries))
+> - มักใช้ร่วมกับ DataLoader ใน resolver เพื่อป้องกัน N+1
 
 <Callout title="relationship ก็คือ field ที่มี type นั่นเอง">
 ไม่มีแนวคิด "relationship" แยกต่างหากให้เรียนใน GraphQL — การเชื่อมโยงคือ field ที่มี type เป็น type อีกตัว (to-one) หรือ list ของ type อีกตัว (to-many) ส่วน many-to-many ก็เป็นเพียง field ที่เป็น list บนทั้งสองปลาย

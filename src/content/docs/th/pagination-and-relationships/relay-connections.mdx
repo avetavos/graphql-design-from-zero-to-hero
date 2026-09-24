@@ -156,12 +156,12 @@ export const connCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - ทุก list ใช้ Relay Connection spec: `repository.issues(first: 10, after: $cursor)`
+> - ทุก list ใช้ Relay Connection spec: `repository.issues(first: 10, after: $cursor)` ([GitHub GraphQL pagination guide](https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api))
 > - ทำให้ paginate ผ่าน issue, PR, comment ได้อย่าง consistent
 >
 > **Shopify:**
-> - Storefront API ใช้ Connection ทุกที่ — products, orders, collections
-> - client library เช่น Hydrogen ใช้ Connection spec สำหรับ automatic pagination
+> - Storefront API ใช้ Connection ทุกที่ — products, orders, collections ([Shopify pagination guide](https://shopify.dev/docs/api/usage/pagination-graphql))
+> - client library Hydrogen มี `Pagination` component + `getPaginationVariables` ที่ทำงานกับ Connection spec ให้อัตโนมัติ ([Hydrogen pagination docs](https://shopify.dev/docs/storefronts/headless/hydrogen/data-fetching/pagination))
 
 <Callout title="ใช้ cursor สำหรับ list ที่ใหญ่หรือเปลี่ยนแปลง">
 รูปร่างของ Relay connection — `edges { node cursor }` กับ `pageInfo { hasNextPage endCursor }` ที่ paging ด้วย `first`/`after` — มี boilerplate มากกว่า `limit`/`offset` แต่คุ้มกับ list ที่ใหญ่หรือเปลี่ยนแปลงระหว่างที่ผู้ใช้กำลังเลื่อนดู เพราะ cursor ระบุตัว item แทนที่จะระบุตำแหน่ง การแทรกหรือลบพร้อมกันจึงไม่ทำให้ขอบเขตของหน้าเพี้ยน และ database ก็ seek ตรงไปที่ cursor ได้เลย แทนที่จะนับผ่านแถวที่ข้าม สำหรับ feed, ผลการค้นหา และ collection ที่มีปริมาณมาก เลือกใช้ connection

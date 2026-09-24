@@ -106,12 +106,11 @@ export const errorsCode = `(async () => {
 
 > 💡 ตัวอย่างจากของจริง
 >
-> **Apollo Server:**
-> - built-in error classes: `AuthenticationError`, `ForbiddenError`, `UserInputError`
-> - แต่ละ class set HTTP status code และ extensions.code อัตโนมัติ
+> **Apollo Server (เวอร์ชันปัจจุบัน v4 ขึ้นไป):**
+> - built-in error class เดิม `AuthenticationError`, `ForbiddenError`, `UserInputError` ถูกถอดออกแล้ว — ให้ throw `GraphQLError` พร้อม `extensions.code` แทน ([migration guide](https://github.com/apollographql/apollo-server/blob/main/docs/source/migration-from-v3.mdx))
 >
 > **GitHub:**
-> - error ใน response มี `message`, `type`, `path` ครบ
+> - error ใน response มี `message`, `type`, `path` ครบ ([ตัวอย่าง response จริง](https://github.com/orgs/community/discussions/24737))
 > - client รู้ว่า field ไหนใน query ที่ fail และเหตุผลคืออะไร
 
 <Callout title="200 ก็ยังพก errors มาได้">

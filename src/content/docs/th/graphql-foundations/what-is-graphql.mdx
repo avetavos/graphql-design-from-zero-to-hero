@@ -131,11 +131,11 @@ resolver คืน object ที่มีข้อมูลมากมายท
 > 💡 ตัวอย่างจากของจริง
 >
 > **GitHub:**
-> - เปิด public GraphQL API v4 ในปี 2016 แทน REST API v3
-> - developer ลด request จาก 6-7 ครั้ง เหลือ 1 ครั้งสำหรับข้อมูลเดียวกัน
+> - เปิด GraphQL API v4 ให้ใช้งานแบบ early access ในเดือนกันยายน 2016 เป็น API เพิ่มเติมควบคู่ไปกับ REST API v3 ไม่ใช่มาแทนที่ ([GitHub blog: The GitHub GraphQL API](https://github.blog/developer-skills/github/the-github-graphql-api/))
+> - developer ระบุ field ที่ต้องการได้เอง จึงลดจำนวน round trip ลงเมื่อเทียบกับการต้องเดินตาม REST endpoint หลายจุดสำหรับข้อมูลเดียวกัน (ตัวเลขจำนวนครั้งที่ลดได้ขึ้นกับ use case จริง — ไม่มีตัวเลขสากลตายตัว)
 >
 > **Shopify Storefront API:**
-> - GraphQL ช่วยให้ frontend team ดึงข้อมูล product, variant, collection ในครั้งเดียว
+> - GraphQL ช่วยให้ frontend team ดึงข้อมูล product, variant, collection ในครั้งเดียว ([Shopify Storefront API](https://shopify.dev/docs/api/storefront))
 > - ลด over-fetching ที่เคยเกิดกับ REST endpoint ที่ return ข้อมูล product ครบทุก field
 
 <Callout title="ทำไมเรื่องนี้ถึงสำคัญ">

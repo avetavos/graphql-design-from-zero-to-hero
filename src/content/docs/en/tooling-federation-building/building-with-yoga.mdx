@@ -122,6 +122,30 @@ Query `messages` once more and your new message is there. In a few lines you exe
 
 This service is a microcosm of the entire book. The `typeDefs` are schema design. The resolvers are the queries-and-resolvers and mutations work. `context` is where security and performance hook in. Add codegen and tests from earlier in this module and you have a typed, tested service; split it by domain and put a gateway in front and you have the federation lesson. One small file, every idea.
 
+## Common mistakes
+
+**Running Yoga in production with no Envelop plugins**
+
+Symptoms:
+- deployed to production with no auth plugin, no rate-limit plugin, no logging plugin
+- the default Yoga setup fits development, not production
+- Fix: add the plugins production needs before shipping: `useAuth`, `useRateLimit`, `useOpenTelemetry`
+
+**GraphiQL left open in production**
+
+Symptoms:
+- GraphiQL is reachable in production — introspection exposes the entire schema
+- Fix: disable GraphiQL and introspection in production, or protect them with auth
+
+> 💡 Real-world examples
+>
+> **The Guild (Yoga's creator):**
+> - Yoga is a spec-compliant GraphQL server with a plugin ecosystem, via Envelop, covering DataLoader, rate limiting, auth, and tracing ([Yoga docs](https://the-guild.dev/graphql/yoga-server))
+>
+> **Hive (GraphQL schema registry):**
+> - built by The Guild, and integrates directly with Yoga ([Hive docs](https://the-guild.dev/graphql/hive))
+> - tracks schema usage, detects breaking changes, and monitors performance
+
 <Callout title="You can build a GraphQL service end to end">
 A GraphQL service is just three things wired together: **typeDefs** for the contract, **resolvers** to fulfil it, and **context** to thread per-request state. GraphQL Yoga turns those into a real HTTP server with a playground and no boilerplate. Everything else in this course — design, codegen, testing, federation, security — hangs off this skeleton. You started at zero with a single type; you can now stand up a documented, typed, testable, composable GraphQL service. That is the hero part.
 </Callout>

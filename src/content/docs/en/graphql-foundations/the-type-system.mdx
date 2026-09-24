@@ -136,6 +136,32 @@ export const typeSystemCode = `(async () => {
 
 Look closely at the output. `title` and `durationSeconds` come back as guaranteed values because they are non-null in the schema. `artist` is a nested object — the query stepped from `Track` into `Artist` — and inside it `bio` comes back as `null`, which is allowed because `bio` was declared without a `!`. The type system predicted every one of these shapes before the resolver ran.
 
+## Common mistakes
+
+**Making every field nullable without thinking**
+
+Symptoms:
+- the schema uses `String` instead of `String!` everywhere
+- the client has to null-check every field, even ones that can never actually be null
+- Fix: design nullability on purpose — `!` when you are confident, nullable when a field may genuinely be absent
+
+**A schema that mirrors the database tables verbatim**
+
+Symptoms:
+- schema type names match database table names one-to-one
+- every schema field is a database column
+- Fix: don't expose implementation detail to clients unnecessarily
+
+> 💡 Real-world examples
+>
+> **GitHub GraphQL API:**
+> - uses custom scalars such as `URI`, `DateTime`, and `HTML` beyond the built-ins ([GitHub GraphQL scalar reference](https://docs.github.com/en/graphql/reference/scalars))
+> - the type system tells the client exactly which fields return a URL, a date format, or an HTML string
+>
+> **Shopify:**
+> - uses the `Node` interface (every object with a global `id`) so any object can be fetched directly via `node`/`nodes` ([Shopify `Node` interface](https://shopify.dev/docs/api/storefront/latest/interfaces/Node))
+> - uses the `SearchResultItem` union for search results, which can be a `Product`, `Page`, or `Article` ([Shopify `SearchResultItem`](https://shopify.dev/docs/api/storefront/latest/unions/SearchResultItem))
+
 <Callout title="Read the schema first">
 When you meet a new GraphQL API, the schema is the documentation. Before writing a single query, read the types: which fields exist, what they return, what is non-null, and where object types link to each other. Internalize `!` as "the server guarantees this," and `[X!]!` as "a non-null list of non-null values," and you can predict every response the API can produce.
 </Callout>

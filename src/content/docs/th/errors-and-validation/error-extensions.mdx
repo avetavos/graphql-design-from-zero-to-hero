@@ -130,11 +130,11 @@ export const extensionsCode = `(async () => {
 > 💡 ตัวอย่างจากของจริง
 >
 > **Apollo Server:**
-> - error extensions มี `code` (enum) และ `http.status` สำหรับ custom HTTP status
-> - production build ซ่อน `stacktrace` อัตโนมัติ
+> - error extensions มี `code` และ `http.status` สำหรับ custom HTTP status ([เอกสาร Apollo Server](https://www.apollographql.com/docs/apollo-server/data/errors))
+> - production build ซ่อน `stacktrace` อัตโนมัติผ่าน `includeStacktraceInErrorResponses` ([เอกสารเดียวกัน](https://www.apollographql.com/docs/apollo-server/data/errors))
 >
 > **Stripe:**
-> - error code เป็น machine-readable string: `card_declined`, `insufficient_funds`
+> - error code เป็น machine-readable string เช่น `card_declined`, `insufficient_funds` ([Stripe error codes](https://docs.stripe.com/error-codes), [decline codes](https://docs.stripe.com/declines/codes))
 > - client จัดการแต่ละ error code ต่างกันโดยไม่ต้อง parse error message
 
 <Callout title="code สำหรับเครื่อง message สำหรับมนุษย์">

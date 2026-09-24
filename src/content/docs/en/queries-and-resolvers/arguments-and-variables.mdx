@@ -118,6 +118,31 @@ export const variablesCode = `(async () => {
 
 The query string mentions only `$id`; the value `"t2"` lives in `variableValues`. The resolver receives it through `args` and looks the track up. Change `variableValues` to `{ id: 't1' }` and run again — the same query text returns a different track, which is the entire point of variables.
 
+## Common mistakes
+
+**Sending an argument as a literal string instead of a variable**
+
+Symptoms:
+- `query { search(term: "GraphQL") }` instead of `query Search($t: String!) { search(term: $t) }`
+- every request becomes a persisted-query cache miss
+- Fix: always use a variable for a dynamic value
+
+**Making every argument a plain string**
+
+Symptoms:
+- `createUser(data: String!)` instead of `createUser(data: CreateUserInput!)`
+- loses the type safety and validation the schema gives for free
+- Fix: use an input type for any argument with more than one field
+
+> 💡 Real-world examples
+>
+> **GitHub API:**
+> - every mutation uses an input type — `CreateIssueInput`, `AddCommentInput` ([GitHub GraphQL mutation reference](https://docs.github.com/en/graphql/reference/mutations))
+> - this makes schema evolution easy — you can add an optional field to an input type without breaking clients
+>
+> **Relay:**
+> - the original Relay Input Object Mutations Specification requires every mutation to take a single argument named `input` that is an input type ([the spec](https://chentsulin.github.io/relay/graphql/mutations.htm)) — Relay Modern no longer enforces this at runtime, but the naming convention is still widely followed
+
 <Callout title="Declare arguments; pass variables">
 Field arguments are part of the schema — they say what input a field accepts. Query variables are part of the request — they carry the concrete values in, typed and separate from the query text. Keep literals in playgrounds and pass `$variables` from real apps, and your queries become reusable, cacheable, and safe by construction.
 </Callout>

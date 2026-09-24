@@ -76,6 +76,31 @@ export const partialCode = `(async () => {
 
 Read the output as a story of containment. `bio` is nullable, so when its resolver threw the server set it to `null` and recorded one error with `path: ["profile", "bio"]`. Crucially, `displayName` is untouched — you still get `"Ada Lovelace"`. That is **partial data**: a usable response despite a failure. Had `bio` been declared `bio: String!`, the error would have bubbled to `profile` (nullable), nulling the whole profile object instead of just one field.
 
+## Common mistakes
+
+**Not marking which fields are non-critical**
+
+Symptoms:
+- a critical field (price, stock) and a non-critical field (a related product) share the same nullability
+- a field that should fail gracefully instead nulls out the whole response
+- Fix: make non-critical fields nullable and design a null state in the UI
+
+**Unexpected null propagation**
+
+Symptoms:
+- `order.payment!.status` — `payment` is non-null
+- if the `payment` resolver fails, `payment` becomes `null`, which nulls the entire `order`
+- Fix: design non-null carefully — a field that can fail should be nullable
+
+> 💡 Real-world examples
+>
+> **Netflix:**
+> - Netflix's GraphQL Federation gateway is designed so a failing downstream service returns `null` for just its own part of the response, with an error entry, instead of failing the whole query — the rest of the page keeps working ([Netflix TechBlog: GraphQL Federation part 1](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-1-ae3557c187e2), [part 2](https://netflixtechblog.com/how-netflix-scales-its-api-with-graphql-federation-part-2-bbe71aaec44a))
+>
+> **A common pattern (not tied to one company):**
+> - a page with several independent sections (price, reviews, host, amenities) often gives each section its own resolver and makes it nullable
+> - a failing section does not block the others, because the error is contained to that section's nullable field
+
 <Callout title="Nullability is a failure-containment tool">
 Every `!` you add is a decision about both presence and propagation. Non-null fields give clients strong guarantees but turn a single resolver failure into a subtree-wide outage when they throw. Nullable fields cost the client a guard but contain failures and enable partial responses. Design the boundary deliberately: make the leaves you can always produce non-null, and keep failure-prone or optional fields nullable so one flaky dependency cannot blank out an entire query.
 </Callout>
